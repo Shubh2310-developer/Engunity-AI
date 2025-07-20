@@ -1,0 +1,163 @@
+# Engunity AI Frontend - Git Ignore Rules
+
+# =================================
+# Dependencies
+# =================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =================================
+# Next.js Build Output
+# =================================
+.next/
+out/
+build/
+dist/
+
+# =================================
+# Environment Variables
+# =================================
+.env*
+!.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# =================================
+# IDE & Editor Files
+# =================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# =================================
+# OS Generated Files
+# =================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# =================================
+# Logs
+# =================================
+*.log
+logs/
+*.log.*
+
+# =================================
+# Testing & Coverage
+# =================================
+coverage/
+.nyc_output
+test-results/
+playwright-report/
+test-results/
+
+# =================================
+# Build Tools & Cache
+# =================================
+.turbo/
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+
+# =================================
+# Deployment
+# =================================
+.vercel/
+.firebase/
+.netlify/
+
+# =================================
+# TypeScript
+# =================================
+*.tsbuildinfo
+.tscache/
+
+# =================================
+# Package Managers
+# =================================
+.pnp
+.pnp.js
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# =================================
+# Runtime & Temporary Files
+# =================================
+.temp/
+.tmp/
+tmp/
+temp/
+
+# =================================
+# AI & ML Models (Large Files)
+# =================================
+*.model
+*.pkl
+*.h5
+*.pb
+models/
+weights/
+
+# =================================
+# Database Files
+# =================================
+*.db
+*.sqlite
+*.sqlite3
+
+# =================================
+# Security Keys
+# =================================
+*.pem
+*.key
+*.crt
+*.p12
+
+# =================================
+# Backup Files
+# =================================
+*.bak
+*.backup
+*.old
+
+# =================================
+# Analytics & Monitoring
+# =================================
+.sentry-cli.properties
+
+# =================================
+# Mobile Development
+# =================================
+.expo/
+
+# =================================
+# Storybook
+# =================================
+storybook-static/
+
+# =================================
+# Documentation Build
+# =================================
+.docusaurus/
+
+# =================================
+# Lock Files (optional - choose one)
+# =================================
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml

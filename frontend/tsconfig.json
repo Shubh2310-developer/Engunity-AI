@@ -1,0 +1,246 @@
+{
+  // =================================
+  // TypeScript Configuration for Engunity AI
+  // Production-ready setup with strict type checking
+  // =================================
+  
+  "compilerOptions": {
+    // =================================
+    // Language and Environment
+    // =================================
+    "target": "ES2022",
+    "lib": [
+      "DOM",
+      "DOM.Iterable", 
+      "ES2022",
+      "ES2023.Array",
+      "WebWorker"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    
+    // =================================
+    // Strict Type Checking Options
+    // =================================
+    
+    // Enable all strict mode family checks
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "strictBindCallApply": true,
+    "strictPropertyInitialization": true,
+    "noImplicitThis": true,
+    "alwaysStrict": true,
+    
+    // Additional checks for better code quality
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": false,
+    
+    // =================================
+    // Module Resolution
+    // =================================
+    "allowImportingTsExtensions": false,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    
+    // =================================
+    // Path Mapping for Clean Imports
+    // =================================
+    "baseUrl": ".",
+    "paths": {
+      // Component imports
+      "@/components/*": ["src/components/*"],
+      "@/components": ["src/components"],
+      
+      // UI component imports
+      "@/ui/*": ["src/components/ui/*"],
+      "@/ui": ["src/components/ui"],
+      
+      // Library/utility imports
+      "@/lib/*": ["src/lib/*"],
+      "@/lib": ["src/lib"],
+      "@/utils/*": ["src/lib/utils/*"],
+      "@/utils": ["src/lib/utils"],
+      
+      // Type definitions
+      "@/types/*": ["src/types/*"],
+      "@/types": ["src/types"],
+      
+      // Hook imports
+      "@/hooks/*": ["src/hooks/*"],
+      "@/hooks": ["src/hooks"],
+      
+      // Store/state management
+      "@/store/*": ["src/store/*"],
+      "@/store": ["src/store"],
+      
+      // App directory
+      "@/app/*": ["src/app/*"],
+      "@/app": ["src/app"],
+      
+      // Styles
+      "@/styles/*": ["src/styles/*"],
+      "@/styles": ["src/styles"],
+      
+      // Public assets
+      "@/public/*": ["public/*"],
+      "@/assets/*": ["public/images/*"],
+      
+      // API utilities
+      "@/api/*": ["src/lib/api/*"],
+      "@/api": ["src/lib/api"],
+      
+      // Authentication
+      "@/auth/*": ["src/lib/auth/*"],
+      "@/auth": ["src/lib/auth"],
+      
+      // Database utilities
+      "@/db/*": ["src/lib/database/*"],
+      "@/db": ["src/lib/database"],
+      
+      // AI/ML utilities
+      "@/ai/*": ["src/lib/ai/*"],
+      "@/ai": ["src/lib/ai"],
+      
+      // Web3/Blockchain utilities
+      "@/web3/*": ["src/lib/web3/*"],
+      "@/web3": ["src/lib/web3"],
+      
+      // Feature-specific paths
+      "@/chat/*": ["src/components/chat/*"],
+      "@/editor/*": ["src/components/editor/*"],
+      "@/analysis/*": ["src/components/analysis/*"],
+      "@/research/*": ["src/components/research/*"],
+      "@/documents/*": ["src/components/documents/*"],
+      "@/blockchain/*": ["src/components/blockchain/*"],
+      "@/dashboard/*": ["src/components/dashboard/*"],
+      "@/shared/*": ["src/components/shared/*"],
+      "@/layout/*": ["src/components/layout/*"],
+      
+      // Root src access
+      "@/*": ["src/*"]
+    },
+    
+    // =================================
+    // Emit Options
+    // =================================
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "removeComments": false,
+    "importHelpers": true,
+    
+    // =================================
+    // Experimental Options
+    // =================================
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    
+    // =================================
+    // Advanced Options
+    // =================================
+    "skipDefaultLibCheck": true,
+    "useDefineForClassFields": true,
+    
+    // =================================
+    // Next.js Specific
+    // =================================
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
+  },
+  
+  // =================================
+  // Include/Exclude Patterns
+  // =================================
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.js",
+    "**/*.jsx",
+    ".next/types/**/*.ts",
+    "src/**/*",
+    "tailwind.config.js",
+    "next.config.js"
+  ],
+  
+  "exclude": [
+    "node_modules",
+    ".next",
+    "out",
+    "dist",
+    "build",
+    "coverage",
+    "*.config.js",
+    "public",
+    "tests/**/*.spec.ts",
+    "tests/**/*.test.ts",
+    "**/*.stories.ts",
+    "**/*.stories.tsx",
+    "storybook-static"
+  ],
+  
+  // =================================
+  // Type Acquisition
+  // =================================
+  "typeAcquisition": {
+    "enable": true,
+    "include": [
+      "node",
+      "react",
+      "react-dom",
+      "next",
+      "tailwindcss"
+    ],
+    "exclude": [
+      "jquery"
+    ]
+  },
+  
+  // =================================
+  // Watch Options for Development
+  // =================================
+  "watchOptions": {
+    "watchFile": "useFsEvents",
+    "watchDirectory": "useFsEvents",
+    "fallbackPolling": "dynamicPriority",
+    "synchronousWatchDirectory": true,
+    "excludeDirectories": [
+      "**/node_modules",
+      "**/.git",
+      "**/.next",
+      "**/dist",
+      "**/build"
+    ]
+  },
+  
+  // =================================
+  // TS Node Configuration (for scripts)
+  // =================================
+  "ts-node": {
+    "esm": true,
+    "compilerOptions": {
+      "module": "ESNext",
+      "moduleResolution": "node"
+    }
+  }
+}

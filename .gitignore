@@ -1,0 +1,380 @@
+# ================================
+# Engunity AI - Comprehensive .gitignore
+# ================================
+
+# ================================
+# Environment & Secrets
+# ================================
+# Environment files containing sensitive data
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Backup environment files
+.env.backup
+.env.bak
+*.env.backup
+
+# API Keys and secrets
+secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+service-account.json
+firebase-adminsdk*.json
+
+# Database connection files
+database.url
+*.db-url
+
+# Configuration files with sensitive data
+config/production/
+config/secrets/
+config/*.secret.*
+
+# ================================
+# Dependencies
+# ================================
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-debug.log*
+
+# Python dependencies
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+htmlcov/
+.venv/
+venv/
+ENV/
+env/
+.env/
+
+# Rust dependencies
+target/
+Cargo.lock
+
+# ================================
+# Build Output & Distribution
+# ================================
+# Next.js build output
+frontend/.next/
+frontend/out/
+frontend/dist/
+frontend/build/
+
+# Python build output
+backend/dist/
+backend/build/
+backend/*.egg-info/
+
+# Blockchain build output
+blockchain/artifacts/
+blockchain/cache/
+blockchain/typechain/
+blockchain/coverage/
+
+# Static site generators
+.nuxt
+.vuepress/dist
+.serverless/
+
+# ================================
+# Development & IDE
+# ================================
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# ================================
+# Logs & Monitoring
+# ================================
+# Application logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+.nyc_output
+
+# ================================
+# Data & Storage
+# ================================
+# User uploaded files
+data/uploads/
+data/temp/
+data/processing/
+uploads/
+temp/
+tmp/
+
+# Database files
+*.sqlite
+*.sqlite3
+*.db
+
+# Vector store data
+data/vector-store/
+vector_store/embeddings/
+vector_store/indices/
+
+# Backup files
+data/backups/
+*.backup
+*.bak
+*.dump
+
+# Cache directories
+.cache/
+.npm
+.eslintcache
+.parcel-cache
+
+# ================================
+# Testing & QA
+# ================================
+# Test output
+test-results/
+coverage/
+.nyc_output
+junit.xml
+test-report.xml
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Jest
+jest-coverage/
+
+# ================================
+# Docker & Infrastructure
+# ================================
+# Docker
+.dockerignore
+Dockerfile.backup
+
+# Kubernetes secrets
+k8s-secrets/
+*.kubeconfig
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraformrc
+terraform.tfvars
+*.tfplan
+
+# ================================
+# AI & ML Models
+# ================================
+# Large model files
+*.bin
+*.h5
+*.onnx
+*.pkl
+*.model
+models/
+weights/
+checkpoints/
+
+# Embeddings and vector data
+embeddings/
+*.embedding
+*.vec
+*.faiss
+
+# Training data
+data/datasets/large/
+data/models/
+training_data/
+
+# ================================
+# Blockchain & Web3
+# ================================
+# Hardhat
+blockchain/cache/
+blockchain/artifacts/
+blockchain/typechain/
+
+# Contract deployment
+deployments/localhost/
+.openzeppelin/
+
+# Web3 artifacts
+abis/
+contracts/compiled/
+
+# ================================
+# Performance & Profiling
+# ================================
+# Performance monitoring
+.clinic/
+profile/
+*.prof
+*.heapsnapshot
+
+# Lighthouse reports
+lighthouse-reports/
+
+# ================================
+# Documentation Build
+# ================================
+# Generated documentation
+docs/_build/
+docs/build/
+site/
+
+# API documentation
+api-docs/
+swagger-ui/
+
+# ================================
+# CI/CD & Deployment
+# ================================
+# Deployment artifacts
+deploy/
+release/
+
+# CI/CD secrets
+.github/secrets/
+.gitlab/secrets/
+
+# Build artifacts
+artifacts/
+.vercel/
+.railway/
+
+# ================================
+# Analytics & Monitoring
+# ================================
+# Analytics data
+analytics/
+metrics/
+.sentry/
+
+# Monitoring configs with secrets
+monitoring/secrets/
+
+# ================================
+# Miscellaneous
+# ================================
+# Package manager lock files (keep package-lock.json for reproducible builds)
+# yarn.lock  # Uncomment if using npm instead of yarn
+
+# Editor directories and files
+.vscode/
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local history
+.history/
+
+# Temporary folders
+.tmp/
+.sass-cache/
+
+# Debug files
+*.map
+*.tsbuildinfo
+
+# ================================
+# Project Specific
+# ================================
+# Engunity AI specific ignores
+
+# Frontend specific
+frontend/.env.local
+frontend/next-env.d.ts
+frontend/.next/
+frontend/out/
+
+# Backend specific
+backend/.env
+backend/alembic.ini
+backend/migrations/env.py
+
+# Blockchain specific
+blockchain/.env
+blockchain/contracts/compiled/
+
+# Generated types
+types/generated/
+schemas/generated/
+
+# Local development overrides
+docker-compose.override.yml
+.local/
+
+# ================================
+# Keep Files (Negation Patterns)
+# ================================
+# Keep important example files
+!.env.example
+!.env.template
+!docker-compose.example.yml
+
+# Keep empty directories with .gitkeep
+!.gitkeep
+
+# Keep essential config templates
+!config/templates/
+!config/examples/
+
+# ================================
+# End of .gitignore
+# ================================
