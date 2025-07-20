@@ -5,6 +5,7 @@ import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { LoadingProvider } from '@/contexts/LoadingContext';
 
+
 import type { Metadata, Viewport } from 'next';
 
 import './globals.css';

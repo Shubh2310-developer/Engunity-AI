@@ -137,7 +137,7 @@ const AnimatedCounter: React.FC<AnimatedCounterProps> = ({ target, duration = 2.
         />
         
         <motion.div 
-          className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-2"
+          className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-2"
           initial={{ scale: 0.5, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ delay: 0.5, duration: 0.8, ease: "backOut" }}
@@ -800,7 +800,7 @@ const LandingPageContent = () => {
       <Navigation />
 
       {/* Enhanced Hero Section with Sophisticated Animations */}
-      <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+      <section className="relative min-h-screen flex flex-col md:flex-row items-center justify-center overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
         {/* Animated Background Elements */}
         <div className="absolute inset-0">
           <motion.div 
@@ -877,7 +877,7 @@ const LandingPageContent = () => {
 
         {/* Enhanced Video Section */}
         <motion.div
-          className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mb-16"
+          className="relative z-10 w-full md:w-2/3 p-8"
           initial={{ opacity: 0, y: 80, scale: 0.9 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ 
@@ -925,7 +925,7 @@ const LandingPageContent = () => {
                 transition={{ delay: 0.5, duration: 0.8 }}
                 whileHover={{ scale: 1.01 }}
               >
-                <source src="/videos/website-page_landing.mp4" type="video/mp4" />
+                <source src="/videos/video.mp4" type="video/mp4" />
                 Your browser does not support the video tag.
               </motion.video>
 
@@ -1005,7 +1005,7 @@ const LandingPageContent = () => {
         </motion.div>
 
         <motion.div 
-          className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center"
+          className="relative z-10 w-full md:w-1/3 p-4 flex flex-col items-start min-h-[320px] overflow-visible"
           variants={staggerContainer}
           initial="hidden"
           animate="visible"
@@ -1045,7 +1045,7 @@ const LandingPageContent = () => {
           </motion.div>
           
           <motion.h1 
-            className="text-5xl md:text-7xl font-bold text-slate-900 mb-8 leading-tight"
+            className="text-3xl md:text-5xl font-bold text-slate-900 mb-4 leading-tight break-words whitespace-normal w-full"
             variants={fadeInUp}
           >
             <motion.span
@@ -1066,7 +1066,7 @@ const LandingPageContent = () => {
           </motion.h1>
           
           <motion.p 
-            className="text-xl md:text-2xl text-slate-600 mb-12 max-w-4xl mx-auto leading-relaxed"
+            className="text-lg md:text-xl text-slate-600 mb-12 max-w-4xl mx-auto leading-relaxed"
             variants={fadeInUp}
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1127,9 +1127,7 @@ const LandingPageContent = () => {
           {/* Enhanced Statistics with Individual Animations */}
           <motion.div 
             className="grid grid-cols-2 md:grid-cols-4 gap-8 max-w-5xl mx-auto"
-            variants={staggerContainer}
-            initial="hidden"
-            animate="visible"
+            style={{ minHeight: '120px' }}
           >
             <AnimatedCounter target={50} suffix="K+" title="Active Users" />
             <AnimatedCounter target={1} suffix="M+" title="Lines of Code" />
