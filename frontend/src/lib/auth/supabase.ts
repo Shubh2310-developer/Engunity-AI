@@ -111,11 +111,29 @@ export const supabase: TypedSupabaseClient = createClient<Database>(
           
           try {
             const parsed = JSON.parse(item);
-            // Check if session is still valid (1 day = 86400 seconds)
+            // Extended session validity check - 30 days (2592000 seconds)
+            // Only remove if explicitly expired AND not a refresh token scenario
             if (parsed.expires_at && Date.now() / 1000 > parsed.expires_at) {
+              // Check if it's been less than 30 days since login
+              const loginTime = localStorage.getItem('engunity-login-time');
+              if (loginTime) {
+                const daysSinceLogin = (Date.now() - parseInt(loginTime)) / (1000 * 60 * 60 * 24);
+                if (daysSinceLogin < 30) {
+                  // Keep session if within 30 days, even if access token expired
+                  return item;
+                }
+              }
+              // Remove only if truly expired (>30 days)
               localStorage.removeItem(key);
+              localStorage.removeItem('engunity-login-time');
               return null;
             }
+            
+            // Store login time for tracking 30-day period
+            if (parsed.access_token && !localStorage.getItem('engunity-login-time')) {
+              localStorage.setItem('engunity-login-time', Date.now().toString());
+            }
+            
             return item;
           } catch {
             return item;
@@ -124,10 +142,22 @@ export const supabase: TypedSupabaseClient = createClient<Database>(
         setItem: (key: string, value: string) => {
           if (typeof window === 'undefined') return;
           localStorage.setItem(key, value);
+          
+          // Track login time for 30-day persistence
+          try {
+            const parsed = JSON.parse(value);
+            if (parsed.access_token && !localStorage.getItem('engunity-login-time')) {
+              localStorage.setItem('engunity-login-time', Date.now().toString());
+            }
+          } catch {
+            // Ignore parsing errors
+          }
         },
         removeItem: (key: string) => {
           if (typeof window === 'undefined') return;
           localStorage.removeItem(key);
+          // Also remove login time when session is explicitly removed
+          localStorage.removeItem('engunity-login-time');
         },
       },
     },

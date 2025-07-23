@@ -34,7 +34,7 @@ export interface AuthGuardProps {
   /** Minimum role required to access the protected content */
   requiredRole?: UserRole;
   
-  /** Custom redirect path for unauthenticated users (default: '/login') */
+  /** Custom redirect path for unauthenticated users (default: '/auth/login') */
   redirectTo?: string;
   
   /** Whether to show loading spinner during auth check */
@@ -170,7 +170,7 @@ const DefaultAccessDenied: React.FC<{
 const AuthGuard: React.FC<AuthGuardProps> = ({
   children,
   requiredRole,
-  redirectTo = '/login',
+  redirectTo = '/auth/login',
   showLoading = true,
   loadingComponent,
   accessDeniedComponent,
@@ -359,13 +359,18 @@ const AuthGuard: React.FC<AuthGuardProps> = ({
         return <>{accessDeniedComponent}</>;
       }
 
-      return (
-        <DefaultAccessDenied
-          requiredRole={requiredRole}
-          userRole={authState.profile?.role}
-          errorMessage={permissionError}
-        />
-      );
+      const accessDeniedProps: {
+        requiredRole?: UserRole; 
+        userRole?: UserRole;
+        errorMessage?: string;
+      } = {
+        errorMessage: permissionError,
+      };
+      
+      if (requiredRole) accessDeniedProps.requiredRole = requiredRole;
+      if (authState.profile?.role) accessDeniedProps.userRole = authState.profile.role;
+
+      return <DefaultAccessDenied {...accessDeniedProps} />;
     }
 
     // User is authenticated and has permission - render children
@@ -394,7 +399,7 @@ export function withAuthGuard<T extends object>(
   ): React.ComponentType<T> {
     return function GuardedComponent(props: T) {
       return (
-        <AuthGuard requiredRole={requiredRole} {...options}>
+        <AuthGuard {...(requiredRole && { requiredRole })} {...options}>
           <Component {...props} />
         </AuthGuard>
       );

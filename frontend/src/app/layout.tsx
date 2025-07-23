@@ -4,6 +4,9 @@ import { Toaster } from 'react-hot-toast';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { LoadingProvider } from '@/contexts/LoadingContext';
+import { UserProvider } from '@/contexts/UserContext';
+import { SettingsProvider } from '@/contexts/SettingsContext';
+import { EnhancedSettingsProvider } from '@/contexts/EnhancedSettingsContext';
 
 
 import type { Metadata, Viewport } from 'next';
@@ -234,13 +237,8 @@ export default function RootLayout({ children }: RootLayoutProps) {
         <link rel="dns-prefetch" href="//analytics.vercel.app" />
         
         {/* Preload critical resources */}
-        <link rel="preload" href="/images/hero-gradient.webp" as="image" type="image/webp" />
-        <link rel="preload" href="/fonts/inter-var.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
         
-        {/* Security headers */}
-        <meta httpEquiv="X-Content-Type-Options" content="nosniff" />
-        <meta httpEquiv="X-Frame-Options" content="SAMEORIGIN" />
-        <meta httpEquiv="X-XSS-Protection" content="1; mode=block" />
+        {/* Note: Security headers are handled by next.config.js */}
         <meta httpEquiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
         <meta httpEquiv="Permissions-Policy" content="camera=(), microphone=(), geolocation=()" />
         
@@ -300,8 +298,8 @@ export default function RootLayout({ children }: RootLayoutProps) {
           ${jetbrainsMono.variable} 
           font-sans 
           antialiased 
-          bg-slate-50
-          text-slate-900
+          bg-white
+          text-gray-900
           selection:bg-blue-100 
           selection:text-blue-900
           scrollbar-thin 
@@ -340,14 +338,11 @@ export default function RootLayout({ children }: RootLayoutProps) {
 
         {/* Professional Background System */}
         <div className="fixed inset-0 -z-50 overflow-hidden">
-          {/* Primary gradient background */}
+          {/* Primary white background */}
           <div 
             className="
               absolute inset-0 
-              bg-gradient-to-br 
-              from-slate-50 
-              via-blue-50/30 
-              to-indigo-50/30
+              bg-white
             " 
           />
           
@@ -414,7 +409,13 @@ export default function RootLayout({ children }: RootLayoutProps) {
             role="main"
           >
             <LoadingProvider showInitialLoading={true}>
-              {children}
+              <UserProvider>
+                <SettingsProvider>
+                  <EnhancedSettingsProvider>
+                    {children}
+                  </EnhancedSettingsProvider>
+                </SettingsProvider>
+              </UserProvider>
             </LoadingProvider>
           </main>
         </div>

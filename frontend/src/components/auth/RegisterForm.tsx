@@ -19,9 +19,7 @@ import {
   EyeOff, 
   Mail, 
   Lock, 
-  User, 
-  Chrome, 
-  Github, 
+  User,
   Loader2,
   CheckCircle,
   AlertCircle
@@ -61,6 +59,12 @@ const registerSchema = z.object({
     .string()
     .min(1, 'Email is required')
     .email('Please enter a valid email address')
+    .refine((email) => {
+      // Block common test/invalid domains that Supabase rejects
+      const blockedDomains = ['example.com', 'test.com', 'fake.com', 'invalid.com'];
+      const domain = email.split('@')[1]?.toLowerCase();
+      return !blockedDomains.includes(domain);
+    }, 'Please use a valid email domain (Gmail, Outlook, etc.)')
     .toLowerCase()
     .trim(),
   password: z
@@ -93,10 +97,11 @@ type RegisterFormData = z.infer<typeof registerSchema>;
 /**
  * OAuth provider configuration
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface OAuthProvider {
   name: string;
   provider: 'google' | 'github' | 'apple' | 'discord';
-  icon: React.ComponentType<{ className?: string }>;
+  icon: React.ComponentType<any>; // More flexible type for Lucide icons
   buttonColor: string;
 }
 
@@ -124,20 +129,21 @@ interface RegisterFormProps {
 // 🌐 OAuth Provider Configuration
 // ================================
 
-const oauthProviders: OAuthProvider[] = [
-  {
-    name: 'Google',
-    provider: 'google',
-    icon: Chrome,
-    buttonColor: 'bg-white hover:bg-gray-50 text-gray-900 border border-gray-300',
-  },
-  {
-    name: 'GitHub',
-    provider: 'github',
-    icon: Github,
-    buttonColor: 'bg-gray-900 hover:bg-gray-800 text-white',
-  },
-];
+// OAuth providers configuration (unused in current implementation, using SocialAuth component instead)
+// const oauthProviders: OAuthProvider[] = [
+//   {
+//     name: 'Google',
+//     provider: 'google',
+//     icon: Chrome,
+//     buttonColor: 'bg-white hover:bg-gray-50 text-gray-900 border border-gray-300',
+//   },
+//   {
+//     name: 'GitHub',
+//     provider: 'github',
+//     icon: Github,
+//     buttonColor: 'bg-gray-900 hover:bg-gray-800 text-white',
+//   },
+// ];
 
 // ================================
 // 🎨 RegisterForm Component
@@ -198,9 +204,9 @@ const RegisterForm: React.FC<RegisterFormProps> = ({
             full_name: data.name,
             name: data.name, // Fallback for compatibility
           },
-          emailRedirectTo: requireEmailVerification 
-            ? `${window.location.origin}/auth/callback?redirect_to=${encodeURIComponent(redirectTo)}`
-            : undefined,
+          ...(requireEmailVerification && {
+            emailRedirectTo: `${window.location.origin}/auth/callback?redirect_to=${encodeURIComponent(redirectTo)}`
+          }),
         },
       });
 
@@ -213,18 +219,25 @@ const RegisterForm: React.FC<RegisterFormProps> = ({
         onSuccess?.(authData.user);
 
         if (requireEmailVerification && !authData.session) {
-          // Email verification required
+          // Email verification required - redirect to verification page
           setAuthSuccess(
-            `Registration successful! Please check your email (${data.email}) and click the verification link to activate your account.`
+            `Registration successful! Redirecting to verification page...`
           );
+          
+          setTimeout(() => {
+            router.push(`/auth/verify-email?email=${encodeURIComponent(data.email)}&redirect_to=${encodeURIComponent(redirectTo)}`);
+          }, 1500);
         } else {
-          // Direct sign-in (email verification disabled)
-          setAuthSuccess('Account created successfully! Redirecting to dashboard...');
+          // Direct sign-in (email verification disabled) - still show welcome flow for new users
+          setAuthSuccess('Account created successfully! Setting up your account...');
+          
+          // All new registered users should see the welcome/verification flow
+          const welcomeRedirect = `/auth/verify-email?email=${encodeURIComponent(data.email)}&verified=true&redirect_to=${encodeURIComponent(redirectTo)}`;
           
           // Redirect after a short delay to show success message
           setTimeout(() => {
-            router.push(redirectTo);
-          }, 2000);
+            router.push(welcomeRedirect);
+          }, 1500);
         }
 
         // Reset form
@@ -256,6 +269,21 @@ const RegisterForm: React.FC<RegisterFormProps> = ({
         }
       }
       
+      // Handle specific error codes
+      if (error.code) {
+        switch (error.code) {
+          case 'email_address_invalid':
+            errorMessage = 'Please use a valid email address from a recognized domain (e.g., Gmail, Outlook, Yahoo).';
+            break;
+          case 'weak_password':
+            errorMessage = 'Password is too weak. Please use a stronger password with mixed characters.';
+            break;
+          case 'email_taken':
+            errorMessage = 'An account with this email already exists. Please sign in instead.';
+            break;
+        }
+      }
+      
       setAuthError(errorMessage);
       onError?.(errorMessage);
     } finally {
@@ -266,13 +294,13 @@ const RegisterForm: React.FC<RegisterFormProps> = ({
   /**
    * Handle OAuth provider registration
    */
-  const handleOAuthRegistration = async (provider: 'google' | 'github' | 'apple' | 'discord') => {
+  const _handleOAuthRegistration = async (provider: 'google' | 'github' | 'apple' | 'discord') => {
     setOauthLoading(provider);
     setAuthError(null);
     setAuthSuccess(null);
 
     try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      const { data: _data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
           redirectTo: `${window.location.origin}/auth/callback?redirect_to=${encodeURIComponent(redirectTo)}`,
@@ -577,7 +605,7 @@ const RegisterForm: React.FC<RegisterFormProps> = ({
             <p className="text-sm text-gray-600 dark:text-gray-400">
               Already have an account?{' '}
               <Link
-                href="/login"
+                href="/auth/login"
                 className="text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 font-medium transition-colors"
               >
                 Sign in

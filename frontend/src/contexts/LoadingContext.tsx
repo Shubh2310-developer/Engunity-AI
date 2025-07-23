@@ -31,19 +31,14 @@ export const LoadingProvider: React.FC<LoadingProviderProps> = ({
   showInitialLoading = true 
 }) => {
   const [isLoading, setIsLoading] = useState(showInitialLoading);
-  const [loadingMessage, setLoadingMessage] = useState("Initializing Engunity AI Neural Engine...");
+  const [loadingMessage, setLoadingMessage] = useState("Welcome to Engunity AI");
   const [isInitialLoad, setIsInitialLoad] = useState(showInitialLoading);
 
-  // Handle initial loading
+  // Handle initial loading - no timer needed, let LoadingScreen handle first-time logic
   useEffect(() => {
     if (showInitialLoading) {
-      // Simulate initial app loading
-      const timer = setTimeout(() => {
-        setIsLoading(false);
-        setIsInitialLoad(false);
-      }, 3000); // Show loading for 3 seconds on initial load
-
-      return () => clearTimeout(timer);
+      setIsLoading(true);
+      setIsInitialLoad(true);
     }
   }, [showInitialLoading]);
 

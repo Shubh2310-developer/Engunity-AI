@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Engunity AI - RAG Workflow Architecture</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #1e293b;
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+            padding: 2rem;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            border-radius: 20px;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/></pattern></defs><rect width="100" height="100" fill="url(%23grid)"/></svg>');
+            opacity: 0.3;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 1rem;
+            position: relative;
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            position: relative;
+        }
+
+        .download-btn {
+            position: fixed;
+            top: 2rem;
+            right: 2rem;
+            z-index: 1000;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            border: none;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(16, 185, 129, 0.4);
+        }
+
+        .section {
+            margin-bottom: 3rem;
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+        }
+
+        .section h2 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            color: #1e293b;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .section h3 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin: 2rem 0 1rem 0;
+            color: #334155;
+        }
+
+        .section h4 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin: 1.5rem 0 0.75rem 0;
+            color: #475569;
+        }
+
+        .workflow-container {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 2rem 0;
+            border: 2px solid #e2e8f0;
+        }
+
+        .workflow-step {
+            display: flex;
+            align-items: center;
+            margin: 1.5rem 0;
+            padding: 1rem;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #6366f1;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .step-number {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            margin-right: 1rem;
+            flex-shrink: 0;
+        }
+
+        .step-content h4 {
+            margin: 0 0 0.5rem 0;
+            color: #1e293b;
+        }
+
+        .step-content p {
+            margin: 0;
+            color: #64748b;
+        }
+
+        .arrow-down {
+            text-align: center;
+            margin: 0.5rem 0;
+            color: #6366f1;
+            font-size: 1.5rem;
+        }
+
+        .code-block {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+            font-family: 'Fira Code', monospace;
+            border: 1px solid #334155;
+        }
+
+        .code-block pre {
+            margin: 0;
+            white-space: pre-wrap;
+        }
+
+        .highlight-box {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+            border: 1px solid #93c5fd;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+        }
+
+        .highlight-box h4 {
+            color: #1e40af;
+            margin-bottom: 0.5rem;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .metric-card {
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border: 1px solid #0ea5e9;
+            border-radius: 8px;
+            padding: 1.5rem;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #0369a1;
+            margin-bottom: 0.5rem;
+        }
+
+        .metric-label {
+            color: #0891b2;
+            font-weight: 500;
+        }
+
+        .tech-stack {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .tech-item {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .tech-item:hover {
+            border-color: #6366f1;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(99, 102, 241, 0.1);
+        }
+
+        .tech-item h4 {
+            color: #1e293b;
+            margin-bottom: 0.5rem;
+        }
+
+        .tech-item p {
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+
+        .phase-timeline {
+            position: relative;
+            margin: 2rem 0;
+        }
+
+        .phase-item {
+            display: flex;
+            align-items: center;
+            margin: 2rem 0;
+            position: relative;
+        }
+
+        .phase-item::before {
+            content: '';
+            position: absolute;
+            left: 20px;
+            top: 60px;
+            bottom: -40px;
+            width: 2px;
+            background: #e2e8f0;
+        }
+
+        .phase-item:last-child::before {
+            display: none;
+        }
+
+        .phase-marker {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            margin-right: 2rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        .phase-content {
+            flex: 1;
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+        }
+
+        .benefits-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .benefit-card {
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            border: 1px solid #22c55e;
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+
+        .benefit-card h4 {
+            color: #15803d;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .benefit-card p {
+            color: #166534;
+        }
+
+        ul {
+            margin: 1rem 0;
+            padding-left: 2rem;
+        }
+
+        li {
+            margin: 0.5rem 0;
+            color: #475569;
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: 4rem;
+            padding: 2rem;
+            background: #1e293b;
+            color: white;
+            border-radius: 16px;
+        }
+
+        @media print {
+            .download-btn {
+                display: none !important;
+            }
+            
+            body {
+                background: white !important;
+            }
+            
+            .section {
+                box-shadow: none !important;
+                border: 1px solid #e2e8f0 !important;
+                page-break-inside: avoid;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .download-btn {
+                position: relative;
+                top: auto;
+                right: auto;
+                margin: 1rem auto;
+                display: flex;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="download-btn" onclick="downloadPDF()">
+        📄 Download as PDF
+    </button>
+
+    <div class="container">
+        <div class="header">
+            <h1>🧠 Engunity AI</h1>
+            <p>Advanced RAG (Retrieval-Augmented Generation) Workflow Architecture</p>
+        </div>
+
+        <!-- Executive Summary -->
+        <div class="section">
+            <h2>📋 Executive Summary</h2>
+            <div class="highlight-box">
+                <h4>🎯 Optimal RAG Method: Hybrid Advanced RAG</h4>
+                <p>A cost-effective, high-performance RAG system leveraging local models with cloud backup, designed specifically for Engunity AI's document Q&A features. This architecture provides 85-90% accuracy with sub-second retrieval times while maintaining cost efficiency through free-tier services.</p>
+            </div>
+
+            <div class="tech-stack">
+                <div class="tech-item">
+                    <h4>🔤 Embeddings</h4>
+                    <p>Sentence Transformers (Local)</p>
+                </div>
+                <div class="tech-item">
+                    <h4>🗄️ Vector Store</h4>
+                    <p>FAISS (Primary) + Supabase Vector</p>
+                </div>
+                <div class="tech-item">
+                    <h4>🤖 LLM</h4>
+                    <p>Groq API + Phi-2 Fallback</p>
+                </div>
+                <div class="tech-item">
+                    <h4>💾 Database</h4>
+                    <p>PostgreSQL + Supabase</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- RAG Workflow -->
+        <div class="section">
+            <h2>🔄 Complete RAG Workflow</h2>
+            
+            <h3>Phase 1: Document Ingestion Pipeline</h3>
+            <div class="workflow-container">
+                <div class="workflow-step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h4>📄 Document Upload</h4>
+                        <p>User uploads PDF, DOCX, or TXT files through the Next.js frontend</p>
+                    </div>
+                </div>
+                <div class="arrow-down">⬇️</div>
+
+                <div class="workflow-step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h4>🔍 File Type Detection & Text Extraction</h4>
+                        <p>FastAPI backend processes files using PyPDF2/pdfplumber (PDF), python-docx (DOCX), or plain text reading</p>
+                    </div>
+                </div>
+                <div class="arrow-down">⬇️</div>
+
+                <div class="workflow-step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h4>🧹 Text Preprocessing</h4>
+                        <p>Clean text, remove unnecessary whitespace, normalize encoding, and prepare for chunking</p>
+                    </div>
+                </div>
+                <div class="arrow-down">⬇️</div>
+
+                <div class="workflow-step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h4>✂️ Intelligent Chunking</h4>
+                        <p>Hybrid approach: Semantic chunking + fixed size (512 tokens) with 64-token overlap for context preservation</p>
+                    </div>
+                </div>
+                <div class="arrow-down">⬇️</div>
+
+                <div class="workflow-step">
+                    <div class="step-number">5</div>
+                    <div class="step-content">
+                        <h4>🔢 Generate Embeddings</h4>
+                        <p>Use Sentence Transformers (all-MiniLM-L6-v2) to create 384-dimensional vector embeddings for each chunk</p>
+                    </div>
+                </div>
+                <div class="arrow-down">⬇️</div>
+
+                <div class="workflow-step">
+                    <div class="step-number">6</div>
+                    <div class="step-content">
+                        <h4>💾 Store in Vector Database</h4>
+                        <p>Store embeddings in FAISS index, metadata in PostgreSQL, and backup to Supabase Vector for scalability</p>
+                    </div>
+                </div>
+                <div class="arrow-down">⬇️</div>
+
+                <div class="workflow-step">
+                    <div class="step-number">7</div>
+                    <div class="step-content">
+                        <h4>✅ Document Ready</h4>
+                        <p>Document is now searchable and ready for Q&A queries with full metadata tracking</p>
+                    </div>
+                </div>
+            </div>
+
+            <h3>Phase 2: Query Processing & Response Generation</h3>
+            <div class="workflow-container">
+                <div class="workflow-step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h4>❓ User Query Input</h4>
+                        <p>User submits question about uploaded document through the chat interface</p>
+                    </div>
+                </div>
+                <div class="arrow-down">⬇️</div>
+
+                <div class="workflow-step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h4>🔍 Query Processing</h4>
+                        <p>Clean query, expand with synonyms, and prepare for semantic search</p>
+                    </div>
+                </div>
+                <div class="arrow-down">⬇️</div>
+
+                <div class="workflow-step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h4>🔢 Query Embedding</h4>
+                        <p>Generate embedding for query using the same Sentence Transformer model</p>
+                    </div>
+                </div>
+                <div class="arrow-down">⬇️</div>
+
+                <div class="workflow-step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h4>🎯 Vector Similarity Search</h4>
+                        <p>FAISS cosine similarity search to find top 10-20 relevant chunks</p>
+                    </div>
+                </div>
+                <div class="arrow-down">⬇️</div>
+
+                <div class="workflow-step">
+                    <div class="step-number">5</div>
+                    <div class="step-content">
+                        <h4>🏆 Rerank Results</h4>
+                        <p>Use cross-encoder model to rerank candidates for improved relevance</p>
+                    </div>
+                </div>
+                <div class="arrow-down">⬇️</div>
+
+                <div class="workflow-step">
+                    <div class="step-number">6</div>
+                    <div class="step-content">
+                        <h4>📝 Context Assembly</h4>
+                        <p>Select top 3-5 chunks and assemble coherent context for LLM generation</p>
+                    </div>
+                </div>
+                <div class="arrow-down">⬇️</div>
+
+                <div class="workflow-step">
+                    <div class="step-number">7</div>
+                    <div class="step-content">
+                        <h4>🤖 LLM Generation</h4>
+                        <p>Primary: Groq API for fast, high-quality responses. Fallback: Local Phi-2 model</p>
+                    </div>
+                </div>
+                <div class="arrow-down">⬇️</div>
+
+                <div class="workflow-step">
+                    <div class="step-number">8</div>
+                    <div class="step-content">
+                        <h4>✅ Response Delivery</h4>
+                        <p>Return answer with source citations, cache for future queries, and log analytics</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Technical Implementation -->
+        <div class="section">
+            <h2>🛠️ Technical Implementation Details</h2>
+            
+            <h3>Document Processing Service</h3>
+            <div class="code-block">
+                <pre>
+class DocumentProcessor:
+    def __init__(self):
+        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.faiss_index = faiss.IndexFlatIP(384)
+        self.chunk_size = 512
+        self.chunk_overlap = 64
+    
+    async def process_document(self, file_path: str, user_id: str):
+        # 1. Extract text based on file type
+        text = await self.extract_text(file_path)
+        
+        # 2. Intelligent chunking
+        chunks = await self.smart_chunk_text(text)
+        
+        # 3. Generate embeddings
+        embeddings = self.embedding_model.encode(chunks)
+        
+        # 4. Store in FAISS + metadata in DB
+        doc_id = await self.store_embeddings(embeddings, chunks, user_id)
+        
+        return doc_id
+                </pre>
+            </div>
+
+            <h3>RAG Query Service</h3>
+            <div class="code-block">
+                <pre>
+class RAGQueryService:
+    def __init__(self):
+        self.retriever = FaissRetriever()
+        self.reranker = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-12-v2')
+        self.groq_client = GroqClient()
+        self.local_llm = LocalPhi2Model()
+    
+    async def answer_query(self, query: str, doc_id: str, user_id: str):
+        # 1. Process query
+        processed_query = await self.preprocess_query(query)
+        
+        # 2. Retrieve relevant chunks
+        candidates = await self.retriever.search(processed_query, doc_id, k=10)
+        
+        # 3. Rerank for relevance
+        reranked = await self.rerank_results(query, candidates)
+        
+        # 4. Assemble context
+        context = self.assemble_context(reranked[:5])
+        
+        # 5. Generate answer with fallback
+        try:
+            answer = await self.groq_client.generate(query, context)
+        except Exception:
+            answer = await self.local_llm.generate(query, context)
+        
+        # 6. Cache and return
+        await self.cache_response(query, answer, doc_id)
+        return answer
+                </pre>
+            </div>
+        </div>
+
+        <!-- Performance Metrics -->
+        <div class="section">
+            <h2>📊 Expected Performance Metrics</h2>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-value">&lt;200ms</div>
+                    <div class="metric-label">Retrieval Time</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">&lt;2s</div>
+                    <div class="metric-label">Total Response Time</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">85-90%</div>
+                    <div class="metric-label">Accuracy Rate</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value">$0.01</div>
+                    <div class="metric-label">Cost per 1000 Queries</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Implementation Timeline -->
+        <div class="section">
+            <h2>🚀 Implementation Timeline</h2>
+            <div class="phase-timeline">
+                <div class="phase-item">
+                    <div class="phase-marker">1</div>
+                    <div class="phase-content">
+                        <h4>Phase 1: Core RAG (Weeks 1-2)</h4>
+                        <ul>
+                            <li>Document ingestion pipeline</li>
+                            <li>FAISS vector storage setup</li>
+                            <li>Basic retrieval + Groq generation</li>
+                            <li>Simple chunking strategy</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="phase-item">
+                    <div class="phase-marker">2</div>
+                    <div class="phase-content">
+                        <h4>Phase 2: Advanced Features (Weeks 3-4)</h4>
+                        <ul>
+                            <li>Smart chunking with overlap</li>
+                            <li>Cross-encoder reranking</li>
+                            <li>Response caching with Redis</li>
+                            <li>Phi-2 local fallback</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="phase-item">
+                    <div class="phase-marker">3</div>
+                    <div class="phase-content">
+                        <h4>Phase 3: Production Ready (Weeks 5-6)</h4>
+                        <ul>
+                            <li>Performance monitoring dashboard</li>
+                            <li>Quality metrics tracking</li>
+                            <li>Auto-scaling mechanisms</li>
+                            <li>Advanced error handling</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Benefits & Advantages -->
+        <div class="section">
+            <h2>✅ Key Benefits & Advantages</h2>
+            <div class="benefits-grid">
+                <div class="benefit-card">
+                    <h4>💰 Cost Efficiency</h4>
+                    <p>Leverages free tiers and local models to minimize operational costs while maintaining high performance.</p>
+                </div>
+                <div class="benefit-card">
+                    <h4>⚡ High Performance</h4>
+                    <p>Sub-second retrieval with FAISS and optimized chunking strategies for superior user experience.</p>
+                </div>
+                <div class="benefit-card">
+                    <h4>🔄 Reliability</h4>
+                    <p>Multiple fallback mechanisms ensure system availability even during API outages.</p>
+                </div>
+                <div class="benefit-card">
+                    <h4>📈 Scalability</h4>
+                    <p>Horizontal scaling ready with cloud backup options for seamless growth.</p>
+                </div>
+                <div class="benefit-card">
+                    <h4>🎯 Accuracy</h4>
+                    <p>Advanced reranking and semantic chunking achieve 85-90% relevance in responses.</p>
+                </div>
+                <div class="benefit-card">
+                    <h4>🔧 Flexibility</h4>
+                    <p>Modular architecture allows easy integration of new models and optimization techniques.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Monitoring & Analytics -->
+        <div class="section">
+            <h2>📈 Monitoring & Analytics</h2>
+            <h3>Key Metrics to Track</h3>
+            <ul>
+                <li><strong>Retrieval Accuracy:</strong> Relevance of retrieved chunks using RAGAS evaluation</li>
+                <li><strong>Response Quality:</strong> User satisfaction scores and feedback analysis</li>
+                <li><strong>Latency Metrics:</strong> End-to-end response time breakdown</li>
+                <li><strong>Cost Efficiency:</strong> API usage vs local processing ratio</li>
+                <li><strong>Cache Performance:</strong> Hit rates and response time improvements</li>
+                <li><strong>Error Rates:</strong> Failed requests and fallback activation frequency</li>
+            </ul>
+
+            <h3>Analytics Dashboard Implementation</h3>
+            <div class="code-block">
+                <pre>
+class RAGAnalytics:
+    def track_query(self, query_id, metrics):
+        self.metrics_db.insert({
+            'query_id': query_id,
+            'retrieval_latency': metrics['retrieval_time'],
+            'generation_latency': metrics['generation_time'],
+            'relevance_score': metrics['relevance'],
+            'model_used': metrics['model'],
+            'cache_hit': metrics['from_cache'],
+            'user_satisfaction': metrics['user_rating']
+        })
+                </pre>
+            </div>
+        </div>
+
+        <!-- Future Enhancements -->
+        <div class="section">
+            <h2>🔮 Future Enhancements</h2>
+            <div class="highlight-box">
+                <h4>Advanced Features Roadmap</h4>
+                <ul>
+                    <li><strong>Multi-modal RAG:</strong> Support for images, tables, and charts in documents</li>
+                    <li><strong>Conversational Memory:</strong> Context-aware multi-turn conversations</li>
+                    <li><strong>Auto-improving System:</strong> Learning from user feedback and corrections</li>
+                    <li><strong>Domain-specific Models:</strong> Fine-tuned embeddings for specialized content</li>
+                    <li><strong>Real-time Updates:</strong> Live document synchronization and incremental indexing</li>
+                    <li><strong>Advanced Security:</strong> Document-level access controls and encryption</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="footer">
+            <h3>🧠 Engunity AI - RAG Architecture</h3>
+            <p>Optimized for Performance, Cost-Efficiency, and Scalability</p>
+            <p>© 2025 Engunity AI • Advanced AI-Powered SaaS Platform</p>
+        </div>
+    </div>
+
+    <script>
+        function downloadPDF() {
+            // Hide the download button temporarily
+            const downloadBtn = document.querySelector('.download-btn');
+            downloadBtn.style.display = 'none';
+            
+            // Use browser's print functionality to save as PDF
+            window.print();
+            
+            // Show the button again after a short delay
+            setTimeout(() => {
+                downloadBtn.style.display = 'flex';
+            }, 1000);
+        }
+
+        // Alternative method using html2pdf library (uncomment if you want to include the library)
+        /*
+        function downloadPDF() {
+            const element = document.body;
+            const opt = {
+                margin: 0.5,
+                filename: 'Engunity-AI-RAG-Workflow.pdf',
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true },
+                jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+            };
+            
+            // Hide download button before generating PDF
+            const downloadBtn = document.querySelector('.download-btn');
+            downloadBtn.style.display = 'none';
+            
+            html2pdf().set(opt).from(element).save().then(() => {
+                downloadBtn.style.display = 'flex';
+            });
+        }
+        */
+
+        // Enhanced print functionality with better formatting
+        function enhancedPrint() {
+            const printWindow = window.open('', '_blank');
+            const currentContent = document.documentElement.outerHTML;
+            
+            // Remove the download button from print content
+            const modifiedContent = currentContent.replace(
+                /<button[^>]*class="download-btn"[^>]*>[\s\S]*?<\/button>/gi, 
+                ''
+            );
+            
+            printWindow.document.write(modifiedContent);
+            printWindow.document.close();
+            
+            printWindow.onload = function() {
+                printWindow.print();
+                printWindow.close();
+            };
+        }
+
+        // Add keyboard shortcut for PDF download (Ctrl+P or Cmd+P)
+        document.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
+                e.preventDefault();
+                downloadPDF();
+            }
+        });
+
+        // Add smooth scrolling for internal links
+        document.addEventListener('DOMContentLoaded', function() {
+            const links = document.querySelectorAll('a[href^="#"]');
+            links.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const target = document.querySelector(this.getAttribute('href'));
+                    if (target) {
+                        target.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                });
+            });
+        });
+
+        // Add animation on scroll
+        function animateOnScroll() {
+            const elements = document.querySelectorAll('.workflow-step, .metric-card, .benefit-card, .tech-item');
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.style.opacity = '1';
+                        entry.target.style.transform = 'translateY(0)';
+                    }
+                });
+            }, { threshold: 0.1 });
+
+            elements.forEach(el => {
+                el.style.opacity = '0';
+                el.style.transform = 'translateY(20px)';
+                el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+                observer.observe(el);
+            });
+        }
+
+        // Initialize animations when page loads
+        window.addEventListener('load', animateOnScroll);
+
+        // Add copy code functionality
+        function addCopyButtons() {
+            const codeBlocks = document.querySelectorAll('.code-block');
+            codeBlocks.forEach(block => {
+                const button = document.createElement('button');
+                button.innerHTML = '📋 Copy Code';
+                button.style.cssText = `
+                    position: absolute;
+                    top: 10px;
+                    right: 10px;
+                    background: #4f46e5;
+                    color: white;
+                    border: none;
+                    padding: 5px 10px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 12px;
+                `;
+                
+                block.style.position = 'relative';
+                block.appendChild(button);
+                
+                button.addEventListener('click', () => {
+                    const code = block.querySelector('pre').textContent;
+                    navigator.clipboard.writeText(code).then(() => {
+                        button.innerHTML = '✅ Copied!';
+                        setTimeout(() => {
+                            button.innerHTML = '📋 Copy Code';
+                        }, 2000);
+                    });
+                });
+            });
+        }
+
+        // Initialize copy buttons
+        document.addEventListener('DOMContentLoaded', addCopyButtons);
+    </script>
+
+    <!-- Optional: Include html2pdf library for better PDF generation -->
+    <!--
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    -->
+    
+    <!-- Print-specific styles -->
+    <style media="print">
+        @page {
+            margin: 0.5in;
+            size: letter;
+        }
+        
+        body {
+            font-size: 12pt;
+            line-height: 1.4;
+            color: #000 !important;
+            background: #fff !important;
+        }
+        
+        .download-btn {
+            display: none !important;
+        }
+        
+        .section {
+            page-break-inside: avoid;
+            margin-bottom: 20pt;
+            box-shadow: none !important;
+            border: 1pt solid #ccc;
+        }
+        
+        .workflow-step {
+            page-break-inside: avoid;
+        }
+        
+        .code-block {
+            background: #f5f5f5 !important;
+            border: 1pt solid #ccc;
+            font-size: 10pt;
+        }
+        
+        .header {
+            background: #6366f1 !important;
+            color: #fff !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        
+        .step-number {
+            background: #6366f1 !important;
+            color: #fff !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        
+        .metric-card, .benefit-card {
+            page-break-inside: avoid;
+            border: 1pt solid #ccc;
+        }
+        
+        .footer {
+            background: #1e293b !important;
+            color: #fff !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        
+        a {
+            color: #000 !important;
+            text-decoration: none;
+        }
+        
+        .highlight-box {
+            border: 2pt solid #93c5fd;
+            background: #dbeafe !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+    </style>
+</head>
+</body>
+</html>

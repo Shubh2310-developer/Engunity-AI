@@ -8,9 +8,9 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import type { Database } from '@/types/database';
+import { getAuthFlowRedirect } from '@/lib/auth/flow';
 
 /**
  * Handle OAuth callback from Google and GitHub
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     }
     
     return NextResponse.redirect(
-      new URL(`/login?error=${encodeURIComponent(errorMessage)}`, requestUrl.origin)
+      new URL(`/auth/login?error=${encodeURIComponent(errorMessage)}`, requestUrl.origin)
     );
   }
 
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
   if (!code) {
     console.error('No authorization code received');
     return NextResponse.redirect(
-      new URL('/login?error=No authorization code received', requestUrl.origin)
+      new URL('/auth/login?error=No authorization code received', requestUrl.origin)
     );
   }
 
@@ -79,14 +79,14 @@ export async function GET(request: NextRequest) {
     if (authError) {
       console.error('Error exchanging code for session:', authError);
       return NextResponse.redirect(
-        new URL(`/login?error=${encodeURIComponent(authError.message)}`, requestUrl.origin)
+        new URL(`/auth/login?error=${encodeURIComponent(authError.message)}`, requestUrl.origin)
       );
     }
 
     if (!authData.user) {
       console.error('No user data received after OAuth');
       return NextResponse.redirect(
-        new URL('/login?error=Authentication failed', requestUrl.origin)
+        new URL('/auth/login?error=Authentication failed', requestUrl.origin)
       );
     }
 
@@ -98,11 +98,14 @@ export async function GET(request: NextRequest) {
       emailVerified: !!user.email_confirmed_at,
     });
 
-    // Success! Redirect to dashboard or specified URL
-    console.log(`Redirecting authenticated user to: ${redirectTo}`);
+    // Use centralized auth flow logic to determine redirect
+    const authFlowResult = await getAuthFlowRedirect(user, redirectTo);
     
+    console.log('Auth flow decision:', authFlowResult);
+    const finalRedirect = authFlowResult.redirectPath;
+
     // Create response with redirect
-    const response = NextResponse.redirect(new URL(redirectTo, requestUrl.origin));
+    const response = NextResponse.redirect(new URL(finalRedirect, requestUrl.origin));
     
     // Set additional headers for better security
     response.headers.set('Cache-Control', 'no-cache, no-store, max-age=0, must-revalidate');
@@ -115,7 +118,7 @@ export async function GET(request: NextRequest) {
     
     return NextResponse.redirect(
       new URL(
-        `/login?error=${encodeURIComponent(
+        `/auth/login?error=${encodeURIComponent(
           error.message || 'An unexpected error occurred during authentication'
         )}`,
         requestUrl.origin

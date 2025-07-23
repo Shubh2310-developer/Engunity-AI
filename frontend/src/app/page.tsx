@@ -418,7 +418,7 @@ const Navigation = () => {
   }, []);
 
   const handleSignIn = () => {
-    router.push('/login');
+    router.push('/auth/login');
   };
 
   const handleGetStarted = () => {
@@ -427,7 +427,7 @@ const Navigation = () => {
       router.push('/dashboard');
     } else {
       // If not logged in, go to register
-      router.push('/register');
+      router.push('/auth/register');
     }
   };
 
@@ -728,7 +728,7 @@ const LandingPageContent = () => {
       router.push('/dashboard');
     } else {
       // If not logged in, go to register
-      router.push('/register');
+      router.push('/auth/register');
     }
   };
 

@@ -9,7 +9,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -96,13 +95,14 @@ const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
   showBackToLogin = true,
   resendCooldown = 60, // 60 seconds cooldown
 }) => {
-  const router = useRouter();
+  // const router = useRouter(); // Currently unused, but may be needed for future navigation
   
   // Form state management
   const [submissionState, setSubmissionState] = useState<SubmissionState>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
   const [cooldownTime, setCooldownTime] = useState<number>(0);
+  const [isResending, setIsResending] = useState<boolean>(false);
   const [canResend, setCanResend] = useState<boolean>(true);
 
   // React Hook Form setup with Zod validation
@@ -219,7 +219,9 @@ const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
   const handleResend = async () => {
     if (!submittedEmail || !canResend) return;
     
+    setIsResending(true);
     await handlePasswordReset({ email: submittedEmail });
+    setIsResending(false);
   };
 
   /**
@@ -342,10 +344,14 @@ const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
                     variant="outline"
                     onClick={handleResend}
                     className="w-full"
-                    disabled={submissionState === 'loading'}
+                    disabled={isResending}
                   >
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Resend Password Reset Link
+                    {isResending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    {isResending ? 'Sending...' : 'Resend Password Reset Link'}
                   </Button>
                 ) : (
                   <Button
@@ -366,7 +372,7 @@ const ForgotPasswordForm: React.FC<ForgotPasswordFormProps> = ({
           {showBackToLogin && (
             <div className="text-center">
               <Link
-                href="/login"
+                href="/auth/login"
                 className="inline-flex items-center text-sm text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 font-medium transition-colors"
               >
                 <ArrowLeft className="mr-1 h-3 w-3" />

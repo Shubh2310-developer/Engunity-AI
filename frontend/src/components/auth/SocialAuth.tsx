@@ -303,7 +303,7 @@ const SocialAuth: React.FC<SocialAuthProps> = ({
 export default SocialAuth;
 
 // Named exports for additional flexibility
-export { type SocialAuthProps, type OAuthProvider };
+// Types are already exported above at lines 66 and 71
 
 // ================================
 // 🧪 Usage Examples (JSDoc Comments)

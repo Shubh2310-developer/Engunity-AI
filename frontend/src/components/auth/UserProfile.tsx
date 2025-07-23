@@ -303,7 +303,7 @@ const UserProfile: React.FC<UserProfileProps> = ({
   if (!userState.user || !userState.profile) {
     return (
       <div className={className}>
-        <Link href="/login">
+        <Link href="/auth/login">
           <Button variant="outline" size="sm">
             Sign In
           </Button>

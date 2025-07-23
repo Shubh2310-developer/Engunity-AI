@@ -238,30 +238,41 @@ const LoginForm: React.FC<LoginFormProps> = ({
         return;
       }
 
+      // Determine proper redirect based on user status and email verification
+      const user = authData.user;
+      let finalRedirect = redirectTo;
+      
       // Check email verification if required
-      if (requireEmailVerification && !authData.user.email_confirmed_at) {
-        const errorMessage = 'Please verify your email before logging in. Check your inbox for a verification link.';
-        setAuthError(errorMessage);
-        setAuthErrorType('email_not_confirmed');
-        onError?.(errorMessage);
+      if (requireEmailVerification && !user.email_confirmed_at) {
+        // Redirect to verification page instead of showing error
+        finalRedirect = `/auth/verify-email?email=${encodeURIComponent(user.email || '')}&redirect_to=${encodeURIComponent(redirectTo)}`;
+        console.log('User needs email verification - redirecting to verify-email page');
+      } else {
+        // Check if this is a new user (created within last 5 minutes)
+        const userCreated = new Date(user.created_at);
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+        const isNewUser = userCreated > fiveMinutesAgo;
         
-        // Sign out the user since they're not verified
-        await supabase.auth.signOut();
-        return;
+        if (isNewUser && user.email_confirmed_at) {
+          // New user with verified email - show welcome flow
+          finalRedirect = `/auth/verify-email?email=${encodeURIComponent(user.email || '')}&verified=true&redirect_to=${encodeURIComponent(redirectTo)}`;
+          console.log('New verified user - redirecting to welcome flow');
+        }
       }
 
       // Success! Handle successful authentication
       console.log('Login successful:', {
-        userId: authData.user.id,
-        email: authData.user.email,
-        emailVerified: !!authData.user.email_confirmed_at,
+        userId: user.id,
+        email: user.email,
+        emailVerified: !!user.email_confirmed_at,
+        redirecting: finalRedirect
       });
 
       // Call success callback if provided
-      onSuccess?.(authData.user);
+      onSuccess?.(user);
       
-      // Redirect to dashboard or specified path
-      router.push(redirectTo);
+      // Redirect to appropriate page
+      router.push(finalRedirect);
 
     } catch (error: any) {
       console.error('Unexpected login error:', error);
@@ -319,7 +330,7 @@ const LoginForm: React.FC<LoginFormProps> = ({
               {authErrorType === 'email_not_confirmed' && (
                 <div className="mt-2">
                   <Link
-                    href="/verify-email"
+                    href="/auth/verify-email"
                     className="text-red-700 dark:text-red-400 underline hover:no-underline font-medium"
                   >
                     Resend verification email
@@ -442,7 +453,7 @@ const LoginForm: React.FC<LoginFormProps> = ({
           {showForgotPasswordLink && (
             <div className="flex justify-end">
               <Link
-                href="/forgot-password"
+                href="/auth/forgot-password"
                 className="text-sm text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
               >
                 Forgot your password?
@@ -493,7 +504,7 @@ const LoginForm: React.FC<LoginFormProps> = ({
 export default LoginForm;
 
 // Named exports for additional flexibility
-export { type LoginFormProps };
+// LoginFormProps is already exported above at line 63
 
 // ================================
 // 🧪 Usage Examples (JSDoc Comments)

@@ -157,11 +157,11 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' *.vercel-analytics.com *.google-analytics.com",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' *.vercel-analytics.com *.google-analytics.com *.googletagmanager.com",
               "style-src 'self' 'unsafe-inline' fonts.googleapis.com",
               "font-src 'self' fonts.gstatic.com",
               "img-src 'self' data: blob: *.supabase.co *.githubusercontent.com *.googleusercontent.com",
-              "connect-src 'self' *.supabase.co *.railway.app *.mongodb.net *.groq.com wss:",
+              "connect-src 'self' *.supabase.co *.railway.app *.mongodb.net *.groq.com *.googleapis.com *.googletagmanager.com wss:",
               "frame-src 'self' *.youtube.com *.vimeo.com",
               "media-src 'self' blob:",
             ].join('; '),
@@ -178,11 +178,6 @@ const nextConfig = {
   async redirects() {
     return [
       // Redirect old routes to new ones
-      {
-        source: '/dashboard',
-        destination: '/dashboard/chat',
-        permanent: false,
-      },
       {
         source: '/app/:path*',
         destination: '/dashboard/:path*',
@@ -205,7 +200,7 @@ const nextConfig = {
   // Webpack Configuration
   // =================================
   
-  webpack: (config, { buildId, dev, isServer, defaultLoaders, webpack }) => {
+  webpack: (config) => {
     // Add custom webpack configurations
     
     // Optimize bundle splitting
