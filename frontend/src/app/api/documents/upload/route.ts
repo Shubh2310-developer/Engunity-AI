@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { uploadDocument } from '@/lib/firebase/document-storage';
+import { uploadDocumentNoAuth } from '@/lib/supabase/document-storage-no-auth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,13 +11,17 @@ export async function POST(request: NextRequest) {
 
     console.log('API: File:', file?.name, 'User:', userId);
 
-    if (!file || !userId) {
-      console.error('API: Missing file or userId');
+    if (!file) {
+      console.error('API: Missing file');
       return NextResponse.json(
-        { error: 'File and userId are required' },
+        { error: 'File is required' },
         { status: 400 }
       );
     }
+
+    // Use default user ID if not provided (no auth required)
+    const finalUserId = userId || 'anonymous-user';
+    console.log('API: Using user ID:', finalUserId);
 
     // Validate file size (50MB limit)
     const maxSize = 50 * 1024 * 1024; // 50MB
@@ -29,16 +33,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert File to browser File object for upload
-    console.log('API: Converting file to array buffer');
-    const arrayBuffer = await file.arrayBuffer();
-    const browserFile = new File([arrayBuffer], file.name, {
-      type: file.type,
-    });
-
-    console.log('API: Starting document upload');
-    // Upload document using our document storage service
-    const document = await uploadDocument(browserFile, userId);
+    console.log('API: Starting document upload without authentication');
+    // Upload document using our no-auth document storage service
+    const document = await uploadDocumentNoAuth(file, finalUserId);
 
     console.log('API: Upload successful, document ID:', document.id);
     return NextResponse.json(document);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updateDocumentStatus } from '@/lib/firebase/document-storage';
+import { updateDocumentStatusNoAuth } from '@/lib/supabase/document-storage-no-auth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,9 +20,10 @@ export async function POST(request: NextRequest) {
     // 2. Generate embeddings
     // 3. Create searchable chunks
     // 4. Store processed content in database
+    // 5. Trigger backend processing via Python services
 
-    // For now, just mark as processed (using firestore document status)
-    await updateDocumentStatus(documentId, 'processed' as any);
+    // For now, just mark as processed (using Supabase no-auth storage)
+    await updateDocumentStatusNoAuth(documentId, 'processed');
 
     return NextResponse.json({ 
       success: true,
@@ -35,7 +36,7 @@ export async function POST(request: NextRequest) {
     try {
       const { documentId } = await request.json();
       if (documentId) {
-        await updateDocumentStatus(documentId, 'failed' as any);
+        await updateDocumentStatusNoAuth(documentId, 'failed');
       }
     } catch (updateError) {
       console.error('Failed to update document status:', updateError);

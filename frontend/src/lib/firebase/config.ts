@@ -15,7 +15,7 @@ const firebaseConfig = {
   authDomain: "engunity-6b76f.firebaseapp.com",
   databaseURL: "https://engunity-6b76f-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "engunity-6b76f",
-  storageBucket: "engunity-6b76f.firebasestorage.app",
+  storageBucket: "engunity-6b76f.appspot.com",
   messagingSenderId: "338999975234",
   appId: "1:338999975234:web:dc4fedef9c01f398377cdb",
   measurementId: "G-LSN58XMV0H"
@@ -46,12 +46,13 @@ try {
   // Storage
   storage = getStorage(app);
 
-  // Connect to emulators in development
-  if (process.env.NODE_ENV === 'development') {
+  // Connect to emulators in development - only if explicitly enabled
+  if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATOR === 'true') {
     // Only connect to emulators if not already connected
     if (!auth.config.emulator) {
       try {
         connectAuthEmulator(auth, "http://localhost:9099");
+        console.log('✅ Connected to Auth emulator');
       } catch (error) {
         console.log('Auth emulator connection failed:', error);
       }
@@ -61,6 +62,7 @@ try {
     if (!firestore._settings?.host?.includes('localhost')) {
       try {
         connectFirestoreEmulator(firestore, 'localhost', 8080);
+        console.log('✅ Connected to Firestore emulator');
       } catch (error) {
         console.log('Firestore emulator connection failed:', error);
       }
@@ -70,10 +72,13 @@ try {
     if (!storage._host?.includes('localhost')) {
       try {
         connectStorageEmulator(storage, 'localhost', 9199);
+        console.log('✅ Connected to Storage emulator');
       } catch (error) {
         console.log('Storage emulator connection failed:', error);
       }
     }
+  } else if (process.env.NODE_ENV === 'development') {
+    console.log('🔗 Using production Firebase services in development mode');
   }
 
   console.log('✅ Firebase initialized successfully');

@@ -17,7 +17,7 @@ import {
   StorageReference,
   FullMetadata
 } from 'firebase/storage';
-import { storage } from './config';
+import { storage, auth } from './config';
 
 // ================================
 // TYPE DEFINITIONS
@@ -173,6 +173,29 @@ export async function uploadFile(
   options: FileUploadOptions = {}
 ): Promise<FileUploadResult> {
   try {
+    console.log('Upload attempt - Storage config:', {
+      bucket: storage.app.options.storageBucket,
+      projectId: storage.app.options.projectId,
+      currentUser: auth.currentUser?.uid
+    });
+
+    // Check if user is authenticated (Supabase user should be signed into Firebase too)
+    if (!auth.currentUser) {
+      console.warn('No Firebase authenticated user found for upload');
+      // Try to get Supabase user and sign them into Firebase
+      const { supabase } = await import('../auth/integrated-auth');
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (session?.user) {
+        console.log('Found Supabase user, but no Firebase user:', session.user.id);
+        // TODO: Implement Firebase custom auth with Supabase token
+        // For now, we'll proceed without Firebase auth but the upload will likely fail
+        console.warn('Upload may fail due to Firebase Storage authentication requirements');
+      } else {
+        console.warn('No Supabase user found either');
+      }
+    }
+
     // Generate unique filename if requested
     let finalPath = sanitizePath(path);
     if (options.generateUniqueFilename) {
@@ -182,8 +205,11 @@ export async function uploadFile(
       finalPath = directory ? `${directory}/${uniqueFilename}` : uniqueFilename;
     }
 
+    console.log('Final upload path:', finalPath);
+
     // Create storage reference
     const storageRef = ref(storage, finalPath);
+    console.log('Storage reference created:', storageRef.fullPath);
 
     // Prepare metadata
     const metadata: any = {
@@ -200,7 +226,9 @@ export async function uploadFile(
     let uploadResult: UploadResult;
 
     // Use resumable upload for larger files or when progress tracking is needed
-    if (file.size > 1024 * 1024 || options.onProgress) { // 1MB threshold
+    // Temporarily disable resumable upload to test basic functionality
+    if (false && (file.size > 1024 * 1024 || options.onProgress)) { // 1MB threshold
+      console.log('Starting resumable upload for file:', file.name, 'Size:', file.size);
       uploadTask = uploadBytesResumable(storageRef, file, metadata);
 
       return new Promise((resolve) => {
@@ -208,11 +236,19 @@ export async function uploadFile(
           // Progress callback
           (snapshot) => {
             const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+            console.log('Upload progress:', Math.round(progress) + '%');
             options.onProgress?.(progress);
           },
           // Error callback
           (error) => {
             const errorMessage = `Upload failed: ${error.message}`;
+            console.error('Firebase upload error details:', {
+              code: error.code,
+              message: error.message,
+              serverResponse: error.serverResponse,
+              status: error.status_,
+              customData: error.customData
+            });
             options.onError?.(errorMessage);
             resolve({
               success: false,
@@ -248,20 +284,37 @@ export async function uploadFile(
       });
     } else {
       // Simple upload for smaller files
-      uploadResult = await uploadBytes(storageRef, file, metadata);
-      const downloadURL = await getDownloadURL(uploadResult.ref);
-      const fileMetadata = await getMetadata(uploadResult.ref);
+      console.log('Using simple upload for file:', file.name);
+      try {
+        uploadResult = await uploadBytes(storageRef, file, metadata);
+        console.log('Upload bytes completed successfully');
+        
+        const downloadURL = await getDownloadURL(uploadResult.ref);
+        console.log('Got download URL:', downloadURL);
+        
+        const fileMetadata = await getMetadata(uploadResult.ref);
+        console.log('Got file metadata');
 
-      const result: FileUploadResult = {
-        success: true,
-        url: downloadURL,
-        path: finalPath,
-        size: file.size,
-        metadata: fileMetadata
-      };
+        const result: FileUploadResult = {
+          success: true,
+          url: downloadURL,
+          path: finalPath,
+          size: file.size,
+          metadata: fileMetadata
+        };
 
-      options.onComplete?.(result);
-      return result;
+        options.onComplete?.(result);
+        return result;
+      } catch (uploadError: any) {
+        console.error('Simple upload error:', {
+          code: uploadError.code,
+          message: uploadError.message,
+          serverResponse: uploadError.serverResponse,
+          status: uploadError.status_,
+          customData: uploadError.customData
+        });
+        throw uploadError; // Re-throw to be caught by outer try-catch
+      }
     }
 
   } catch (error: any) {

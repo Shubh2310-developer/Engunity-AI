@@ -46,12 +46,12 @@ import { useToast } from '@/components/ui/use-toast';
 
 import { useAuth } from '@/hooks/useAuth';
 import { 
-  getDocumentsByUser, 
-  deleteDocument, 
-  updateDocumentStatus 
-} from '@/lib/firebase/document-storage';
+  getDocumentsByUserNoAuth, 
+  deleteDocumentNoAuth, 
+  updateDocumentStatusNoAuth 
+} from '@/lib/supabase/document-storage-no-auth';
 
-import type { Document } from '@/lib/firebase/firestore';
+import type { SupabaseDocument } from '@/lib/supabase/document-storage-no-auth';
 
 const statusConfig = {
   uploading: { 
@@ -83,7 +83,7 @@ const statusConfig = {
 const DocumentsPage: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [documents, setDocuments] = useState<Document[]>([]);
+  const [documents, setDocuments] = useState<SupabaseDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'uploading' | 'processing' | 'processed' | 'failed'>('all');
@@ -93,11 +93,11 @@ const DocumentsPage: React.FC = () => {
   // Fetch documents on component mount
   useEffect(() => {
     const fetchDocuments = async () => {
-      if (!user) return;
-      
       try {
         setLoading(true);
-        const userDocs = await getDocumentsByUser(user.uid);
+        // Use anonymous user if no user is logged in
+        const userId = user?.id || 'anonymous-user';
+        const userDocs = await getDocumentsByUserNoAuth(userId);
         setDocuments(userDocs);
       } catch (error) {
         console.error('Error fetching documents:', error);
@@ -118,7 +118,7 @@ const DocumentsPage: React.FC = () => {
   });
 
   const handleFileUpload = async (files: FileList) => {
-    if (!user || !files.length) return;
+    if (!files.length) return;
 
     const uploadPromises = Array.from(files).map(async (file) => {
       const fileId = `${Date.now()}-${file.name}`;
@@ -129,11 +129,13 @@ const DocumentsPage: React.FC = () => {
         
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('userId', user.uid);
+        // Use user ID if available, otherwise use anonymous
+        const userId = user?.id || 'anonymous-user';
+        formData.append('userId', userId);
 
         const response = await fetch('/api/documents/upload', {
           method: 'POST',
-          body: formData
+          body: formData,
         });
 
         const responseData = await response.json();
@@ -186,7 +188,7 @@ const DocumentsPage: React.FC = () => {
 
   const handleDeleteDocument = async (documentId: string) => {
     try {
-      await deleteDocument(documentId);
+      await deleteDocumentNoAuth(documentId);
       setDocuments(prev => prev.filter(doc => doc.id !== documentId));
       toast('Document deleted successfully', { variant: 'success' });
     } catch (error) {
@@ -197,11 +199,11 @@ const DocumentsPage: React.FC = () => {
 
   const handleAnalyzeDocument = async (documentId: string) => {
     try {
-      await updateDocumentStatus(documentId, 'processing');
+      await updateDocumentStatusNoAuth(documentId, 'processing');
       setDocuments(prev => 
         prev.map(doc => 
           doc.id === documentId 
-            ? { ...doc, status: 'processing' as Document['status'] }
+            ? { ...doc, status: 'processing' as SupabaseDocument['status'] }
             : doc
         )
       );
@@ -225,7 +227,7 @@ const DocumentsPage: React.FC = () => {
   };
 
 
-  const getDocumentIcon = (type: Document['type'], fileName: string) => {
+  const getDocumentIcon = (type: SupabaseDocument['type'], fileName: string) => {
     const extension = fileName.split('.').pop()?.toLowerCase() || '';
     
     // Check by file type first
@@ -288,7 +290,7 @@ const DocumentsPage: React.FC = () => {
     }).format(date);
   };
 
-  const StatusBadge: React.FC<{ status: Document['status'] }> = ({ status }) => {
+  const StatusBadge: React.FC<{ status: SupabaseDocument['status'] }> = ({ status }) => {
     const config = statusConfig[status];
     if (!config) return null;
     const Icon = config.icon;
@@ -497,7 +499,7 @@ const DocumentsPage: React.FC = () => {
                             <StatusBadge status={document.status} />
                           </TableCell>
                           <TableCell className="text-slate-600">
-                            {formatDate(document.uploadedAt)}
+                            {formatDate(new Date(document.uploaded_at).getTime())}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">

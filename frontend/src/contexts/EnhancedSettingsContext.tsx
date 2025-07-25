@@ -70,7 +70,7 @@ export function EnhancedSettingsProvider({ children }: EnhancedSettingsProviderP
   });
   const [isLoading, setIsLoading] = useState(basicSettings.isLoading);
   const [error, setError] = useState<string | null>(basicSettings.error);
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
   // Sync with basic settings changes
@@ -120,6 +120,8 @@ export function EnhancedSettingsProvider({ children }: EnhancedSettingsProviderP
 
   // Monitor online status
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
     
@@ -134,6 +136,8 @@ export function EnhancedSettingsProvider({ children }: EnhancedSettingsProviderP
 
   // Listen for global settings updates
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
     const handleSettingsUpdate = (event: CustomEvent) => {
       const { settings: updatedSettings } = event.detail;
       setSettings(updatedSettings);
@@ -228,7 +232,7 @@ export function EnhancedSettingsProvider({ children }: EnhancedSettingsProviderP
 
   // Theme helpers
   const isDarkMode = settings.theme === 'dark' || 
-    (settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    (settings.theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches);
 
   const toggleTheme = useCallback(async () => {
     const newTheme = isDarkMode ? 'light' : 'dark';

@@ -697,6 +697,34 @@ export async function uploadDocument(file: File, userId: string): Promise<Docume
   try {
     console.log('Starting upload for:', file.name, 'User:', userId);
     
+    // Verify user is authenticated before proceeding with upload
+    const { auth } = await import('./config');
+    const currentUser = auth.currentUser;
+    
+    if (!currentUser) {
+      console.log('No Firebase user, checking Supabase authentication...');
+      
+      // Check Supabase authentication as fallback
+      const { supabase } = await import('../auth/integrated-auth');
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.user) {
+        throw new Error('No authenticated user found. Please sign in to upload documents.');
+      }
+      
+      if (session.user.id !== userId) {
+        throw new Error('User ID does not match authenticated user.');
+      }
+      
+      console.log('Supabase user authenticated successfully:', session.user.id);
+    } else {
+      if (currentUser.uid !== userId) {
+        throw new Error('User ID does not match authenticated user.');
+      }
+      
+      console.log('Firebase user authenticated successfully:', currentUser.uid);
+    }
+    
     const result = await uploadAndProcessDocument(userId, file, {
       category: 'general',
       tags: []
