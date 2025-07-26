@@ -3,22 +3,7 @@
  * Uses Supabase Storage + Database without user authentication
  */
 
-import { createClient } from '@supabase/supabase-js';
-
-// ================================
-// SUPABASE CLIENT SETUP
-// ================================
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zsevvvaakunsspxpplbh.supabase.co';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-// Create Supabase client with service role key for bypassing RLS
-const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  }
-});
+import { supabase } from '@/lib/auth/supabase';
 
 // ================================
 // TYPE DEFINITIONS
@@ -175,18 +160,29 @@ export async function uploadDocumentNoAuth(file: File, userId: string): Promise<
  */
 export async function getDocumentsByUserNoAuth(userId: string): Promise<SupabaseDocument[]> {
   try {
+    console.log('🔍 Fetching documents from database for userId:', userId);
+    
     const { data, error } = await supabase
       .from('documents')
       .select('*')
       .eq('user_id', userId)
       .order('uploaded_at', { ascending: false });
     
+    console.log('📊 Database query result:', {
+      error: error?.message,
+      dataCount: data?.length || 0,
+      data: data
+    });
+    
     if (error) {
+      console.error('❌ Database error:', error);
       throw new Error(`Failed to fetch documents: ${error.message}`);
     }
     
+    console.log('✅ Documents retrieved successfully:', data?.length || 0);
     return data || [];
   } catch (error: any) {
+    console.error('❌ Error in getDocumentsByUserNoAuth:', error);
     throw new Error(`Failed to get user documents: ${error.message || error}`);
   }
 }

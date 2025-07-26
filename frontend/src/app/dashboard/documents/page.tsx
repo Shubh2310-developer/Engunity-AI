@@ -47,7 +47,6 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/auth/supabase';
 import { 
-  getDocumentsByUserNoAuth, 
   deleteDocumentNoAuth, 
   updateDocumentStatusNoAuth 
 } from '@/lib/supabase/document-storage-no-auth';
@@ -97,15 +96,72 @@ const DocumentsPage: React.FC = () => {
       try {
         setLoading(true);
         if (user) {
-          // User is authenticated, fetch their documents
-          const userDocs = await getDocumentsByUserNoAuth(user.id);
-          setDocuments(userDocs);
+          console.log('🔍 Fetching documents for user:', {
+            userId: user.id,
+            userUid: user.uid,
+            userEmail: user.email
+          });
+          
+          // Get current session for authentication
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+          
+          if (sessionError) {
+            console.error('❌ Session error:', sessionError);
+            throw new Error(`Session error: ${sessionError.message}`);
+          }
+
+          if (!session || !session.access_token) {
+            console.warn('⚠️ No active session found, user might need to re-authenticate');
+            setDocuments([]);
+            return;
+          }
+
+          console.log('✅ Valid session found, fetching documents via API');
+          
+          // Fetch documents via API route (bypasses RLS issues)
+          const response = await fetch('/api/documents/list', {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            console.error('❌ API error:', errorData);
+            throw new Error(errorData.error || `API request failed with status ${response.status}`);
+          }
+
+          const userDocs = await response.json();
+          
+          console.log('📋 Documents fetched successfully via API:', userDocs?.length || 0);
+          console.log('📄 Documents data:', userDocs);
+          
+          // Convert to expected format
+          const convertedDocs = (userDocs || []).map(doc => ({
+            id: doc.id,
+            user_id: doc.user_id,
+            name: doc.name,
+            type: doc.type,
+            size: doc.size,
+            category: doc.category,
+            status: doc.status,
+            uploaded_at: doc.uploaded_at,
+            processed_at: doc.processed_at,
+            storage_url: doc.storage_url,
+            metadata: doc.metadata || {},
+            tags: doc.tags || []
+          }));
+          
+          setDocuments(convertedDocs);
         } else {
+          console.log('👤 No user logged in, showing empty state');
           // No user logged in, show empty state
           setDocuments([]);
         }
       } catch (error) {
-        console.error('Error fetching documents:', error);
+        console.error('❌ Error fetching documents:', error);
         toast('Failed to load documents. Please try again.', { variant: 'error' });
       } finally {
         setLoading(false);
