@@ -73,14 +73,18 @@ const DocumentViewerPage: React.FC = () => {
   };
 
   const handleDownload = () => {
-    if (document?.storage_url) {
-      window.open(document.storage_url, '_blank');
+    if (document) {
+      const downloadUrl = `/api/documents/${documentId}/view`;
+      const link = window.document.createElement('a');
+      link.href = downloadUrl;
+      link.download = document.name;
+      link.click();
     }
   };
 
   const handleOpenExternal = () => {
-    if (document?.storage_url) {
-      window.open(document.storage_url, '_blank');
+    if (document) {
+      window.open(`/api/documents/${documentId}/view`, '_blank');
     }
   };
 
@@ -117,20 +121,43 @@ const DocumentViewerPage: React.FC = () => {
 
   const renderDocumentViewer = () => {
     const fileType = document.type.toLowerCase();
-    const viewUrl = presignedUrl || document.storage_url;
+    // Use our local API endpoint to serve the document
+    const viewUrl = `/api/documents/${documentId}/view`;
     
     if (fileType === 'pdf') {
       return (
-        <div className="w-full h-full min-h-[600px] bg-slate-100 rounded-lg overflow-hidden">
+        <div className="relative w-full h-full bg-slate-100 rounded-lg overflow-hidden">
           <iframe
-            src={`${viewUrl}#view=FitH`}
-            className="w-full h-full"
-            style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }}
+            src={viewUrl}
+            className="w-full h-full border-0"
+            style={{ 
+              width: '100%',
+              height: '100%',
+              transform: zoom !== 100 ? `scale(${zoom / 100})` : undefined,
+              transformOrigin: 'top left'
+            }}
             title={document.name}
-            onError={() => {
-              console.error('Failed to load PDF in iframe');
+            allow="fullscreen"
+            frameBorder="0"
+            scrolling="auto"
+            onError={(e) => {
+              console.error('Failed to load PDF in iframe:', e);
+            }}
+            onLoad={() => {
+              console.log('PDF loaded successfully');
             }}
           />
+          {/* Accessible download overlay */}
+          <div className="absolute top-4 right-4 z-10">
+            <div className="flex gap-2 bg-white/90 backdrop-blur-sm rounded-lg p-2 shadow-sm">
+              <Button onClick={handleDownload} variant="outline" size="sm" title="Download PDF">
+                <Download className="h-4 w-4" />
+              </Button>
+              <Button onClick={() => window.open(viewUrl, '_blank')} variant="outline" size="sm" title="Open in New Tab">
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </div>
       );
     }
@@ -240,13 +267,19 @@ const DocumentViewerPage: React.FC = () => {
               <Download className="h-4 w-4 mr-2" />
               Download
             </Button>
+            <Button variant="outline" size="sm" onClick={handleOpenExternal}>
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Open in New Tab
+            </Button>
           </div>
         </div>
 
         {/* Document Viewer */}
         <Card className="card">
-          <CardContent className="p-6">
-            {renderDocumentViewer()}
+          <CardContent className="p-2">
+            <div className="w-full" style={{ height: 'calc(100vh - 200px)', minHeight: '800px' }}>
+              {renderDocumentViewer()}
+            </div>
           </CardContent>
         </Card>
       </motion.div>

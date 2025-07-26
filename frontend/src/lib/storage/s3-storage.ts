@@ -64,8 +64,9 @@ export async function uploadFileToS3(
 
     const result = await s3Client.send(command);
     
-    // Generate public URL
-    const publicUrl = `${process.env.SUPABASE_S3_ENDPOINT?.replace('/s3', '')}/object/public/${BUCKET_NAME}/${key}`;
+    // Generate public URL using the standard Supabase storage format
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const publicUrl = `${supabaseUrl}/storage/v1/object/public/${BUCKET_NAME}/${key}`;
 
     console.log('S3 upload successful:', { key, publicUrl, etag: result.ETag });
 

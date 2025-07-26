@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Upload, 
@@ -82,6 +83,7 @@ const statusConfig = {
 const DocumentsPage: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
   const [documents, setDocuments] = useState<SupabaseDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -650,7 +652,7 @@ const DocumentsPage: React.FC = () => {
                                     variant="ghost"
                                     size="sm"
                                     className="hover-lift"
-                                    onClick={() => window.open(`/dashboard/documents/${document.id}/viewer`, '_blank')}
+                                    onClick={() => router.push(`/dashboard/documents/${document.id}/viewer`)}
                                   >
                                     <Eye className="h-4 w-4" />
                                   </Button>
