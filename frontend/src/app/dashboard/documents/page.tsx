@@ -47,7 +47,6 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/lib/auth/supabase';
 import { 
-  deleteDocumentNoAuth, 
   updateDocumentStatusNoAuth 
 } from '@/lib/supabase/document-storage-no-auth';
 
@@ -284,12 +283,44 @@ const DocumentsPage: React.FC = () => {
 
   const handleDeleteDocument = async (documentId: string) => {
     try {
-      await deleteDocumentNoAuth(documentId);
+      console.log('🗑️ Deleting document:', documentId);
+      
+      // Get current session for authentication
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        throw new Error(`Session error: ${sessionError.message}`);
+      }
+
+      if (!session || !session.access_token) {
+        throw new Error('No valid authentication session. Please sign in again.');
+      }
+
+      // Delete document via API route
+      const response = await fetch(`/api/documents/${documentId}/delete`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('❌ Delete API error:', errorData);
+        throw new Error(errorData.error || `Delete request failed with status ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Document deleted successfully:', result);
+
+      // Remove from UI
       setDocuments(prev => prev.filter(doc => doc.id !== documentId));
-      toast('Document deleted successfully', { variant: 'success' });
-    } catch (error) {
-      console.error('Delete error:', error);
-      toast('Failed to delete document', { variant: 'error' });
+      toast('Document deleted successfully');
+      
+    } catch (error: any) {
+      console.error('❌ Delete error:', error);
+      toast(`Failed to delete document: ${error.message}`);
     }
   };
 

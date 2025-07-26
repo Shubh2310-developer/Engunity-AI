@@ -31,6 +31,7 @@ const DocumentViewerPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(100);
+  const [presignedUrl, setPresignedUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (documentId) {
@@ -49,6 +50,19 @@ const DocumentViewerPage: React.FC = () => {
       
       const data = await response.json();
       setDocument(data.document);
+      
+      // Generate presigned URL for secure access if needed
+      if (data.document?.storage_url) {
+        try {
+          const presignedResponse = await fetch(`/api/documents/${documentId}/presigned-url`);
+          if (presignedResponse.ok) {
+            const presignedData = await presignedResponse.json();
+            setPresignedUrl(presignedData.url);
+          }
+        } catch (error) {
+          console.warn('Failed to get presigned URL, using direct URL:', error);
+        }
+      }
     } catch (error: any) {
       console.error('Error fetching document:', error);
       setError(error.message || 'Failed to load document');
@@ -103,15 +117,19 @@ const DocumentViewerPage: React.FC = () => {
 
   const renderDocumentViewer = () => {
     const fileType = document.type.toLowerCase();
+    const viewUrl = presignedUrl || document.storage_url;
     
     if (fileType === 'pdf') {
       return (
         <div className="w-full h-full min-h-[600px] bg-slate-100 rounded-lg overflow-hidden">
           <iframe
-            src={`${document.storage_url}#view=FitH`}
+            src={`${viewUrl}#view=FitH`}
             className="w-full h-full"
             style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }}
             title={document.name}
+            onError={() => {
+              console.error('Failed to load PDF in iframe');
+            }}
           />
         </div>
       );
@@ -141,10 +159,13 @@ const DocumentViewerPage: React.FC = () => {
       return (
         <div className="w-full h-full min-h-[600px] bg-slate-100 rounded-lg flex items-center justify-center overflow-auto">
           <img 
-            src={document.storage_url} 
+            src={viewUrl} 
             alt={document.name}
             className="max-w-full max-h-full object-contain"
             style={{ transform: `scale(${zoom / 100})` }}
+            onError={() => {
+              console.error('Failed to load image');
+            }}
           />
         </div>
       );

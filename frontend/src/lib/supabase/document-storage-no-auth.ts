@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/lib/auth/supabase';
+import { uploadFileToS3, deleteFileFromS3, extractS3KeyFromUrl } from '@/lib/storage/s3-storage';
 
 // ================================
 // TYPE DEFINITIONS
@@ -20,11 +21,14 @@ export interface SupabaseDocument {
   uploaded_at: string;
   processed_at?: string;
   storage_url: string;
+  storage_key?: string;
   metadata: {
     pages?: number;
     word_count?: number;
     language?: string;
     extracted_text?: string;
+    s3_key?: string;
+    etag?: string;
   };
   tags: string[];
 }
@@ -38,40 +42,11 @@ export interface SupabaseDocument {
  */
 export async function uploadDocumentNoAuth(file: File, userId: string): Promise<SupabaseDocument> {
   try {
-    console.log('Starting Supabase upload (no auth) for:', file.name, 'User:', userId);
+    console.log('Starting S3 upload (no auth) for:', file.name, 'User:', userId);
     
-    // Generate unique filename
-    const timestamp = Date.now();
-    const randomId = Math.random().toString(36).substring(2, 8);
-    const fileExtension = file.name.split('.').pop();
-    const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
-    const uniqueFilename = `${timestamp}_${randomId}_${baseName}.${fileExtension}`;
-    const storagePath = `documents/${userId}/${uniqueFilename}`;
-    
-    console.log('Uploading to Supabase Storage path:', storagePath);
-    
-    // Upload file to Supabase Storage
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('documents')
-      .upload(storagePath, file, {
-        cacheControl: '3600',
-        upsert: false
-      });
-    
-    if (uploadError) {
-      console.error('Supabase Storage upload error:', uploadError);
-      throw new Error(`Upload failed: ${uploadError.message}`);
-    }
-    
-    console.log('Supabase Storage upload successful:', uploadData.path);
-    
-    // Get public URL for the uploaded file
-    const { data: urlData } = supabase.storage
-      .from('documents')
-      .getPublicUrl(storagePath);
-    
-    const publicUrl = urlData.publicUrl;
-    console.log('Document public URL:', publicUrl);
+    // Upload file to S3-compatible storage
+    const s3Result = await uploadFileToS3(file, userId, 'documents');
+    console.log('S3 upload successful:', s3Result.url);
     
     // Create document record in Supabase database
     const documentData = {
@@ -83,11 +58,14 @@ export async function uploadDocumentNoAuth(file: File, userId: string): Promise<
       status: 'processed' as const,
       uploaded_at: new Date().toISOString(),
       processed_at: new Date().toISOString(),
-      storage_url: publicUrl,
+      storage_url: s3Result.url,
+      storage_key: s3Result.key,
       metadata: {
         pages: 0,
         word_count: 0,
-        language: 'en'
+        language: 'en',
+        s3_key: s3Result.key,
+        etag: s3Result.etag
       },
       tags: []
     };
@@ -108,12 +86,12 @@ export async function uploadDocumentNoAuth(file: File, userId: string): Promise<
         hint: dbError.hint
       });
       
-      // Try to clean up uploaded file
+      // Try to clean up uploaded file from S3
       try {
-        await supabase.storage.from('documents').remove([storagePath]);
-        console.log('Cleaned up uploaded file after database error');
+        await deleteFileFromS3(s3Result.key);
+        console.log('Cleaned up S3 file after database error');
       } catch (cleanupError) {
-        console.warn('Failed to cleanup uploaded file:', cleanupError);
+        console.warn('Failed to cleanup S3 file:', cleanupError);
       }
       
       // Provide helpful error messages
@@ -226,24 +204,18 @@ export async function deleteDocumentNoAuth(documentId: string): Promise<void> {
       throw new Error(`Database delete failed: ${dbError.message}`);
     }
     
-    // Delete from Supabase Storage
+    // Delete from S3 Storage
     if (document.storage_url) {
       try {
-        // Extract path from URL
-        const url = new URL(document.storage_url);
-        const pathParts = url.pathname.split('/');
-        const storagePath = pathParts.slice(pathParts.findIndex(p => p === 'documents')).join('/');
+        const s3Key = extractS3KeyFromUrl(document.storage_url) || 
+                     (document.metadata as any)?.s3_key;
         
-        const { error: storageError } = await supabase.storage
-          .from('documents')
-          .remove([storagePath]);
-        
-        if (storageError) {
-          console.warn('Failed to delete storage file:', storageError);
-          // Don't fail the entire operation if storage delete fails
+        if (s3Key) {
+          await deleteFileFromS3(s3Key);
+          console.log('S3 file deleted successfully:', s3Key);
         }
       } catch (storageError) {
-        console.warn('Failed to delete storage file:', storageError);
+        console.warn('Failed to delete S3 file:', storageError);
       }
     }
   } catch (error: any) {
