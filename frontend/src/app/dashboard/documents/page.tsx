@@ -45,6 +45,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/components/ui/use-toast';
 
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/lib/auth/supabase';
 import { 
   getDocumentsByUserNoAuth, 
   deleteDocumentNoAuth, 
@@ -95,10 +96,14 @@ const DocumentsPage: React.FC = () => {
     const fetchDocuments = async () => {
       try {
         setLoading(true);
-        // Use anonymous user if no user is logged in
-        const userId = user?.id || 'anonymous-user';
-        const userDocs = await getDocumentsByUserNoAuth(userId);
-        setDocuments(userDocs);
+        if (user) {
+          // User is authenticated, fetch their documents
+          const userDocs = await getDocumentsByUserNoAuth(user.id);
+          setDocuments(userDocs);
+        } else {
+          // No user logged in, show empty state
+          setDocuments([]);
+        }
       } catch (error) {
         console.error('Error fetching documents:', error);
         toast('Failed to load documents. Please try again.', { variant: 'error' });
@@ -120,6 +125,12 @@ const DocumentsPage: React.FC = () => {
   const handleFileUpload = async (files: FileList) => {
     if (!files.length) return;
 
+    // Check if user is authenticated
+    if (!user) {
+      toast('Please sign in to upload documents', { variant: 'error' });
+      return;
+    }
+
     const uploadPromises = Array.from(files).map(async (file) => {
       const fileId = `${Date.now()}-${file.name}`;
       setUploadingFiles(prev => [...prev, fileId]);
@@ -127,15 +138,44 @@ const DocumentsPage: React.FC = () => {
       try {
         console.log('Starting upload for file:', file.name);
         
+        // Get current session for authentication
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          throw new Error(`Authentication error: ${sessionError.message}`);
+        }
+
+        if (!session || !session.access_token) {
+          throw new Error('No valid authentication session. Please sign in again.');
+        }
+
+        if (!user) {
+          throw new Error('User not authenticated');
+        }
+
+        if (session.user?.id !== user.id) {
+          throw new Error('User session mismatch. Please sign in again.');
+        }
+        
         const formData = new FormData();
         formData.append('file', file);
-        // Use user ID if available, otherwise use anonymous
-        const userId = user?.id || 'anonymous-user';
-        formData.append('userId', userId);
+        formData.append('userId', user.id);
+
+        const headers = {
+          'Authorization': `Bearer ${session.access_token}`
+        };
+
+        console.log('Making upload request with auth header:', {
+          fileName: file.name,
+          userId: user.id,
+          hasAuthHeader: !!headers.Authorization,
+          tokenLength: session.access_token.length
+        });
 
         const response = await fetch('/api/documents/upload', {
           method: 'POST',
           body: formData,
+          headers: headers
         });
 
         const responseData = await response.json();
@@ -208,10 +248,24 @@ const DocumentsPage: React.FC = () => {
         )
       );
       
+      // Get authentication session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        throw new Error(`Authentication error: ${sessionError.message}`);
+      }
+
+      if (!session || !session.access_token) {
+        throw new Error('No valid authentication session. Please sign in again.');
+      }
+      
       // Trigger backend processing
       const response = await fetch('/api/documents/process', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
         body: JSON.stringify({ documentId })
       });
 

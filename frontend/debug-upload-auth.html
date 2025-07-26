@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Upload Auth</title>
+</head>
+<body>
+    <h1>Debug Upload Auth</h1>
+    <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt">
+    <button onclick="testUpload()">Test Upload</button>
+    <div id="result"></div>
+
+    <script>
+        async function testUpload() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a file');
+                return;
+            }
+
+            // Create form data
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('userId', '3cc7ccf7-1a5a-4538-9ebb-54c3a04c92ac'); // test user ID
+
+            // Test with different auth headers
+            const tests = [
+                { name: 'No Auth', headers: {} },
+                { name: 'Empty Bearer', headers: { 'Authorization': 'Bearer ' } },
+                { name: 'Test Token', headers: { 'Authorization': 'Bearer test-token-123' } },
+                { name: 'Lowercase auth', headers: { 'authorization': 'Bearer test-token-123' } }
+            ];
+
+            for (const test of tests) {
+                console.log(`Testing: ${test.name}`);
+                try {
+                    const response = await fetch('/api/documents/upload', {
+                        method: 'POST',
+                        body: formData,
+                        headers: test.headers
+                    });
+                    
+                    const result = await response.text();
+                    console.log(`${test.name} - Status: ${response.status}, Response:`, result);
+                } catch (error) {
+                    console.error(`${test.name} - Error:`, error);
+                }
+            }
+        }
+    </script>
+</body>
+</html>

@@ -186,6 +186,76 @@ export default function TestAuthPage() {
     }
   };
 
+  const testUploadAPI = async () => {
+    try {
+      addLog('=== Testing Upload API ===');
+      
+      // Get current session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        addLog(`❌ Session Error: ${sessionError.message}`);
+        return;
+      }
+
+      if (!session) {
+        addLog('❌ No session found - please sign in first');
+        return;
+      }
+
+      if (!session.access_token) {
+        addLog('❌ No access token in session');
+        return;
+      }
+
+      addLog(`✅ Session found for: ${session.user.email}`);
+      addLog(`Token length: ${session.access_token.length}`);
+      addLog(`User ID: ${session.user.id}`);
+
+      // Create test file
+      const testContent = 'This is a test file for debugging upload API';
+      const testFile = new File([testContent], 'test-debug.txt', { type: 'text/plain' });
+      
+      const formData = new FormData();
+      formData.append('file', testFile);
+      formData.append('userId', session.user.id);
+
+      addLog(`Making API request to /api/documents/upload...`);
+      addLog(`File: ${testFile.name} (${testFile.size} bytes)`);
+      addLog(`Auth header: Bearer ${session.access_token.substring(0, 30)}...`);
+
+      const response = await fetch('/api/documents/upload', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+
+      addLog(`Response status: ${response.status} ${response.statusText}`);
+      addLog(`Response headers: ${JSON.stringify(Object.fromEntries(response.headers.entries()), null, 2)}`);
+      
+      const responseText = await response.text();
+      addLog(`Response body: ${responseText}`);
+
+      if (response.ok) {
+        addLog('✅ Upload API test successful!');
+        try {
+          const responseData = JSON.parse(responseText);
+          addLog(`Document created with ID: ${responseData.id}`);
+        } catch {
+          addLog('Response was not JSON');
+        }
+      } else {
+        addLog(`❌ Upload API test failed with status ${response.status}`);
+      }
+
+    } catch (error: any) {
+      addLog(`❌ Upload API test exception: ${error.message}`);
+      addLog(`Stack: ${error.stack}`);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -255,6 +325,9 @@ export default function TestAuthPage() {
           </Button>
           <Button onClick={handleAuthChange} variant="outline">
             Listen to Auth Changes
+          </Button>
+          <Button onClick={testUploadAPI} variant="default">
+            Test Upload API
           </Button>
           <Button onClick={signOut} variant="destructive">
             Sign Out

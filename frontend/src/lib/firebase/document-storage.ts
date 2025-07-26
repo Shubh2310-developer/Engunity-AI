@@ -673,6 +673,19 @@ export async function generateDocumentAnalytics(userId: string): Promise<{
  */
 export async function getDocumentsByUser(userId: string): Promise<Document[]> {
   try {
+    // Verify user is authenticated and requesting their own documents
+    const { supabase } = await import('../auth/integrated-auth');
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session?.user) {
+      throw new Error('User authentication required to fetch documents');
+    }
+    
+    if (session.user.id !== userId) {
+      throw new Error('Permission denied: You can only access your own documents');
+    }
+    
+    console.log('Fetching documents for authenticated user:', userId);
     return await DocumentService.getUserDocuments(userId, 1000);
   } catch (error: any) {
     throw new Error(`Failed to get user documents: ${error.message || error}`);
@@ -682,9 +695,25 @@ export async function getDocumentsByUser(userId: string): Promise<Document[]> {
 /**
  * Get document by ID
  */
-export async function getDocumentById(documentId: string): Promise<Document> {
+export async function getDocumentById(documentId: string, userId?: string): Promise<Document> {
   try {
-    return await DocumentService.getDocument(documentId);
+    const document = await DocumentService.getDocument(documentId);
+    
+    // If userId is provided, verify ownership
+    if (userId) {
+      const { supabase } = await import('../auth/integrated-auth');
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.user || session.user.id !== userId) {
+        throw new Error('User authentication required');
+      }
+      
+      if (document.userId !== userId) {
+        throw new Error('Permission denied: You can only access your own documents');
+      }
+    }
+    
+    return document;
   } catch (error: any) {
     throw new Error(`Failed to get document: ${error.message || error}`);
   }
@@ -697,33 +726,36 @@ export async function uploadDocument(file: File, userId: string): Promise<Docume
   try {
     console.log('Starting upload for:', file.name, 'User:', userId);
     
-    // Verify user is authenticated before proceeding with upload
-    const { auth } = await import('./config');
-    const currentUser = auth.currentUser;
+    // Verify user is authenticated with Supabase (primary auth system)
+    const { supabase } = await import('../auth/integrated-auth');
+    const { data: { session } } = await supabase.auth.getSession();
     
-    if (!currentUser) {
-      console.log('No Firebase user, checking Supabase authentication...');
-      
-      // Check Supabase authentication as fallback
-      const { supabase } = await import('../auth/integrated-auth');
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session?.user) {
-        throw new Error('No authenticated user found. Please sign in to upload documents.');
-      }
-      
-      if (session.user.id !== userId) {
-        throw new Error('User ID does not match authenticated user.');
-      }
-      
-      console.log('Supabase user authenticated successfully:', session.user.id);
-    } else {
-      if (currentUser.uid !== userId) {
-        throw new Error('User ID does not match authenticated user.');
-      }
-      
-      console.log('Firebase user authenticated successfully:', currentUser.uid);
+    if (!session?.user) {
+      throw new Error('No authenticated user found. Please sign in to upload documents.');
     }
+    
+    if (session.user.id !== userId) {
+      throw new Error('User ID does not match authenticated user. Permission denied.');
+    }
+    
+    console.log('User authenticated successfully for document upload:', session.user.id);
+    
+    // Ensure user profile exists in Firestore for proper document association
+    const { UserService } = await import('./firestore');
+    let userProfile = await UserService.getUserProfile(userId);
+    
+    if (!userProfile) {
+      console.log('Creating user profile in Firestore for document persistence...');
+      const { IntegratedAuthService } = await import('../auth/integrated-auth');
+      userProfile = await IntegratedAuthService.createFirestoreProfile(session.user);
+      
+      if (!userProfile) {
+        throw new Error('Failed to create user profile. Cannot proceed with upload.');
+      }
+    }
+    
+    // Update user activity to ensure profile stays active
+    await UserService.updateUserActivity(userId);
     
     const result = await uploadAndProcessDocument(userId, file, {
       category: 'general',
@@ -768,13 +800,27 @@ export async function updateDocumentStatus(
  */
 export async function deleteDocument(documentId: string, userId?: string): Promise<void> {
   try {
-    // Get document to find storage path
+    // Verify user is authenticated
+    if (!userId) {
+      throw new Error('User authentication required for document deletion');
+    }
+    
+    const { supabase } = await import('../auth/integrated-auth');
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session?.user || session.user.id !== userId) {
+      throw new Error('User authentication failed. Permission denied.');
+    }
+    
+    // Get document to find storage path and verify ownership
     const document = await DocumentService.getDocument(documentId);
     
-    // Verify user owns the document
-    if (userId && document.userId !== userId) {
-      throw new Error('Permission denied');
+    // Strictly verify user owns the document
+    if (document.userId !== userId) {
+      throw new Error('Permission denied: You can only delete your own documents');
     }
+    
+    console.log('Deleting document:', documentId, 'owned by user:', userId);
     
     // Delete from Firestore
     await DocumentService.deleteDocument(documentId);
@@ -783,11 +829,14 @@ export async function deleteDocument(documentId: string, userId?: string): Promi
     if (document.storageUrl) {
       try {
         await deleteFile(document.storageUrl);
+        console.log('Successfully deleted storage file for document:', documentId);
       } catch (storageError) {
         console.warn('Failed to delete storage file:', storageError);
         // Don't fail the entire operation if storage delete fails
       }
     }
+    
+    console.log('Document deleted successfully:', documentId);
   } catch (error: any) {
     throw new Error(`Failed to delete document: ${error.message || error}`);
   }

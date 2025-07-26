@@ -1,16 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDocumentsByUserNoAuth } from '@/lib/supabase/document-storage-no-auth';
+import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase for auth verification
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q') || '';
-    const userId = searchParams.get('userId') || 'anonymous-user';
+    const userId = searchParams.get('userId');
     const category = searchParams.get('category');
     const status = searchParams.get('status');
 
-    // Get all documents for the user
-    const documents = await getDocumentsByUserNoAuth(userId);
+    // Require authenticated user
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'User authentication required' },
+        { status: 401 }
+      );
+    }
+
+    // Verify authentication
+    const authHeader = request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        if (error || !user || user.id !== userId) {
+          return NextResponse.json(
+            { error: 'Invalid authentication' },
+            { status: 401 }
+          );
+        }
+      } catch (authError) {
+        return NextResponse.json(
+          { error: 'Authentication verification failed' },
+          { status: 401 }
+        );
+      }
+    }
+
+    // Get all documents for the authenticated user from Supabase
+    const { data: documents, error: fetchError } = await supabase
+      .from('documents')
+      .select('*')
+      .eq('user_id', userId)
+      .order('uploaded_at', { ascending: false });
+
+    if (fetchError) {
+      throw new Error(`Failed to fetch documents: ${fetchError.message}`);
+    }
 
     // Filter documents based on search criteria
     let filteredDocuments = documents;
@@ -20,7 +62,7 @@ export async function GET(request: NextRequest) {
         doc.name.toLowerCase().includes(query.toLowerCase()) ||
         doc.type.toLowerCase().includes(query.toLowerCase()) ||
         doc.category.toLowerCase().includes(query.toLowerCase()) ||
-        doc.tags.some(tag => tag.toLowerCase().includes(query.toLowerCase()))
+        (doc.tags && doc.tags.some(tag => tag.toLowerCase().includes(query.toLowerCase())))
       );
     }
 
@@ -56,14 +98,50 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { 
       query = '', 
-      userId = 'anonymous-user', 
+      userId, 
       filters = {}, 
       sort = { field: 'uploaded_at', direction: 'desc' },
       pagination = { page: 1, limit: 10 }
     } = body;
 
-    // Get all documents for the user
-    const documents = await getDocumentsByUserNoAuth(userId);
+    // Require authenticated user
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'User authentication required' },
+        { status: 401 }
+      );
+    }
+
+    // Verify authentication
+    const authHeader = request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser(token);
+        if (error || !user || user.id !== userId) {
+          return NextResponse.json(
+            { error: 'Invalid authentication' },
+            { status: 401 }
+          );
+        }
+      } catch (authError) {
+        return NextResponse.json(
+          { error: 'Authentication verification failed' },
+          { status: 401 }
+        );
+      }
+    }
+
+    // Get all documents for the authenticated user from Supabase
+    const { data: documents, error: fetchError } = await supabase
+      .from('documents')
+      .select('*')
+      .eq('user_id', userId)
+      .order('uploaded_at', { ascending: false });
+
+    if (fetchError) {
+      throw new Error(`Failed to fetch documents: ${fetchError.message}`);
+    }
 
     // Apply filters
     let filteredDocuments = documents;
@@ -73,7 +151,7 @@ export async function POST(request: NextRequest) {
         doc.name.toLowerCase().includes(query.toLowerCase()) ||
         doc.type.toLowerCase().includes(query.toLowerCase()) ||
         doc.category.toLowerCase().includes(query.toLowerCase()) ||
-        doc.tags.some(tag => tag.toLowerCase().includes(query.toLowerCase()))
+        (doc.tags && doc.tags.some(tag => tag.toLowerCase().includes(query.toLowerCase())))
       );
     }
 

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Upload Test</title>
+</head>
+<body>
+    <h1>Direct Upload Test</h1>
+    <input type="file" id="fileInput" accept=".pdf,.txt,.docx">
+    <button onClick="testUpload()">Test Upload</button>
+    <div id="output"></div>
+
+    <script type="module">
+        import { createClient } from 'https://cdn.skypack.dev/@supabase/supabase-js@2';
+        
+        const supabase = createClient(
+            'https://zsevvvaakunsspxpplbh.supabase.co',
+            'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzZXZ2dmFha3Vuc3NweHBwbGJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMwMDYwNTcsImV4cCI6MjA2ODU4MjA1N30.i5wyY27hnp6qSqgThs--53_M_-giNfUa8ioe0qVfIXE'
+        );
+
+        window.testUpload = async function() {
+            const output = document.getElementById('output');
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                output.innerHTML = 'Please select a file';
+                return;
+            }
+
+            try {
+                output.innerHTML = 'Getting session...';
+                const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+                
+                output.innerHTML += '<br>Session result: ' + JSON.stringify({
+                    hasSession: !!session,
+                    hasUser: !!session?.user,
+                    hasAccessToken: !!session?.access_token,
+                    error: sessionError?.message
+                }, null, 2);
+
+                if (!session?.access_token) {
+                    output.innerHTML += '<br><strong>No token - please sign in first!</strong>';
+                    return;
+                }
+
+                output.innerHTML += '<br>Making API request...';
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('userId', session.user.id);
+
+                const response = await fetch('/api/documents/upload', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'Authorization': `Bearer ${session.access_token}`
+                    }
+                });
+
+                output.innerHTML += '<br>Response: ' + response.status + ' ' + response.statusText;
+                
+                const responseText = await response.text();
+                output.innerHTML += '<br>Response body: ' + responseText;
+
+            } catch (error) {
+                output.innerHTML += '<br>Error: ' + error.message;
+            }
+        };
+
+        // Auto-check session on load
+        window.addEventListener('load', async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            const output = document.getElementById('output');
+            output.innerHTML = 'Current session: ' + (session ? 'Logged in as ' + session.user.email : 'Not logged in');
+        });
+    </script>
+</body>
+</html>
