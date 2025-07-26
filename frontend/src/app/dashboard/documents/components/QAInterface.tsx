@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Send, 
@@ -13,138 +13,434 @@ import {
   RefreshCw,
   Loader2,
   Quote,
-  ExternalLink
+  ExternalLink,
+  Sparkles,
+  MessageCircle,
+  Clock,
+  AlertCircle,
+  Maximize2,
+  Minimize2,
+  MoreHorizontal,
+  Bookmark,
+  Share2,
+  Download,
+  Edit3,
+  Zap,
+  Brain,
+  Search,
+  Settings,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
+import { Slider } from '@/components/ui/slider';
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { useToast } from '@/components/ui/use-toast';
 
 import { useAuth } from '@/hooks/useAuth';
-import { saveChatMessage, getChatHistory } from '@/lib/firebase/chat-storage';
-import { CodeBlock } from '@/components/shared/CodeHighlight';
+// import { saveChatMessage, getChatHistory } from '@/lib/firebase/chat-storage';
+// import { CodeBlock } from '@/components/shared/CodeHighlight';
 
-import type { ChatMessage, ChatSession } from '@/types/chat';
-import type { Document } from '@/types/documents';
+import type { SupabaseDocument } from '@/lib/supabase/document-storage-no-auth';
 
-// Enhanced type definitions for clarity
+// Local type definitions
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  documentId: string;
+  sources?: Source[];
+  isError?: boolean;
+  metadata?: {
+    tokensUsed?: number;
+    processingTime?: number;
+    model?: string;
+  };
+}
+
+// Enhanced type definitions
 interface QAInterfaceProps {
-  document: Document;
+  document: SupabaseDocument;
   sessionId?: string;
   className?: string;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 interface Source {
   pageNumber: number;
   content: string;
   confidence: number;
+  chunkId?: string;
 }
 
 interface StreamingMessage extends Omit<ChatMessage, 'sources'> {
   isStreaming: boolean;
   sources?: Source[];
+  tokens?: number;
+  responseTime?: number;
 }
 
-// Sub-component for rendering each message bubble
+
+interface ChatSettings {
+  autoScroll: boolean;
+  soundEnabled: boolean;
+  showTimestamps: boolean;
+  showTokenCount: boolean;
+  temperature: number;
+  maxTokens: number;
+  streamResponse: boolean;
+}
+
+// Enhanced Message Bubble Component
 const MessageBubble: React.FC<{
   message: ChatMessage | StreamingMessage;
   documentId: string;
+  settings: ChatSettings;
   onCopy: (content: string) => void;
-}> = React.memo(({ message, documentId, onCopy }) => {
+  onFeedback: (messageId: string, type: 'positive' | 'negative') => void;
+  onBookmark: (messageId: string) => void;
+  onRegenerate?: (messageId: string) => void;
+}> = React.memo(({ message, documentId, settings, onCopy, onFeedback, onBookmark, onRegenerate }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [showActions, setShowActions] = useState(false);
   const isUser = message.role === 'user';
   const isStreaming = 'isStreaming' in message && message.isStreaming;
   const isError = 'isError' in message && message.isError;
+  
+  const messageLength = message.content.length;
+  const shouldTruncate = messageLength > 500 && !isExpanded;
+  const displayContent = shouldTruncate 
+    ? message.content.substring(0, 500) + '...' 
+    : message.content;
 
-  const avatarClasses = `flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-lg ${
+  const formatTime = (timestamp: Date) => {
+    return new Intl.DateTimeFormat('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      second: settings.showTimestamps ? '2-digit' : undefined
+    }).format(new Date(timestamp));
+  };
+
+  const avatarClasses = `flex h-8 w-8 shrink-0 select-none items-center justify-center rounded-lg transition-all duration-200 ${
     isUser 
-      ? 'bg-gradient-primary text-white' 
+      ? 'bg-slate-900 text-white' 
       : isError 
         ? 'bg-red-100 text-red-600'
-        : 'bg-gradient-ai text-white'
+        : 'bg-slate-100 text-slate-600'
   }`;
 
-  const bubbleClasses = `rounded-lg px-4 py-3 ${
+  const bubbleClasses = `relative rounded-2xl px-4 py-3 transition-all duration-200 ${
     isUser 
-      ? 'bg-gradient-primary text-white' 
+      ? 'bg-slate-900 text-white ml-auto' 
       : isError
         ? 'bg-red-50 border border-red-200 text-red-800'
-        : 'bg-white border border-slate-200 text-slate-900'
+        : 'bg-slate-50 text-slate-900'
   }`;
 
   return (
     <motion.div
-      key={message.id}
       layout
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      className={`flex gap-4 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+      initial={{ opacity: 0, y: 20, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -20, scale: 0.95 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+      className={`flex gap-4 group ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => setShowActions(false)}
     >
+      {/* Avatar */}
       <div className={avatarClasses}>
-        {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+        {isUser ? (
+          <User className="h-4 w-4" />
+        ) : (
+          <Bot className="h-4 w-4" />
+        )}
       </div>
 
-      <div className={`flex flex-col space-y-2 ${isUser ? 'items-end' : 'items-start'} max-w-[80%]`}>
+      {/* Message Content */}
+      <div className={`flex flex-col space-y-3 ${isUser ? 'items-end' : 'items-start'} max-w-[85%] min-w-0`}>
+        {/* Main Message Bubble */}
         <div className={bubbleClasses}>
-          <div className="prose prose-sm max-w-none text-inherit">
-            {message.content.includes('```') ? (
-              <CodeBlock content={message.content} />
-            ) : (
-              <p className="mb-0 whitespace-pre-wrap break-words">
-                {message.content}
+          {/* Message Header (for assistant messages) */}
+          {!isUser && (
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-150">
+              <div className="flex items-center gap-3">
+                <Badge variant="secondary" className="text-xs font-medium bg-slate-100 text-slate-700 px-2 py-1">
+                  <Brain className="h-3 w-3 mr-1" />
+                  AI Assistant
+                </Badge>
                 {isStreaming && (
-                  <motion.span
-                    animate={{ opacity: [1, 0.5, 1] }}
-                    transition={{ duration: 1.2, repeat: Infinity }}
-                    className="ml-1 inline-block h-4 w-2 bg-current rounded-full"
-                  />
+                  <Badge variant="outline" className="text-xs animate-pulse border-ai-primary/30 text-ai-primary">
+                    <Zap className="h-3 w-3 mr-1" />
+                    Thinking...
+                  </Badge>
                 )}
-              </p>
+              </div>
+              {settings.showTokenCount && 'tokens' in message && message.tokens && (
+                <span className="text-xs text-slate-500 font-medium">
+                  {message.tokens} tokens
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Message Content */}
+          <div className="prose prose-sm max-w-none">
+            <div className={`whitespace-pre-wrap break-words leading-relaxed ${isUser ? 'text-white' : 'text-slate-800'} text-body`}>
+              {displayContent}
+              {isStreaming && (
+                <motion.span
+                  animate={{ opacity: [1, 0.3, 1] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                  className="ml-1 inline-flex items-center"
+                >
+                  <div className="h-4 w-2 bg-current rounded-full" />
+                </motion.span>
+              )}
+            </div>
+            
+            {/* Expand/Collapse for long messages */}
+            {messageLength > 500 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="mt-3 h-8 text-xs hover:bg-slate-100 transition-colors"
+              >
+                {isExpanded ? 'Show less' : 'Show more'}
+              </Button>
             )}
           </div>
 
+          {/* Sources Section */}
           {message.sources && message.sources.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-slate-200/50">
-              <div className="flex items-center gap-2 mb-2">
-                <Quote className="h-3 w-3 text-slate-500" />
-                <span className="text-xs font-medium text-slate-600">Sources</span>
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              className="mt-5 pt-4 border-t border-slate-200"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <Quote className="h-4 w-4 text-slate-500" />
+                <span className="text-sm font-medium text-slate-700">Sources Referenced</span>
+                <Badge variant="outline" className="text-xs bg-slate-50 border-slate-200">
+                  {message.sources.length}
+                </Badge>
               </div>
-              <div className="flex flex-wrap gap-1">
+              <div className="flex flex-wrap gap-2">
                 {message.sources.map((source, index) => (
-                  <Badge 
-                    key={index} 
-                    variant="secondary" 
-                    className="text-xs cursor-pointer hover:bg-slate-200"
-                    onClick={() => window.open(`/dashboard/documents/${documentId}/viewer?page=${source.pageNumber}`, '_blank')}
-                  >
-                    Page {source.pageNumber}
-                    <ExternalLink className="h-3 w-3 ml-1" />
-                  </Badge>
+                  <TooltipProvider key={index}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge 
+                          variant="secondary" 
+                          className="text-xs cursor-pointer hover:bg-ai-primary hover:text-white transition-all duration-200 group bg-slate-100 border border-slate-200 text-slate-700 px-3 py-1.5"
+                          onClick={() => window.open(`/dashboard/documents/${documentId}/viewer?page=${source.pageNumber}`, '_blank')}
+                        >
+                          <span className="font-medium">Page {source.pageNumber}</span>
+                          <div className="ml-2 opacity-60 group-hover:opacity-100">
+                            <ExternalLink className="h-3 w-3" />
+                          </div>
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-xs bg-white border border-slate-200 shadow-professional">
+                        <div className="space-y-2 p-2">
+                          <p className="font-medium text-slate-900">Page {source.pageNumber}</p>
+                          <p className="text-xs text-slate-600 leading-relaxed">
+                            {source.content.substring(0, 150)}...
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Confidence: <span className="font-medium">{Math.round(source.confidence * 100)}%</span>
+                          </p>
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 ))}
               </div>
+            </motion.div>
+          )}
+
+          {/* Performance Metrics */}
+          {'responseTime' in message && message.responseTime && (
+            <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-4 text-xs text-slate-500">
+              <div className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                <span>{message.responseTime.toFixed(1)}s</span>
+              </div>
+              {message.sources && (
+                <div className="flex items-center gap-1">
+                  <Search className="h-3 w-3" />
+                  <span>{message.sources.length} sources</span>
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        {!isUser && !isStreaming && !isError && (
-          <div className="flex items-center gap-1 text-slate-500">
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onCopy(message.content)}>
-              <Copy className="h-3 w-3" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-6 w-6">
-              <ThumbsUp className="h-3 w-3" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-6 w-6">
-              <ThumbsDown className="h-3 w-3" />
-            </Button>
-          </div>
-        )}
+        {/* Message Actions */}
+        <AnimatePresence>
+          {showActions && !isStreaming && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              className={`flex items-center gap-1 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+            >
+              {!isUser && !isError && (
+                <>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 hover:bg-green-100 hover:text-green-600"
+                          onClick={() => onFeedback(message.id, 'positive')}
+                        >
+                          <ThumbsUp className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Good response</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
 
-        <div className="text-xs text-slate-500">
-          {new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit' }).format(new Date(message.timestamp))}
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
+                          onClick={() => onFeedback(message.id, 'negative')}
+                        >
+                          <ThumbsDown className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Poor response</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </>
+              )}
+
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-600"
+                      onClick={() => onCopy(message.content)}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Copy message</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 w-8 p-0 hover:bg-yellow-100 hover:text-yellow-600"
+                      onClick={() => onBookmark(message.id)}
+                    >
+                      <Bookmark className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Bookmark</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+
+              {!isUser && onRegenerate && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 hover:bg-purple-100 hover:text-purple-600"
+                        onClick={() => onRegenerate(message.id)}
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Regenerate response</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 hover:bg-slate-100"
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align={isUser ? "end" : "start"}>
+                  <DropdownMenuItem onClick={() => onCopy(message.content)}>
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copy text
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Share2 className="h-4 w-4 mr-2" />
+                    Share
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Download className="h-4 w-4 mr-2" />
+                    Export
+                  </DropdownMenuItem>
+                  {!isUser && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem>
+                        <Edit3 className="h-4 w-4 mr-2" />
+                        Edit & resend
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Timestamp */}
+        <div className={`text-xs text-slate-500 font-medium ${isUser ? 'text-right' : 'text-left'} mt-2`}>
+          {formatTime(message.timestamp)}
+          {isError && (
+            <Badge variant="destructive" className="ml-3 text-xs">
+              <AlertCircle className="h-3 w-3 mr-1" />
+              Failed
+            </Badge>
+          )}
         </div>
       </div>
     </motion.div>
@@ -152,25 +448,68 @@ const MessageBubble: React.FC<{
 });
 MessageBubble.displayName = 'MessageBubble';
 
-
+// Main QA Interface Component
 const QAInterface: React.FC<QAInterfaceProps> = ({
   document, 
   sessionId: initialSessionId,
-  className = '' 
+  className = '',
+  isFullscreen = false,
+  onToggleFullscreen
 }) => {
   const { user } = useAuth();
   const { toast } = useToast();
+
+  // Helper function for toast
+  const showToast = (title: string, description: string, variant: 'default' | 'destructive' = 'default') => {
+    toast({
+      title,
+      description,
+      variant,
+    });
+  };
   
+  // State management
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [streamingMessage, setStreamingMessage] = useState<StreamingMessage | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [activeSessionId, setActiveSessionId] = useState<string | null | undefined>(initialSessionId);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState<ChatSettings>({
+    autoScroll: true,
+    soundEnabled: false,
+    showTimestamps: true,
+    showTokenCount: false,
+    temperature: 0.7,
+    maxTokens: 1000,
+    streamResponse: true
+  });
   
+  // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+
+  // Suggested questions based on document type
+  const suggestedQuestions = useMemo(() => {
+    const baseQuestions = [
+      "What is the main topic of this document?",
+      "Can you summarize the key points?",
+      "What are the important conclusions?",
+      "Are there any specific recommendations?"
+    ];
+    
+    // Add document-type specific questions
+    if (document.name.toLowerCase().includes('report')) {
+      return [...baseQuestions, "What are the findings?", "What methodology was used?"];
+    } else if (document.name.toLowerCase().includes('contract')) {
+      return [...baseQuestions, "What are the key terms?", "What are the obligations?"];
+    }
+    
+    return baseQuestions;
+  }, [document.name]);
 
   // Load chat history
   useEffect(() => {
@@ -179,101 +518,178 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
         setIsLoadingHistory(false);
         return;
       }
+      
       setIsLoadingHistory(true);
       try {
-        const history = await getChatHistory(activeSessionId);
-        setMessages(history);
+        // TODO: Implement getChatHistory
+        // const history = await getChatHistory(activeSessionId);
+        // setMessages(history);
+        setMessages([]);
       } catch (error) {
         console.error('Error loading chat history:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to load chat history.',
-          variant: 'destructive',
-        });
+        showToast('Error', 'Failed to load chat history.', 'destructive');
       } finally {
         setIsLoadingHistory(false);
       }
     };
 
     loadChatHistory();
-  }, [user, activeSessionId, toast]);
+  }, [user, activeSessionId, showToast]);
 
-  // Auto-scroll to bottom
+  // Auto-scroll functionality
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingMessage]);
+    if (settings.autoScroll) {
+      messagesEndRef.current?.scrollIntoView({ 
+        behavior: 'smooth',
+        block: 'end'
+      });
+    }
+  }, [messages, streamingMessage, settings.autoScroll]);
 
+  // Enhanced copy functionality
   const handleCopyMessage = useCallback(async (content: string) => {
     try {
       await navigator.clipboard.writeText(content);
-      toast({
-        title: 'Copied',
-        description: 'Message copied to clipboard.',
-      });
+      showToast('Copied', 'Message copied to clipboard.');
     } catch (error) {
       console.error('Failed to copy:', error);
-      toast({
-        title: 'Copy Failed',
-        description: 'Could not copy message to clipboard.',
-        variant: 'destructive',
-      });
+      showToast('Copy Failed', 'Could not copy message to clipboard.', 'destructive');
     }
-  }, [toast]);
+  }, [showToast]);
 
-  const handleStopGeneration = () => {
+  // Handle message feedback
+  const handleFeedback = useCallback(async (messageId: string, type: 'positive' | 'negative') => {
+    try {
+      // Here you would typically send feedback to your analytics service
+      console.log('Feedback submitted:', { messageId, type });
+      
+      showToast('Feedback Recorded', `Thank you for your ${type} feedback!`);
+    } catch (error) {
+      console.error('Failed to submit feedback:', error);
+    }
+  }, [showToast]);
+
+  // Handle bookmark
+  const handleBookmark = useCallback(async (messageId: string) => {
+    try {
+      // Here you would save the bookmark
+      console.log('Bookmarked message:', messageId);
+      
+      showToast('Bookmarked', 'Message saved to bookmarks.');
+    } catch (error) {
+      console.error('Failed to bookmark:', error);
+    }
+  }, [showToast]);
+
+  // Handle regenerate response
+  const handleRegenerate = useCallback(async (messageId: string) => {
+    const message = messages.find(m => m.id === messageId);
+    if (!message || message.role !== 'assistant') return;
+
+    // Find the previous user message
+    const messageIndex = messages.findIndex(m => m.id === messageId);
+    const userMessage = messages[messageIndex - 1];
+    
+    if (userMessage && userMessage.role === 'user') {
+      // Remove the assistant message and regenerate
+      setMessages(prev => prev.filter(m => m.id !== messageId));
+      setInputValue(userMessage.content);
+      inputRef.current?.focus();
+    }
+  }, [messages]);
+
+  // Stop generation
+  const handleStopGeneration = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
-      // The rest of the cleanup is in the catch block of handleSubmit
+      setIsLoading(false);
+      setStreamingMessage(null);
+      
+      if (settings.soundEnabled) {
+        // Play stop sound
+        new Audio('/sounds/stop.mp3').play().catch(() => {});
+      }
     }
-  };
+  }, [settings.soundEnabled]);
 
-  const handleStreamedResponse = async (reader: ReadableStreamDefaultReader<Uint8Array>, streamingId: string, currentSessionId: string) => {
+  // Enhanced streaming handler
+  const handleStreamedResponse = async (
+    reader: ReadableStreamDefaultReader<Uint8Array>, 
+    streamingId: string, 
+    currentSessionId: string
+  ) => {
     const decoder = new TextDecoder();
     let accumulatedContent = '';
     let sources: Source[] = [];
+    let startTime = Date.now();
+    let tokenCount = 0;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
 
-      for (const line of lines) {
-        try {
-          const data = JSON.parse(line.slice(6));
-          
-          if (data.type === 'content') {
-            accumulatedContent += data.content;
-            setStreamingMessage(prev => prev ? { ...prev, content: accumulatedContent } : null);
-          } else if (data.type === 'sources') {
-            sources = data.sources;
-            setStreamingMessage(prev => prev ? { ...prev, sources } : null);
-          } else if (data.type === 'done') {
-            const finalMessage: ChatMessage = {
-              id: streamingId,
-              role: 'assistant',
-              content: accumulatedContent,
-              timestamp: new Date(),
-              documentId: document.id,
-              sources: sources,
-            };
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            
+            if (data.type === 'content') {
+              accumulatedContent += data.content;
+              tokenCount++;
+              setStreamingMessage(prev => prev ? { 
+                ...prev, 
+                content: accumulatedContent,
+                tokens: tokenCount
+              } : null);
+            } else if (data.type === 'sources') {
+              sources = data.sources;
+              setStreamingMessage(prev => prev ? { ...prev, sources } : null);
+            } else if (data.type === 'done') {
+              const responseTime = (Date.now() - startTime) / 1000;
+              
+              const finalMessage: ChatMessage = {
+                id: streamingId,
+                role: 'assistant',
+                content: accumulatedContent,
+                timestamp: new Date(),
+                documentId: document.id,
+                sources: sources,
+                metadata: {
+                  tokensUsed: tokenCount,
+                  processingTime: responseTime,
+                  model: 'groq-mixtral'
+                }
+              };
 
-            setMessages(prev => [...prev, finalMessage]);
-            setStreamingMessage(null);
+              setMessages(prev => [...prev, finalMessage]);
+              setStreamingMessage(null);
 
-            if (user) {
-              await saveChatMessage(user.uid, finalMessage, currentSessionId);
+              if (user) {
+                // TODO: Save chat message
+                // await saveChatMessage(user.uid, finalMessage, currentSessionId);
+              }
+
+              // Play completion sound
+              if (settings.soundEnabled) {
+                new Audio('/sounds/complete.mp3').play().catch(() => {});
+              }
+
+              return;
             }
-            return; // Exit loop
+          } catch (error) {
+            console.error('Error parsing streaming data:', error);
           }
-        } catch (error) {
-          console.error('Error parsing streaming data:', error, 'raw line:', line);
         }
       }
+    } finally {
+      reader.releaseLock();
     }
   };
 
+  // Enhanced submit handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim() || isLoading || !user) return;
@@ -295,7 +711,13 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
     setInputValue('');
     setIsLoading(true);
 
-    await saveChatMessage(user.uid, userMessage, currentSessionId);
+    // TODO: Save user message
+    // await saveChatMessage(user.uid, userMessage, currentSessionId);
+
+    // Play send sound
+    if (settings.soundEnabled) {
+      new Audio('/sounds/send.mp3').play().catch(() => {});
+    }
 
     abortControllerRef.current = new AbortController();
 
@@ -308,13 +730,17 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
           documentId: document.id,
           sessionId: currentSessionId,
           userId: user.uid,
+          settings: {
+            temperature: settings.temperature,
+            maxTokens: settings.maxTokens,
+            stream: settings.streamResponse
+          }
         }),
         signal: abortControllerRef.current.signal,
       });
 
       if (!response.ok || !response.body) {
-        const errorText = await response.text();
-        throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const streamingId = Date.now().toString();
@@ -326,6 +752,7 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
         timestamp: new Date(),
         documentId: document.id,
         sources: [],
+        tokens: 0
       });
 
       await handleStreamedResponse(response.body.getReader(), streamingId, currentSessionId);
@@ -333,7 +760,7 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
     } catch (error: any) {
       if (error.name === 'AbortError') {
         console.log('Stream was aborted by the user.');
-        setStreamingMessage(null); // Clear any partial message
+        setStreamingMessage(null);
         return;
       }
 
@@ -341,145 +768,350 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
       const errorMessage: ChatMessage = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: 'I apologize, but I encountered an error. Please try again or contact support.',
+        content: 'I apologize, but I encountered an error. Please try again or contact support if the issue persists.',
         timestamp: new Date(),
         documentId: document.id,
         isError: true,
       };
+      
       setMessages(prev => [...prev, errorMessage]);
       setStreamingMessage(null);
-      toast({
-        title: 'An Error Occurred',
-        description: 'Failed to get a response from the assistant.',
-        variant: 'destructive',
-      });
+      
+      showToast('Error', 'Failed to get a response from the assistant.', 'destructive');
     } finally {
       setIsLoading(false);
       abortControllerRef.current = null;
     }
   };
 
+  // Handle input key events
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e as any);
+    }
+  };
+
+  // Welcome state component
   const renderWelcomeState = () => (
-    <div className="flex flex-col items-center justify-center h-full text-center p-4">
-      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-ai/10 mb-4">
-        <Bot className="h-8 w-8 text-ai-primary" />
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="flex flex-col items-center justify-center h-full text-center p-8"
+    >
+      <div className="mb-8">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-100 mb-4">
+          <Bot className="h-8 w-8 text-slate-600" />
+        </div>
       </div>
-      <h3 className="text-lg font-semibold text-slate-900 mb-2">
-        Start a conversation
+      
+      <h3 className="text-xl font-medium text-slate-900 mb-3">
+        Ask about this document
       </h3>
-      <p className="text-slate-600 mb-6 max-w-sm">
-        Ask me anything about "{document.title}". I can help you understand, analyze, and extract insights.
+      <p className="text-slate-600 mb-8 max-w-md">
+        Ask questions about <span className="font-medium">"{document.name}"</span>
       </p>
+      
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl">
-        {[
-          "What is the main topic of this document?",
-          "Can you summarize the key points?",
-          "What are the important conclusions?",
-          "Are there any specific recommendations?"
-        ].map((question) => (
-          <Card
+        {suggestedQuestions.slice(0, 4).map((question, index) => (
+          <motion.div
             key={question}
-            className="card cursor-pointer hover-lift transition-all duration-200 hover:border-ai-primary/20"
-            onClick={() => {
-              setInputValue(question);
-              inputRef.current?.focus();
-            }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: index * 0.05 }}
           >
-            <CardContent className="p-3">
-              <p className="text-sm text-slate-700">{question}</p>
-            </CardContent>
-          </Card>
+            <div
+              className="p-4 border border-slate-200 rounded-xl cursor-pointer hover:border-slate-300 hover:bg-slate-50 transition-all duration-200 group"
+              onClick={() => {
+                setInputValue(question);
+                inputRef.current?.focus();
+              }}
+            >
+              <p className="text-sm text-slate-700 group-hover:text-slate-900">
+                {question}
+              </p>
+            </div>
+          </motion.div>
         ))}
       </div>
-    </div>
+    </motion.div>
   );
 
+  // Loading skeleton component
   const renderLoadingSkeleton = () => (
-    <div className="p-4 space-y-6">
+    <div className="p-6 space-y-8">
       {[...Array(3)].map((_, i) => (
         <div key={i} className={`flex gap-4 ${i % 2 ? 'flex-row-reverse' : ''}`}>
-          <Skeleton className="h-8 w-8 rounded-lg" />
-          <div className="flex-1 space-y-2">
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-4 w-1/2" />
+          <Skeleton className="h-9 w-9 rounded-xl" />
+          <div className="flex-1 space-y-3">
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-4 w-2/3" />
+            </div>
+            <div className="flex gap-2">
+              <Skeleton className="h-6 w-16" />
+              <Skeleton className="h-6 w-20" />
+            </div>
           </div>
         </div>
       ))}
     </div>
   );
 
+  // Settings panel component
+  const renderSettingsPanel = () => (
+    <Card className="absolute right-6 top-20 w-96 z-50 shadow-professional-xl border border-slate-200 bg-white/95 backdrop-blur-xl">
+      <CardHeader className="pb-5">
+        <CardTitle className="heading-xs flex items-center gap-3">
+          <Settings className="h-5 w-5 text-ai-primary" />
+          Chat Settings
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Auto-scroll</label>
+              <p className="text-xs text-slate-500">Automatically scroll to new messages</p>
+            </div>
+            <Switch
+              checked={settings.autoScroll}
+              onCheckedChange={(checked) => setSettings(prev => ({ ...prev, autoScroll: checked }))}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Sound effects</label>
+              <p className="text-xs text-slate-500">Play sounds for interactions</p>
+            </div>
+            <Switch
+              checked={settings.soundEnabled}
+              onCheckedChange={(checked) => setSettings(prev => ({ ...prev, soundEnabled: checked }))}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Show timestamps</label>
+              <p className="text-xs text-slate-500">Display message timestamps</p>
+            </div>
+            <Switch
+              checked={settings.showTimestamps}
+              onCheckedChange={(checked) => setSettings(prev => ({ ...prev, showTimestamps: checked }))}
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Token count</label>
+              <p className="text-xs text-slate-500">Show token usage information</p>
+            </div>
+            <Switch
+              checked={settings.showTokenCount}
+              onCheckedChange={(checked) => setSettings(prev => ({ ...prev, showTokenCount: checked }))}
+            />
+          </div>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-4">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">Temperature</label>
+              <span className="text-xs text-slate-500">{settings.temperature}</span>
+            </div>
+            <Slider
+              value={[settings.temperature]}
+              onValueChange={(value: number[]) => setSettings(prev => ({ ...prev, temperature: value[0] || 0.7 }))}
+              min={0}
+              max={1}
+              step={0.1}
+              className="w-full"
+            />
+            <p className="text-xs text-slate-500">Controls response creativity</p>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">Max tokens</label>
+              <span className="text-xs text-slate-500">{settings.maxTokens}</span>
+            </div>
+            <Slider
+              value={[settings.maxTokens]}
+              onValueChange={(value: number[]) => setSettings(prev => ({ ...prev, maxTokens: value[0] || 1000 }))}
+              min={100}
+              max={2000}
+              step={100}
+              className="w-full"
+            />
+            <p className="text-xs text-slate-500">Maximum response length</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   return (
-    <div className={`flex flex-col h-full bg-slate-50 ${className}`}>
-      <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-white/80 backdrop-blur-sm sticky top-0 z-10">
+    <div className={`flex flex-col h-full bg-white relative ${className}`}>
+      {/* Minimal Header */}
+      <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-white sticky top-0 z-40">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary/10">
-            <FileText className="h-4 w-4 text-ai-primary" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100">
+            <FileText className="h-4 w-4 text-slate-600" />
           </div>
-          <div>
-            <h3 className="font-semibold text-slate-900 truncate" title={document.title}>{document.title}</h3>
-            <p className="text-sm text-slate-500">Ask questions about this document</p>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-lg font-medium text-slate-900 truncate" title={document.name}>
+              {document.name}
+            </h3>
+            <p className="text-sm text-slate-500 flex items-center gap-2">
+              <span>{document.metadata?.pages || 0} pages</span>
+            </p>
           </div>
         </div>
-        <Badge variant="secondary" className="flex items-center gap-1.5">
-          <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-          Ready
-        </Badge>
-      </div>
-
-      <div className="flex-1 overflow-hidden">
-        <div className="h-full overflow-y-auto p-4 space-y-6">
-          {isLoadingHistory ? renderLoadingSkeleton()
-            : messages.length === 0 && !streamingMessage ? renderWelcomeState()
-            : (
-              <AnimatePresence initial={false}>
-                {messages.map((message) => (
-                  <MessageBubble key={message.id} message={message} documentId={document.id} onCopy={handleCopyMessage} />
-                ))}
-                {streamingMessage && (
-                  <MessageBubble message={streamingMessage} documentId={document.id} onCopy={handleCopyMessage} />
-                )}
-              </AnimatePresence>
-            )
-          }
-          <div ref={messagesEndRef} />
+        
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <div className="h-2 w-2 rounded-full bg-green-500" />
+            <span>Ready</span>
+          </div>
         </div>
       </div>
 
-      <div className="border-t border-slate-200 bg-white/90 backdrop-blur-sm p-4">
-        <form onSubmit={handleSubmit}>
-          <div className="flex items-end gap-3">
+      {/* Settings Panel */}
+      <AnimatePresence>
+        {showSettings && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="absolute inset-0 z-50"
+          >
+            <div 
+              className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+              onClick={() => setShowSettings(false)}
+            />
+            {renderSettingsPanel()}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Messages Area */}
+      <div className="flex-1 overflow-hidden relative">
+        <ScrollArea className="h-full" ref={messagesContainerRef}>
+          <div className="min-h-full p-4 space-y-6">
+            {isLoadingHistory ? renderLoadingSkeleton()
+              : messages.length === 0 && !streamingMessage ? renderWelcomeState()
+              : (
+                <AnimatePresence mode="popLayout">
+                  {messages.map((message) => (
+                    <MessageBubble 
+                      key={message.id} 
+                      message={message} 
+                      documentId={document.id}
+                      settings={settings}
+                      onCopy={handleCopyMessage}
+                      onFeedback={handleFeedback}
+                      onBookmark={handleBookmark}
+                      onRegenerate={handleRegenerate}
+                    />
+                  ))}
+                  {streamingMessage && (
+                    <MessageBubble 
+                      message={streamingMessage} 
+                      documentId={document.id}
+                      settings={settings}
+                      onCopy={handleCopyMessage}
+                      onFeedback={handleFeedback}
+                      onBookmark={handleBookmark}
+                    />
+                  )}
+                </AnimatePresence>
+              )
+            }
+            <div ref={messagesEndRef} />
+          </div>
+        </ScrollArea>
+
+        {/* Scroll to bottom button */}
+        <AnimatePresence>
+          {!settings.autoScroll && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              className="absolute bottom-4 right-4"
+            >
+              <Button
+                size="sm"
+                variant="secondary"
+                className="rounded-full shadow-lg hover:shadow-xl"
+                onClick={() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
+              >
+                <span className="sr-only">Scroll to bottom</span>
+                ↓
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* Professional Input Area */}
+      <div className="border-t border-slate-200 bg-slate-50/50 p-6">
+        <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
+          <div className="flex items-end gap-4">
             <div className="flex-1 relative">
-              <Input
+              <Textarea
                 ref={inputRef}
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Ask a question..."
+                onKeyDown={handleKeyDown}
+                placeholder="Ask a question about this document..."
                 disabled={isLoading}
-                className="min-h-[44px] resize-none pr-20 focus:border-ai-primary focus:ring-ai-primary/20"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSubmit(e as any); // Cast to any to satisfy form event
-                  }
-                }}
+                className="min-h-[52px] max-h-32 resize-none pr-20 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 focus:border-slate-500 focus:ring-2 focus:ring-slate-200 rounded-2xl px-4 py-3 transition-all duration-200 shadow-sm"
                 maxLength={2000}
               />
-              <div className="absolute bottom-2.5 right-3 text-xs text-slate-400">
-                {inputValue.length} / 2000
+              
+              {/* Character count */}
+              <div className="absolute bottom-3 right-4 flex items-center gap-2">
+                <span className="text-xs text-slate-400 font-medium">
+                  {inputValue.length}/2000
+                </span>
               </div>
             </div>
             
-            <div className="flex items-center gap-2">
-              {isLoading && (
-                <Button type="button" variant="outline" size="icon" onClick={handleStopGeneration} className="h-[44px] w-[44px] hover-lift">
-                  <RefreshCw className="h-4 w-4" />
-                  <span className="sr-only">Stop</span>
-                </Button>
+            <Button 
+              type="submit" 
+              disabled={!inputValue.trim() || isLoading} 
+              className="h-[52px] w-[52px] bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-2xl transition-all duration-200 shadow-sm hover:shadow-md flex items-center justify-center"
+            >
+              {isLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" />
               )}
-              <Button type="submit" disabled={!inputValue.trim() || isLoading} className="btn-primary hover-lift w-[44px] h-[44px]">
-                {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-                <span className="sr-only">Send</span>
-              </Button>
+            </Button>
+          </div>
+          
+          {/* Professional Status Indicator */}
+          {streamingMessage && (
+            <div className="flex items-center justify-center gap-2 text-sm text-slate-600 mt-3 py-2">
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 bg-slate-400 rounded-full animate-pulse"></div>
+                <span className="font-medium">AI is analyzing your question...</span>
+              </div>
+            </div>
+          )}
+          
+          {/* Helper text */}
+          <div className="flex items-center justify-between mt-3 text-xs text-slate-500">
+            <span>Press Enter to send, Shift+Enter for new line</span>
+            <div className="flex items-center gap-2">
+              <div className="h-1.5 w-1.5 bg-green-500 rounded-full animate-pulse"></div>
+              <span>Ready</span>
             </div>
           </div>
         </form>

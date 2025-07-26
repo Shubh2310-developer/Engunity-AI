@@ -661,7 +661,7 @@ const DocumentsPage: React.FC = () => {
                                     variant="ghost" 
                                     size="sm"
                                     className="hover-lift"
-                                    onClick={() => window.open(`/dashboard/documents/${document.id}`, '_blank')}
+                                    onClick={() => router.push(`/dashboard/documents/${document.id}/qa`)}
                                   >
                                     <MessageSquare className="h-4 w-4" />
                                   </Button>

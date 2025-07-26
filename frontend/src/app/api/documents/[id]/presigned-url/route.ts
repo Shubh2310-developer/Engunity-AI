@@ -3,7 +3,7 @@ import { getDocumentByIdNoAuth } from '@/lib/supabase/document-storage-no-auth';
 import { generatePresignedUrl, extractS3KeyFromUrl } from '@/lib/storage/s3-storage';
 
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {

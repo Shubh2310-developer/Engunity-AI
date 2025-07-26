@@ -298,830 +298,961 @@ Testing: Write tests incrementally after each component/feature
 Documentation: Update docs as you build, don't leave it until the end
 Follow this order for a smooth frontend development experience with proper dependency management and incremental feature building.
 
-Original Project Structure
+## Current Project Structure (Updated)
+
+```
 engunity-ai/
-├── .github/                           # GitHub configurations & CI/CD
-│   ├── workflows/                     # GitHub Actions pipelines
-│   │   ├── frontend-deploy.yml        # Vercel deployment
-│   │   ├── backend-deploy.yml         # Railway deployment
-│   │   ├── test-suite.yml             # Automated testing
-│   │   ├── security-scan.yml          # CodeQL & security scans
-│   │   ├── dependency-check.yml       # Vulnerability scanning
-│   │   └── lighthouse-ci.yml          # Performance testing
-│   ├── ISSUE_TEMPLATE/                # Issue templates
-│   │   ├── bug_report.md
-│   │   ├── feature_request.md
-│   │   └── security_vulnerability.md
-│   ├── PULL_REQUEST_TEMPLATE.md       # PR checklist template
-│   └── dependabot.yml                 # Automated dependency updates
-│
-├── frontend/                          # Next.js 14 App Router Frontend
-│   ├── src/
-│   │   ├── app/                       # Next.js 14 App Directory
-│   │   │   ├── auth/                # Auth route group
-│   │   │   │   ├── login/
-│   │   │   │   │   └── page.tsx       # Login page
-│   │   │   │   ├── register/
-│   │   │   │   │   └── page.tsx       # Registration page
-│   │   │   │   ├── forgot-password/
-│   │   │   │   │   └── page.tsx       # Password recovery
-│   │   │   │   ├── verify-email/
-│   │   │   │   │   └── page.tsx       # Email verification
-│   │   │   │   └── layout.tsx         # Auth layout wrapper
-│   │   │   ├── dashboard/           # Protected dashboard routes
-│   │   │   │   ├── layout.tsx         # Dashboard layout with sidebar
-│   │   │   │   ├── page.tsx           # Dashboard home
-│   │   │   │   ├── chat/
-│   │   │   │   │   ├── page.tsx       # AI Chat interface
-│   │   │   │   │   ├── [threadId]/
-│   │   │   │   │   │   └── page.tsx   # Individual chat thread
-│   │   │   │   │   └── loading.tsx    # Loading state
-│   │   │   │   ├── documents/
-│   │   │   │   │   ├── page.tsx       # Document manager
-│   │   │   │   │   ├── upload/
-│   │   │   │   │   │   └── page.tsx   # Document upload
-│   │   │   │   │   ├── [docId]/
-│   │   │   │   │   │   ├── page.tsx   # Document Q&A
-│   │   │   │   │   │   └── viewer/
-│   │   │   │   │   │       └── page.tsx # Document viewer
-│   │   │   │   │   └── components/
-│   │   │   │   │       ├── DocumentViewer.tsx
-│   │   │   │   │       ├── QAInterface.tsx
-│   │   │   │   │       └── FileManager.tsx
-│   │   │   │   ├── code/
-│   │   │   │   │   ├── page.tsx       # Code assistant
-│   │   │   │   │   ├── debug/
-│   │   │   │   │   │   └── page.tsx   # Code debugging
-│   │   │   │   │   └── templates/
-│   │   │   │   │       └── page.tsx   # Code templates
-│   │   │   │   ├── research/
-│   │   │   │   │   ├── page.tsx       # Research dashboard
-│   │   │   │   │   ├── summarize/
-│   │   │   │   │   │   └── page.tsx   # Text summarizer
-│   │   │   │   │   ├── citations/
-│   │   │   │   │   │   └── page.tsx   # Citation manager
-│   │   │   │   │   └── literature/
-│   │   │   │   │       └── page.tsx   # Literature review
-│   │   │   │   ├── notebook/
-│   │   │   │   │   ├── page.tsx       # Notebook list
-│   │   │   │   │   ├── new/
-│   │   │   │   │   │   └── page.tsx   # New notebook
-│   │   │   │   │   └── [notebookId]/
-│   │   │   │   │       ├── page.tsx   # Notebook editor
-│   │   │   │   │       └── share/
-│   │   │   │   │           └── page.tsx # Share notebook
-│   │   │   │   ├── analysis/
-│   │   │   │   │   ├── page.tsx       # Data analysis dashboard
-│   │   │   │   │   ├── upload/
-│   │   │   │   │   │   └── page.tsx   # Data upload
-│   │   │   │   │   └── [datasetId]/
-│   │   │   │   │       └── page.tsx   # Analysis workspace
-│   │   │   │   ├── projects/
-│   │   │   │   │   ├── page.tsx       # Project planner
-│   │   │   │   │   ├── new/
-│   │   │   │   │   │   └── page.tsx   # New project
-│   │   │   │   │   └── [projectId]/
-│   │   │   │   │       ├── page.tsx   # Project details
-│   │   │   │   │       └── kanban/
-│   │   │   │   │           └── page.tsx # Kanban board
-│   │   │   │   ├── marketplace/       # Web3 AI Marketplace
-│   │   │   │   │   ├── page.tsx       # Marketplace home
-│   │   │   │   │   ├── browse/
-│   │   │   │   │   │   └── page.tsx   # Browse AI models
-│   │   │   │   │   └── [modelId]/
-│   │   │   │   │       └── page.tsx   # Model details
-│   │   │   │   ├── audit/
-│   │   │   │   │   ├── page.tsx       # Smart contract auditor
-│   │   │   │   │   └── [auditId]/
-│   │   │   │   │       └── page.tsx   # Audit results
-│   │   │   │   └── settings/
-│   │   │   │       ├── page.tsx       # User settings
-│   │   │   │       ├── billing/
-│   │   │   │       │   └── page.tsx   # Billing & subscription
-│   │   │   │       ├── api-keys/
-│   │   │   │       │   └── page.tsx   # API key management
-│   │   │   │       └── preferences/
-│   │   │   │           └── page.tsx   # User preferences
-│   │   │   ├── api/                   # API routes (Server Actions)
-│   │   │   │   ├── auth/
-│   │   │   │   │   ├── callback/
-│   │   │   │   │   │   └── route.ts   # OAuth callbacks
-│   │   │   │   │   ├── login/
-│   │   │   │   │   │   └── route.ts   # Login endpoint
-│   │   │   │   │   └── logout/
-│   │   │   │   │       └── route.ts   # Logout endpoint
-│   │   │   │   ├── chat/
-│   │   │   │   │   ├── stream/
-│   │   │   │   │   │   └── route.ts   # Streaming chat
-│   │   │   │   │   └── history/
-│   │   │   │   │       └── route.ts   # Chat history
-│   │   │   │   ├── documents/
-│   │   │   │   │   ├── upload/
-│   │   │   │   │   │   └── route.ts   # Document upload
-│   │   │   │   │   └── search/
-│   │   │   │   │       └── route.ts   # Document search
-│   │   │   │   ├── code/
-│   │   │   │   │   ├── execute/
-│   │   │   │   │   │   └── route.ts   # Code execution
-│   │   │   │   │   └── generate/
-│   │   │   │   │       └── route.ts   # Code generation
-│   │   │   │   ├── analysis/
-│   │   │   │   │   ├── process/
-│   │   │   │   │   │   └── route.ts   # Data processing
-│   │   │   │   │   └── visualize/
-│   │   │   │   │       └── route.ts   # Chart generation
-│   │   │   │   └── webhooks/
-│   │   │   │       ├── stripe/
-│   │   │   │       │   └── route.ts   # Stripe webhooks
-│   │   │   │       └── supabase/
-│   │   │   │           └── route.ts   # Supabase webhooks
-│   │   │   ├── globals.css            # Global styles
-│   │   │   ├── layout.tsx             # Root layout
-│   │   │   ├── loading.tsx            # Global loading UI
-│   │   │   ├── error.tsx              # Global error UI
-│   │   │   ├── not-found.tsx          # 404 page
-│   │   │   └── page.tsx               # Landing page
-│   │   ├── components/                # Reusable React components
-│   │   │   ├── ui/                    # ShadCN UI components
-│   │   │   │   ├── button.tsx
-│   │   │   │   ├── input.tsx
-│   │   │   │   ├── card.tsx
-│   │   │   │   ├── dialog.tsx
-│   │   │   │   ├── dropdown-menu.tsx
-│   │   │   │   ├── toast.tsx
-│   │   │   │   ├── tooltip.tsx
-│   │   │   │   ├── skeleton.tsx
-│   │   │   │   ├── progress.tsx
-│   │   │   │   ├── tabs.tsx
-│   │   │   │   ├── badge.tsx
-│   │   │   │   ├── avatar.tsx
-│   │   │   │   ├── separator.tsx
-│   │   │   │   ├── scroll-area.tsx
-│   │   │   │   ├── sheet.tsx
-│   │   │   │   └── table.tsx
-│   │   │   ├── layout/                # Layout components
-│   │   │   │   ├── Sidebar.tsx        # Main sidebar navigation
-│   │   │   │   ├── Header.tsx         # Top header with user info
-│   │   │   │   ├── Footer.tsx         # Footer component
-│   │   │   │   ├── Navigation.tsx     # Navigation breadcrumbs
-│   │   │   │   └── MobileNav.tsx      # Mobile navigation
-│   │   │   ├── auth/                  # Authentication components
-│   │   │   │   ├── LoginForm.tsx      # Login form
-│   │   │   │   ├── RegisterForm.tsx   # Registration form
-│   │   │   │   ├── ForgotPasswordForm.tsx
-│   │   │   │   ├── SocialLogin.tsx    # Social auth buttons
-│   │   │   │   ├── AuthGuard.tsx      # Route protection
-│   │   │   │   └── UserProfile.tsx    # User profile dropdown
-│   │   │   ├── chat/                  # Chat-specific components
-│   │   │   │   ├── ChatInterface.tsx  # Main chat UI
-│   │   │   │   ├── MessageBubble.tsx  # Individual message
-│   │   │   │   ├── ChatHistory.tsx    # Chat history sidebar
-│   │   │   │   ├── TypingIndicator.tsx
-│   │   │   │   ├── CodeHighlight.tsx  # Code syntax highlighting
-│   │   │   │   └── StreamingText.tsx  # Streaming text display
-│   │   │   ├── editor/                # Monaco editor components
-│   │   │   │   ├── CodeEditor.tsx     # Monaco editor wrapper
-│   │   │   │   ├── LanguageSelector.tsx
-│   │   │   │   ├── EditorToolbar.tsx  # Editor toolbar
-│   │   │   │   ├── OutputPanel.tsx    # Code output display
-│   │   │   │   └── CollaborationCursor.tsx
-│   │   │   ├── documents/             # Document components
-│   │   │   │   ├── DocumentUpload.tsx # Drag & drop upload
-│   │   │   │   ├── DocumentViewer.tsx # PDF/DOCX viewer
-│   │   │   │   ├── DocumentList.tsx   # Document library
-│   │   │   │   ├── QAInterface.tsx    # Q&A chat interface
-│   │   │   │   ├── HighlightedText.tsx # Text highlighting
-│   │   │   │   └── DocumentSearch.tsx # Search within docs
-│   │   │   ├── analysis/              # Data analysis components
-│   │   │   │   ├── DataTable.tsx      # Interactive data table
-│   │   │   │   ├── ChartRenderer.tsx  # Chart.js/Recharts wrapper
-│   │   │   │   ├── StatsSummary.tsx   # Statistics summary
-│   │   │   │   ├── FilterPanel.tsx    # Data filtering
-│   │   │   │   └── ExportOptions.tsx  # Data export options
-│   │   │   ├── research/              # Research components
-│   │   │   │   ├── CitationManager.tsx # Citation tool
-│   │   │   │   ├── Summarizer.tsx     # Text summarizer
-│   │   │   │   ├── PaperAnalyzer.tsx  # Research paper analysis
-│   │   │   │   ├── ReferenceList.tsx  # Reference management
-│   │   │   │   └── GapAnalyzer.tsx    # Literature gap analysis
-│   │   │   ├── blockchain/            # Web3 components
-│   │   │   │   ├── WalletConnect.tsx  # Wallet connection
-│   │   │   │   ├── ContractAuditor.tsx # Smart contract auditor
-│   │   │   │   ├── MarketplaceBrowser.tsx
-│   │   │   │   ├── TransactionStatus.tsx
-│   │   │   │   └── GasEstimator.tsx   # Gas price estimation
-│   │   │   ├── dashboard/             # Dashboard components
-│   │   │   │   ├── StatsCards.tsx     # Usage statistics
-│   │   │   │   ├── RecentActivity.tsx # Recent activity feed
-│   │   │   │   ├── QuickActions.tsx   # Quick action buttons
-│   │   │   │   ├── UsageCharts.tsx    # Usage visualization
-│   │   │   │   └── Notifications.tsx  # Notification panel
-│   │   │   └── shared/                # Shared components
-│   │   │       ├── LoadingSpinner.tsx
-│   │   │       ├── ErrorBoundary.tsx
-│   │   │       ├── EmptyState.tsx
-│   │   │       ├── ConfirmDialog.tsx
-│   │   │       ├── DataGrid.tsx
-│   │   │       ├── SearchBar.tsx
-│   │   │       ├── FileUpload.tsx
-│   │   │       ├── ProgressBar.tsx
-│   │   │       ├── TagInput.tsx
-│   │   │       └── DateRangePicker.tsx
-│   │   ├── hooks/                     # Custom React hooks
-│   │   │   ├── useAuth.ts             # Authentication hook
-│   │   │   ├── useChat.ts             # Chat functionality
-│   │   │   ├── useWebSocket.ts        # WebSocket connection
-│   │   │   ├── useLocalStorage.ts     # Local storage wrapper
-│   │   │   ├── useDebounce.ts         # Debounced values
-│   │   │   ├── useAsync.ts            # Async operations
-│   │   │   ├── usePagination.ts       # Pagination logic
-│   │   │   ├── useUpload.ts           # File upload handling
-│   │   │   ├── useEditor.ts           # Monaco editor state
-│   │   │   ├── useAnalysis.ts         # Data analysis state
-│   │   │   └── useWeb3.ts             # Web3 integration
-│   │   ├── lib/                       # Utility functions & configs
-│   │   │   ├── auth/
-│   │   │   │   ├── supabase.ts        # Supabase client
-│   │   │   │   ├── session.ts         # Session management
-│   │   │   │   └── permissions.ts     # Role-based access
-│   │   │   ├── api/
-│   │   │   │   ├── client.ts          # API client configuration
-│   │   │   │   ├── endpoints.ts       # API endpoints
-│   │   │   │   └── types.ts           # API response types
-│   │   │   ├── utils/
-│   │   │   │   ├── cn.ts              # Class name utility
-│   │   │   │   ├── formatters.ts      # Data formatting
-│   │   │   │   ├── validators.ts      # Form validation
-│   │   │   │   ├── constants.ts       # App constants
-│   │   │   │   ├── storage.ts         # File storage utilities
-│   │   │   │   └── crypto.ts          # Encryption utilities
-│   │   │   ├── database/
-│   │   │   │   ├── supabase.ts        # Supabase queries
-│   │   │   │   └── mongodb.ts         # MongoDB client
-│   │   │   ├── ai/
-│   │   │   │   ├── groq.ts            # Groq API client
-│   │   │   │   ├── embeddings.ts      # Text embeddings
-│   │   │   │   └── prompts.ts         # AI prompts
-│   │   │   └── web3/
-│   │   │       ├── providers.ts       # Web3 providers
-│   │   │       ├── contracts.ts       # Smart contract ABIs
-│   │   │       └── wallet.ts          # Wallet utilities
-│   │   ├── store/                     # Zustand state management
-│   │   │   ├── authStore.ts           # Authentication state
-│   │   │   ├── chatStore.ts           # Chat state
-│   │   │   ├── documentStore.ts       # Document state
-│   │   │   ├── editorStore.ts         # Editor state
-│   │   │   ├── analysisStore.ts       # Data analysis state
-│   │   │   ├── notificationStore.ts   # Notifications
-│   │   │   ├── settingsStore.ts       # User settings
-│   │   │   └── web3Store.ts           # Web3 state
-│   │   ├── types/                     # TypeScript definitions
-│   │   │   ├── auth.ts                # Auth types
-│   │   │   ├── api.ts                 # API types
-│   │   │   ├── chat.ts                # Chat types
-│   │   │   ├── documents.ts           # Document types
-│   │   │   ├── editor.ts              # Editor types
-│   │   │   ├── analysis.ts            # Analysis types
-│   │   │   ├── research.ts            # Research types
-│   │   │   ├── blockchain.ts          # Web3 types
-│   │   │   ├── database.ts            # Database types
-│   │   │   └── global.ts              # Global types
-│   │   └── styles/                    # Styling
-│   │       ├── globals.css            # Global CSS
-│   │       ├── components.css         # Component styles
-│   │       └── animations.css         # Custom animations
-│   ├── public/                        # Static assets
-│   │   ├── images/
-│   │   │   ├── logo.svg
-│   │   │   ├── hero-bg.jpg
-│   │   │   └── icons/
-│   │   │       ├── chat.svg
-│   │   │       ├── document.svg
-│   │   │       ├── code.svg
-│   │   │       └── analysis.svg
-│   │   ├── manifests/
-│   │   │   └── site.webmanifest
-│   │   ├── robots.txt
-│   │   ├── sitemap.xml
-│   │   └── favicon.ico
-│   ├── tests/                         # Frontend tests
-│   │   ├── __tests__/                 # Jest tests
-│   │   │   ├── components/
-│   │   │   ├── pages/
-│   │   │   ├── hooks/
-│   │   │   └── utils/
-│   │   ├── e2e/                       # Playwright E2E tests
-│   │   │   ├── auth.spec.ts
-│   │   │   ├── chat.spec.ts
-│   │   │   ├── documents.spec.ts
-│   │   │   └── notebook.spec.ts
-│   │   ├── fixtures/                  # Test data
-│   │   └── setup/                     # Test configuration
-│   │       ├── jest.config.js
-│   │       └── playwright.config.ts
-│   ├── docs/                          # Frontend documentation
-│   │   ├── components.md              # Component documentation
-│   │   ├── routing.md                 # Routing guide
-│   │   └── deployment.md              # Deployment guide
-│   ├── .env.local                     # Environment variables
-│   ├── .env.example                   # Environment template
-│   ├── .gitignore
-│   ├── .eslintrc.json                 # ESLint configuration
-│   ├── .prettierrc                    # Prettier configuration
-│   ├── next.config.js                 # Next.js configuration
-│   ├── tailwind.config.js             # Tailwind CSS config
-│   ├── tsconfig.json                  # TypeScript config
-│   ├── package.json                   # Dependencies
-│   ├── package-lock.json              # Lock file
-│   ├── README.md                      # Frontend README
-│   └── vercel.json                    # Vercel deployment config
-│
+├── .claude/                           # Claude configuration files
 ├── backend/                           # FastAPI Backend
 │   ├── app/
-│   │   ├── api/                       # API endpoints
+│   │   ├── agents/                    # LangChain agents
+│   │   │   ├── __init__.py
+│   │   │   ├── base_agent.py          # Base agent class
+│   │   │   ├── code_review.py         # Code review agent
+│   │   │   ├── contract_auditor.py    # Smart contract auditor
+│   │   │   ├── data_analyst.py        # Data analysis agent
+│   │   │   ├── literature_reviewer.py # Literature review
+│   │   │   ├── project_planner.py     # Project planning agent
+│   │   │   └── research_agent.py      # Research assistant
+│   │   ├── api/
 │   │   │   └── v1/                    # API version 1
 │   │   │       ├── __init__.py
-│   │   │       ├── auth.py            # Authentication endpoints
-│   │   │       ├── chat.py            # Chat endpoints
-│   │   │       ├── documents.py       # Document processing
-│   │   │       ├── code.py            # Code execution
-│   │   │       ├── research.py        # Research tools
 │   │   │       ├── analysis.py        # Data analysis
-│   │   │       ├── notebook.py        # Notebook management
+│   │   │       ├── auth.py            # Authentication endpoints
 │   │   │       ├── blockchain.py      # Web3 endpoints
+│   │   │       ├── chat.py            # Chat endpoints
+│   │   │       ├── code.py            # Code execution
+│   │   │       ├── documents.py       # Document processing
 │   │   │       ├── files.py           # File operations
+│   │   │       ├── notebook.py        # Notebook management
+│   │   │       ├── research.py        # Research tools
 │   │   │       ├── users.py           # User management
 │   │   │       └── webhooks.py        # Webhook handlers
 │   │   ├── core/                      # Core configurations
 │   │   │   ├── __init__.py
 │   │   │   ├── config.py              # App configuration
-│   │   │   ├── security.py            # Security utilities
 │   │   │   ├── database.py            # Database connections
-│   │   │   ├── redis.py               # Redis configuration
-│   │   │   ├── logging.py             # Logging setup
 │   │   │   ├── exceptions.py          # Custom exceptions
-│   │   │   └── middleware.py          # FastAPI middleware
-│   │   ├── models/                    # Data models
-│   │   │   ├── __init__.py
-│   │   │   ├── user.py                # User models
-│   │   │   ├── chat.py                # Chat models
-│   │   │   ├── document.py            # Document models
-│   │   │   ├── notebook.py            # Notebook models
-│   │   │   ├── project.py             # Project models
-│   │   │   ├── analysis.py            # Analysis models
-│   │   │   └── blockchain.py          # Blockchain models
-│   │   ├── schemas/                   # Pydantic schemas
-│   │   │   ├── __init__.py
-│   │   │   ├── auth.py                # Auth schemas
-│   │   │   ├── chat.py                # Chat schemas
-│   │   │   ├── document.py            # Document schemas
-│   │   │   ├── code.py                # Code schemas
-│   │   │   ├── research.py            # Research schemas
-│   │   │   ├── analysis.py            # Analysis schemas
-│   │   │   ├── notebook.py            # Notebook schemas
-│   │   │   └── response.py            # Response schemas
-│   │   ├── services/                  # Business logic services
-│   │   │   ├── __init__.py
-│   │   │   ├── auth/
-│   │   │   │   ├── __init__.py
-│   │   │   │   ├── jwt.py             # JWT handling
-│   │   │   │   ├── oauth.py           # OAuth providers
-│   │   │   │   └── permissions.py     # RBAC permissions
-│   │   │   ├── ai/
-│   │   │   │   ├── __init__.py
-│   │   │   │   ├── groq_client.py     # Groq API client
-│   │   │   │   ├── local_llm.py       # Local Phi-2 model
-│   │   │   │   ├── embeddings.py      # Text embeddings
-│   │   │   │   ├── router.py          # AI routing logic
-│   │   │   │   └── cache.py           # Response caching
-│   │   │   ├── document/
-│   │   │   │   ├── __init__.py
-│   │   │   │   ├── processor.py       # Document processing
-│   │   │   │   ├── extractor.py       # Text extraction
-│   │   │   │   ├── chunker.py         # Text chunking
-│   │   │   │   ├── vectorizer.py      # Vector embeddings
-│   │   │   │   └── rag.py             # RAG implementation
-│   │   │   ├── code/
-│   │   │   │   ├── __init__.py
-│   │   │   │   ├── executor.py        # Code execution
-│   │   │   │   ├── sandbox.py         # Docker sandbox
-│   │   │   │   ├── generator.py       # Code generation
-│   │   │   │   ├── debugger.py        # Code debugging
-│   │   │   │   └── security.py        # Code security scan
-│   │   │   ├── research/
-│   │   │   │   ├── __init__.py
-│   │   │   │   ├── summarizer.py      # Text summarization
-│   │   │   │   ├── citation.py        # Citation management
-│   │   │   │   ├── analyzer.py        # Research analysis
-│   │   │   │   └── formatter.py       # Format conversion
-│   │   │   ├── analysis/
-│   │   │   │   ├── __init__.py
-│   │   │   │   ├── processor.py       # Data processing
-│   │   │   │   ├── statistics.py      # Statistical analysis
-│   │   │   │   ├── visualizer.py      # Chart generation
-│   │   │   │   └── exporter.py        # Data export
-│   │   │   ├── blockchain/
-│   │   │   │   ├── __init__.py
-│   │   │   │   ├── web3_client.py     # Web3 client
-│   │   │   │   ├── contract_audit.py  # Contract auditing
-│   │   │   │   ├── marketplace.py     # AI marketplace
-│   │   │   │   ├── storage.py         # IPFS storage
-│   │   │   │   └── credentials.py     # Credential issuing
-│   │   │   └── storage/
-│   │   │       ├── __init__.py
-│   │   │       ├── supabase.py        # Supabase storage
-│   │   │       ├── s3.py              # S3 compatible storage
-│   │   │       └── local.py           # Local file storage
-│   │   ├── agents/                    # LangChain agents
-│   │   │   ├── __init__.py
-│   │   │   ├── base_agent.py          # Base agent class
-│   │   │   ├── research_agent.py      # Research assistant
-│   │   │   ├── code_review.py         # Code review agent
-│   │   │   ├── data_analyst.py        # Data analysis agent
-│   │   │   ├── contract_auditor.py    # Smart contract auditor
-│   │   │   ├── literature_reviewer.py # Literature review
-│   │   │   └── project_planner.py     # Project planning agent
-│   │   ├── utils/                     # Utility functions
-│   │   │   ├── __init__.py
-│   │   │   ├── helpers.py             # General helpers
-│   │   │   ├── formatters.py          # Data formatting
-│   │   │   ├── validators.py          # Input validation
-│   │   │   ├── crypto.py              # Cryptography utils
-│   │   │   ├── monitoring.py          # Performance monitoring
-│   │   │   └── rate_limiter.py        # Rate limiting
-│   │   ├── tasks/                     # Background tasks (Celery)
-│   │   │   ├── __init__.py
-│   │   │   ├── celery_app.py          # Celery configuration
-│   │   │   ├── document_tasks.py      # Document processing
-│   │   │   ├── ai_tasks.py            # AI inference tasks
-│   │   │   ├── analysis_tasks.py      # Data analysis tasks
-│   │   │   ├── research_tasks.py      # Research processing
-│   │   │   ├── notification_tasks.py  # Email/notification tasks
-│   │   │   └── blockchain_tasks.py    # Blockchain operations
-│   │   ├── websocket/                 # WebSocket handlers
-│   │   │   ├── __init__.py
-│   │   │   ├── manager.py             # Connection manager
-│   │   │   ├── chat_handler.py        # Chat WebSocket
-│   │   │   ├── collaboration.py       # Real-time collaboration
-│   │   │   └── notifications.py       # Real-time notifications
+│   │   │   ├── logging.py             # Logging setup
+│   │   │   ├── middleware.py          # FastAPI middleware
+│   │   │   ├── redis.py               # Redis configuration
+│   │   │   └── security.py            # Security utilities
 │   │   ├── dependencies/              # FastAPI dependencies
 │   │   │   ├── __init__.py
 │   │   │   ├── auth.py                # Auth dependencies
 │   │   │   ├── database.py            # DB dependencies
 │   │   │   ├── permissions.py         # Permission checks
 │   │   │   └── rate_limit.py          # Rate limiting deps
-│   │   └── main.py                    # FastAPI application entry
-│   ├── vector_store/                  # FAISS vector database
-│   │   ├── __init__.py
-│   │   ├── faiss_manager.py           # FAISS operations
-│   │   ├── embeddings/                # Stored embeddings
-│   │   ├── indices/                   # FAISS indices
-│   │   └── config.json                # Vector store config
+│   │   ├── main.py                    # FastAPI application entry
+│   │   ├── models/                    # Data models
+│   │   │   ├── __init__.py
+│   │   │   ├── analysis.py            # Analysis models
+│   │   │   ├── blockchain.py          # Blockchain models
+│   │   │   ├── chat.py                # Chat models
+│   │   │   ├── cs_embedding_config.py # CS-specific embedding config
+│   │   │   ├── document.py            # Document models
+│   │   │   ├── embedding_config.py    # Embedding configuration
+│   │   │   ├── notebook.py            # Notebook models
+│   │   │   ├── project.py             # Project models
+│   │   │   └── user.py                # User models
+│   │   ├── schemas/                   # Pydantic schemas
+│   │   │   ├── __init__.py
+│   │   │   ├── analysis.py            # Analysis schemas
+│   │   │   ├── auth.py                # Auth schemas
+│   │   │   ├── chat.py                # Chat schemas
+│   │   │   ├── code.py                # Code schemas
+│   │   │   ├── document.py            # Document schemas
+│   │   │   ├── notebook.py            # Notebook schemas
+│   │   │   ├── research.py            # Research schemas
+│   │   │   └── response.py            # Response schemas
+│   │   ├── services/                  # Business logic services
+│   │   │   ├── ai/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── cache.py           # Response caching
+│   │   │   │   ├── embeddings.py      # Text embeddings
+│   │   │   │   ├── groq_client.py     # Groq API client
+│   │   │   │   ├── local_llm.py       # Local Phi-2 model
+│   │   │   │   └── router.py          # AI routing logic
+│   │   │   ├── analysis/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── exporter.py        # Data export
+│   │   │   │   ├── processor.py       # Data processing
+│   │   │   │   ├── statistics.py      # Statistical analysis
+│   │   │   │   └── visualizer.py      # Chart generation
+│   │   │   ├── auth/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── jwt.py             # JWT handling
+│   │   │   │   ├── oauth.py           # OAuth providers
+│   │   │   │   └── permissions.py     # RBAC permissions
+│   │   │   ├── blockchain/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── contract_audit.py  # Contract auditing
+│   │   │   │   ├── credentials.py     # Credential issuing
+│   │   │   │   ├── marketplace.py     # AI marketplace
+│   │   │   │   ├── storage.py         # IPFS storage
+│   │   │   │   └── web3_client.py     # Web3 client
+│   │   │   ├── code/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── debugger.py        # Code debugging
+│   │   │   │   ├── executor.py        # Code execution
+│   │   │   │   ├── generator.py       # Code generation
+│   │   │   │   ├── sandbox.py         # Docker sandbox
+│   │   │   │   └── security.py        # Code security scan
+│   │   │   ├── document/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── chunker.py         # Text chunking
+│   │   │   │   ├── extractor.py       # Text extraction
+│   │   │   │   ├── processor.py       # Document processing
+│   │   │   │   ├── rag.py             # RAG implementation
+│   │   │   │   └── vectorizer.py      # Vector embeddings
+│   │   │   ├── rag/                   # Advanced RAG system
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── cs_contrastive_learning.py
+│   │   │   │   ├── cs_data_processor.py
+│   │   │   │   ├── cs_embedding_trainer.py
+│   │   │   │   ├── cs_feedback_analyzer.py
+│   │   │   │   ├── cs_generator.py
+│   │   │   │   ├── cs_prompt_templates.py
+│   │   │   │   ├── cs_query_processor.py
+│   │   │   │   ├── cs_response_validator.py
+│   │   │   │   ├── cs_retriever.py
+│   │   │   │   ├── cs_synthetic_generator.py
+│   │   │   │   ├── data_collector.py
+│   │   │   │   ├── embedding_trainer.py
+│   │   │   │   ├── evaluator.py
+│   │   │   │   ├── feedback_collector.py
+│   │   │   │   ├── generator.py
+│   │   │   │   ├── indexer.py
+│   │   │   │   ├── preprocessor.py
+│   │   │   │   ├── prompt_templates.py
+│   │   │   │   ├── response_processor.py
+│   │   │   │   ├── retriever.py
+│   │   │   │   ├── synthetic_generator.py
+│   │   │   │   └── training_pipeline.py
+│   │   │   ├── research/
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── analyzer.py        # Research analysis
+│   │   │   │   ├── citation.py        # Citation management
+│   │   │   │   ├── formatter.py       # Format conversion
+│   │   │   │   └── summarizer.py      # Text summarization
+│   │   │   └── storage/
+│   │   │       ├── __init__.py
+│   │   │       ├── local.py           # Local file storage
+│   │   │       ├── s3.py              # S3 compatible storage
+│   │   │       └── supabase.py        # Supabase storage
+│   │   ├── tasks/                     # Background tasks (Celery)
+│   │   │   ├── __init__.py
+│   │   │   ├── ai_tasks.py            # AI inference tasks
+│   │   │   ├── analysis_tasks.py      # Data analysis tasks
+│   │   │   ├── blockchain_tasks.py    # Blockchain operations
+│   │   │   ├── celery_app.py          # Celery configuration
+│   │   │   ├── document_tasks.py      # Document processing
+│   │   │   ├── notification_tasks.py  # Email/notification tasks
+│   │   │   └── research_tasks.py      # Research processing
+│   │   ├── utils/                     # Utility functions
+│   │   │   ├── __init__.py
+│   │   │   ├── crypto.py              # Cryptography utils
+│   │   │   ├── formatters.py          # Data formatting
+│   │   │   ├── helpers.py             # General helpers
+│   │   │   ├── monitoring.py          # Performance monitoring
+│   │   │   ├── rate_limiter.py        # Rate limiting
+│   │   │   └── validators.py          # Input validation
+│   │   └── websocket/                 # WebSocket handlers
+│   │       ├── __init__.py
+│   │       ├── chat_handler.py        # Chat WebSocket
+│   │       ├── collaboration.py       # Real-time collaboration
+│   │       ├── manager.py             # Connection manager
+│   │       └── notifications.py       # Real-time notifications
+│   ├── data/
+│   │   └── training/                  # Training data for RAG
+│   │       ├── cs_evaluation_set.py
+│   │       ├── cs_preprocessor.py
+│   │       ├── dataset_analyzer.py
+│   │       ├── domain_mapper.py
+│   │       ├── kaggle_cs_dataset/
+│   │       │   └── train.csv
+│   │       ├── processed/
+│   │       │   ├── algorithm_questions.jsonl
+│   │       │   ├── code_questions.jsonl
+│   │       │   ├── filtered_qa_pairs.jsonl
+│   │       │   ├── mixed_difficulty.jsonl
+│   │       │   └── theory_questions.jsonl
+│   │       └── synthetic/
+│   │           ├── document_based_qa.jsonl
+│   │           └── hybrid_questions.jsonl
+│   ├── docker-compose.prod.yml
+│   ├── docker-compose.yml
+│   ├── docs/
+│   │   ├── api_reference.md           # API reference
+│   │   ├── architecture.md            # Architecture overview
+│   │   ├── authentication.md          # Auth documentation
+│   │   ├── deployment.md              # Deployment guide
+│   │   └── rate_limiting.md           # Rate limiting guide
+│   ├── Dockerfile
+│   ├── Dockerfile.dev
+│   ├── migrations/
+│   │   ├── alembic.ini
+│   │   ├── env.py
+│   │   ├── script.py.mako
+│   │   └── versions/
+│   ├── mypy.ini
+│   ├── pyproject.toml
+│   ├── pytest.ini
+│   ├── railway.json
+│   ├── README.md
+│   ├── requirements-dev.txt
+│   ├── requirements.txt
 │   ├── sandbox/                       # Docker sandbox configs
-│   │   ├── Dockerfile.python          # Python execution env
-│   │   ├── Dockerfile.node            # Node.js execution env
-│   │   ├── Dockerfile.rust            # Rust execution env
-│   │   ├── security_policy.json       # Security policies
-│   │   ├── resource_limits.yaml       # Resource constraints
-│   │   └── templates/                 # Code templates
-│   │       ├── python/
+│   │   ├── Dockerfile.node
+│   │   ├── Dockerfile.python
+│   │   ├── Dockerfile.rust
+│   │   ├── resource_limits.yaml
+│   │   ├── security_policy.json
+│   │   └── templates/
 │   │       ├── javascript/
-│   │       ├── typescript/
-│   │       └── rust/
-│   ├── migrations/                    # Database migrations
-│   │   ├── versions/                  # Alembic migration files
-│   │   ├── env.py                     # Alembic environment
-│   │   ├── script.py.mako             # Migration template
-│   │   └── alembic.ini                # Alembic configuration
-│   ├── tests/                         # Backend tests
+│   │       ├── python/
+│   │       ├── rust/
+│   │       └── typescript/
+│   ├── scripts/
+│   │   ├── backup_vectors.py
+│   │   ├── deploy.py
+│   │   ├── health_check.py
+│   │   ├── migrate_db.py
+│   │   ├── rag/                       # RAG-specific scripts
+│   │   │   ├── build_index.py
+│   │   │   ├── deploy_models.py
+│   │   │   ├── evaluate_rag.py
+│   │   │   ├── export_models.py
+│   │   │   ├── generate_synthetic_data.py
+│   │   │   ├── process_cs_dataset.py
+│   │   │   ├── train_embeddings.py
+│   │   │   └── validate_training_data.py
+│   │   ├── seed_data.py
+│   │   └── setup_local_llm.py
+│   ├── tests/
 │   │   ├── __init__.py
-│   │   ├── conftest.py                # Pytest configuration
-│   │   ├── unit/                      # Unit tests
-│   │   │   ├── test_auth.py
-│   │   │   ├── test_chat.py
-│   │   │   ├── test_documents.py
-│   │   │   ├── test_code.py
-│   │   │   ├── test_research.py
-│   │   │   ├── test_analysis.py
-│   │   │   └── test_blockchain.py
-│   │   ├── integration/               # Integration tests
-│   │   │   ├── test_api_endpoints.py
+│   │   ├── conftest.py
+│   │   ├── e2e/
+│   │   │   ├── test_code_execution.py
+│   │   │   ├── test_document_flow.py
+│   │   │   └── test_user_journey.py
+│   │   ├── fixtures/
+│   │   │   ├── mock_responses/
+│   │   │   ├── sample_documents/
+│   │   │   └── test_code/
+│   │   ├── integration/
 │   │   │   ├── test_ai_services.py
+│   │   │   ├── test_api_endpoints.py
 │   │   │   ├── test_database.py
 │   │   │   └── test_websockets.py
-│   │   ├── e2e/                       # End-to-end tests
-│   │   │   ├── test_user_journey.py
-│   │   │   ├── test_document_flow.py
-│   │   │   └── test_code_execution.py
-│   │   ├── fixtures/                  # Test data
-│   │   │   ├── sample_documents/
-│   │   │   ├── test_code/
-│   │   │   └── mock_responses/
-│   │   └── utils/                     # Test utilities
-│   │       ├── factories.py           # Data factories
-│   │       ├── mocks.py               # Mock objects
-│   │       └── helpers.py             # Test helpers
-│   ├── docs/                          # API documentation
-│   │   ├── api_reference.md           # API reference
-│   │   ├── authentication.md          # Auth documentation
-│   │   ├── rate_limiting.md           # Rate limiting guide
-│   │   ├── deployment.md              # Deployment guide
-│   │   └── architecture.md            # Architecture overview
-│   ├── scripts/                       # Backend scripts
-│   │   ├── setup_local_llm.py         # Setup Phi-2 model
-│   │   ├── migrate_db.py              # Database migration
-│   │   ├── seed_data.py               # Seed test data
-│   │   ├── backup_vectors.py          # Backup vector store
-│   │   ├── health_check.py            # Health monitoring
-│   │   └── deploy.py                  # Deployment script
-│   ├── .env                           # Environment variables
-│   ├── .env.example                   # Environment template
-│   ├── .gitignore
-│   ├── .dockerignore
-│   ├── Dockerfile                     # Production Docker image
-│   ├── Dockerfile.dev                 # Development Docker image
-│   ├── docker-compose.yml             # Local development stack
-│   ├── docker-compose.prod.yml        # Production stack
-│   ├── requirements.txt               # Python dependencies
-│   ├── requirements-dev.txt           # Development dependencies
-│   ├── pyproject.toml                 # Python project config
-│   ├── pytest.ini                     # Pytest configuration
-│   ├── mypy.ini                       # Type checking config
-│   ├── .pre-commit-config.yaml        # Pre-commit hooks
-│   ├── railway.json                   # Railway deployment config
-│   └── README.md                      # Backend README
-│
-├── blockchain/                        # Blockchain components
-│   ├── contracts/                     # Smart contracts
-│   │   ├── interfaces/                # Contract interfaces
+│   │   ├── rag/                       # RAG system tests
+│   │   │   ├── __init__.py
+│   │   │   ├── benchmarks.py
+│   │   │   ├── cs_evaluation.py
+│   │   │   ├── evaluation.py
+│   │   │   ├── test_embedding.py
+│   │   │   ├── test_generation.py
+│   │   │   └── test_retrieval.py
+│   │   ├── unit/
+│   │   │   ├── test_analysis.py
+│   │   │   ├── test_auth.py
+│   │   │   ├── test_blockchain.py
+│   │   │   ├── test_chat.py
+│   │   │   ├── test_code.py
+│   │   │   ├── test_documents.py
+│   │   │   └── test_research.py
+│   │   └── utils/
+│   │       ├── factories.py
+│   │       ├── helpers.py
+│   │       └── mocks.py
+│   └── vector_store/
+│       ├── __init__.py
+│       ├── config.json
+│       ├── cs_faiss_manager.py        # CS-specific FAISS manager
+│       ├── embeddings/
+│       ├── faiss_manager.py
+│       └── indices/
+├── blockchain/
+│   ├── contracts/
+│   │   ├── core/
+│   │   │   ├── AIMarketplace.sol
+│   │   │   ├── ContentProvenance.sol
+│   │   │   ├── CredentialIssuer.sol
+│   │   │   └── UserRegistry.sol
+│   │   ├── interfaces/
 │   │   │   ├── IAIMarketplace.sol
-│   │   │   ├── ICredentialIssuer.sol
-│   │   │   └── IContentProvenance.sol
-│   │   ├── core/                      # Core contracts
-│   │   │   ├── AIMarketplace.sol      # AI model marketplace
-│   │   │   ├── CredentialIssuer.sol   # Certificate issuing
-│   │   │   ├── ContentProvenance.sol  # Content verification
-│   │   │   └── UserRegistry.sol       # User management
-│   │   ├── libraries/                 # Shared libraries
-│   │   │   ├── SafeMath.sol
+│   │   │   ├── IContentProvenance.sol
+│   │   │   └── ICredentialIssuer.sol
+│   │   ├── libraries/
 │   │   │   ├── AccessControl.sol
-│   │   │   └── Pausable.sol
-│   │   ├── mocks/                     # Test contracts
+│   │   │   ├── Pausable.sol
+│   │   │   └── SafeMath.sol
+│   │   ├── mocks/
 │   │   │   ├── MockERC20.sol
 │   │   │   └── MockOracle.sol
-│   │   └── upgrades/                  # Proxy contracts
+│   │   └── upgrades/
 │   │       ├── Proxy.sol
 │   │       └── ProxyAdmin.sol
-│   ├── scripts/                       # Deployment scripts
-│   │   ├── deploy.js                  # Main deployment
-│   │   ├── upgrade.js                 # Contract upgrades
-│   │   ├── verify.js                  # Contract verification
-│   │   ├── seed.js                    # Seed initial data
-│   │   └── migrate.js                 # Migration script
-│   ├── test/                          # Contract tests
+│   ├── deployments/
+│   │   ├── localhost/
+│   │   ├── mainnet/
+│   │   ├── mumbai/
+│   │   └── polygon/
+│   ├── hardhat.config.js
+│   ├── package.json
+│   ├── README.md
+│   ├── scripts/
+│   │   ├── deploy.js
+│   │   ├── migrate.js
+│   │   ├── seed.js
+│   │   ├── upgrade.js
+│   │   └── verify.js
+│   ├── test/
 │   │   ├── AIMarketplace.test.js
-│   │   ├── CredentialIssuer.test.js
 │   │   ├── ContentProvenance.test.js
+│   │   ├── CredentialIssuer.test.js
 │   │   ├── UserRegistry.test.js
 │   │   └── utils/
-│   │       ├── helpers.js
-│   │       └── constants.js
-│   ├── typechain/                     # Generated TypeScript types
-│   ├── deployments/                   # Deployment artifacts
-│   │   ├── mainnet/
-│   │   ├── polygon/
-│   │   ├── mumbai/
-│   │   └── localhost/
-│   ├── .env                           # Blockchain environment
-│   ├── .env.example
-│   ├── hardhat.config.js              # Hardhat configuration
-│   ├── package.json                   # Node.js dependencies
-│   ├── tsconfig.json                  # TypeScript config
-│   └── README.md                      # Blockchain README
-│
-├── infrastructure/                    # Infrastructure as Code
-│   ├── docker/                        # Docker configurations
-│   │   ├── frontend/
-│   │   │   ├── Dockerfile
-│   │   │   ├── Dockerfile.dev
-│   │   │   └── nginx.conf
+│   │       ├── constants.js
+│   │       └── helpers.js
+│   ├── tsconfig.json
+│   └── typechain/
+├── check-documents.js                 # Document verification script
+├── CHANGELOG.md
+├── CLAUDE.md                          # Claude-specific instructions
+├── CODE_OF_CONDUCT.md
+├── config/
+│   ├── development/
+│   │   ├── ai-models.yml
+│   │   ├── blockchain.yml
+│   │   ├── database.yml
+│   │   └── redis.yml
+│   ├── monitoring/
+│   │   ├── alerts.yml
+│   │   ├── logging.yml
+│   │   └── metrics.yml
+│   ├── production/
+│   │   ├── ai-models.yml
+│   │   ├── blockchain.yml
+│   │   ├── database.yml
+│   │   └── redis.yml
+│   ├── security/
+│   │   ├── auth-policies.yml
+│   │   ├── cors.yml
+│   │   ├── encryption.yml
+│   │   └── rate-limits.yml
+│   └── staging/
+│       ├── ai-models.yml
+│       ├── blockchain.yml
+│       ├── database.yml
+│       └── redis.yml
+├── CONTRIBUTING.md
+├── data/
+│   ├── backups/
+│   │   ├── daily/
+│   │   ├── monthly/
+│   │   └── weekly/
+│   ├── datasets/
+│   │   ├── chat-samples/
+│   │   ├── code-examples/
+│   │   ├── qanda/
+│   │   └── research-papers/
+│   ├── models/
+│   │   ├── embeddings/
+│   │   ├── fine-tuned/
+│   │   └── phi-2/
+│   ├── temp/
+│   │   ├── exports/
+│   │   ├── processing/
+│   │   └── uploads/
+│   └── vector-store/
+│       ├── code/
+│       ├── documents/
+│       └── research/
+├── docker-compose.prod.yml
+├── docker-compose.test.yml
+├── docker-compose.yml
+├── docs/
+│   ├── api/
+│   │   ├── analysis.md
+│   │   ├── authentication.md
+│   │   ├── blockchain.md
+│   │   ├── chat.md
+│   │   ├── code.md
+│   │   ├── documents.md
+│   │   ├── research.md
+│   │   └── websockets.md
+│   ├── architecture/
+│   │   ├── api-design.md
+│   │   ├── blockchain-integration.md
+│   │   ├── database-design.md
+│   │   ├── overview.md
+│   │   ├── scalability.md
+│   │   └── security.md
+│   ├── business/
+│   │   ├── feature-roadmap.md
+│   │   ├── go-to-market.md
+│   │   ├── pricing-strategy.md
+│   │   ├── product-requirements.md
+│   │   └── user-personas.md
+│   ├── deployment/
+│   │   ├── ci-cd-pipeline.md
+│   │   ├── environment-vars.md
+│   │   ├── monitoring.md
+│   │   ├── railway-setup.md
+│   │   ├── supabase-setup.md
+│   │   └── vercel-setup.md
+│   ├── development/
+│   │   ├── coding-standards.md
+│   │   ├── getting-started.md
+│   │   ├── git-workflow.md
+│   │   ├── local-setup.md
+│   │   ├── testing-guide.md
+│   │   └── troubleshooting.md
+│   ├── legal/
+│   │   ├── data-processing.md
+│   │   ├── privacy-policy.md
+│   │   ├── security-policy.md
+│   │   └── terms-of-service.md
+│   ├── rag/                           # RAG system documentation
+│   │   ├── cs_dataset_guide.md
+│   │   ├── deployment_guide.md
+│   │   ├── evaluation_metrics.md
+│   │   └── training_guide.md
+│   └── user-guides/
+│       ├── blockchain-features.md
+│       ├── chat-features.md
+│       ├── code-assistant.md
+│       ├── data-analysis.md
+│       ├── document-qa.md
+│       ├── getting-started.md
+│       └── research-tools.md
+├── firebase.json
+├── FRONTEND.md
+├── frontend/                          # Next.js 14 App Router Frontend
+│   ├── check-docs.js
+│   ├── debug-upload-auth.html
+│   ├── debug-upload.html
+│   ├── disable-rls-simple.js
+│   ├── dist/
+│   ├── docs/
+│   │   ├── components.md
+│   │   ├── deployment.md
+│   │   └── routing.md
+│   ├── fix-rls.js
+│   ├── GEMINI.md
+│   ├── middleware.ts
+│   ├── next-env.d.ts
+│   ├── next.config.js
+│   ├── node_modules/
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── postcss.config.js
+│   ├── public/
+│   │   ├── apple-touch-icon.png
+│   │   ├── favicon-16x16.png
+│   │   ├── favicon-32x32.png
+│   │   ├── favicon.ico
+│   │   ├── fonts/
+│   │   ├── images/
+│   │   │   ├── hero-bg.jpg
+│   │   │   ├── icons/
+│   │   │   │   ├── analysis.svg
+│   │   │   │   ├── chat.svg
+│   │   │   │   ├── code.svg
+│   │   │   │   └── document.svg
+│   │   │   ├── logo/
+│   │   │   │   └── Logo.jpeg
+│   │   │   ├── logo.svg
+│   │   │   └── Screenshot from 2025-07-20 20-10-51.png
+│   │   ├── manifest.json
+│   │   ├── manifests/
+│   │   │   └── site.webmanifest
+│   │   ├── robots.txt
+│   │   ├── sitemap.xml
+│   │   └── videos/
+│   │       ├── Create_a_highdefinition_202507202019.mp4
+│   │       ├── video.mp4
+│   │       └── website-page_landing.mp4
+│   ├── README.md                      # This file
+│   ├── setup-supabase.js
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── api/                   # API routes (Server Actions)
+│   │   │   │   ├── analysis/
+│   │   │   │   │   ├── process/
+│   │   │   │   │   │   └── route.ts
+│   │   │   │   │   └── visualize/
+│   │   │   │   │       └── route.ts
+│   │   │   │   ├── auth/
+│   │   │   │   │   ├── callback/
+│   │   │   │   │   │   └── route.ts
+│   │   │   │   │   ├── login/
+│   │   │   │   │   │   └── route.ts
+│   │   │   │   │   └── logout/
+│   │   │   │   │       └── route.ts
+│   │   │   │   ├── chat/
+│   │   │   │   │   ├── history/
+│   │   │   │   │   │   └── route.ts
+│   │   │   │   │   └── stream/
+│   │   │   │   │       └── route.ts
+│   │   │   │   ├── code/
+│   │   │   │   │   ├── execute/
+│   │   │   │   │   │   └── route.ts
+│   │   │   │   │   └── generate/
+│   │   │   │   │       └── route.ts
+│   │   │   │   ├── documents/
+│   │   │   │   │   ├── [id]/
+│   │   │   │   │   │   ├── delete/
+│   │   │   │   │   │   │   └── route.ts
+│   │   │   │   │   │   ├── metadata/
+│   │   │   │   │   │   │   └── route.ts
+│   │   │   │   │   │   ├── presigned-url/
+│   │   │   │   │   │   │   └── route.ts
+│   │   │   │   │   │   ├── qa/
+│   │   │   │   │   │   │   └── route.ts
+│   │   │   │   │   │   ├── route.ts
+│   │   │   │   │   │   └── view/
+│   │   │   │   │   │       └── route.ts
+│   │   │   │   │   ├── list/
+│   │   │   │   │   │   └── route.ts
+│   │   │   │   │   ├── process/
+│   │   │   │   │   │   └── route.ts
+│   │   │   │   │   ├── search/
+│   │   │   │   │   │   └── route.ts
+│   │   │   │   │   └── upload/
+│   │   │   │   │       └── route.ts
+│   │   │   │   └── webhooks/
+│   │   │   │       ├── stripe/
+│   │   │   │       │   └── route.ts
+│   │   │   │       └── supabase/
+│   │   │   │           └── route.ts
+│   │   │   ├── auth/                  # Auth route group
+│   │   │   │   ├── callback/
+│   │   │   │   │   └── page.tsx
+│   │   │   │   ├── forgot-password/
+│   │   │   │   │   └── page.tsx
+│   │   │   │   ├── layout.tsx
+│   │   │   │   ├── login/
+│   │   │   │   │   └── page.tsx
+│   │   │   │   ├── register/
+│   │   │   │   │   └── page.tsx
+│   │   │   │   └── verify-email/
+│   │   │   │       └── page.tsx
+│   │   │   ├── dashboard/             # Protected dashboard routes
+│   │   │   │   ├── analysis/
+│   │   │   │   │   ├── [datasetId]/
+│   │   │   │   │   │   └── page.tsx
+│   │   │   │   │   ├── page.tsx
+│   │   │   │   │   └── upload/
+│   │   │   │   │       └── page.tsx
+│   │   │   │   ├── audit/
+│   │   │   │   │   ├── page.tsx
+│   │   │   │   │   └── {[auditId]}/
+│   │   │   │   ├── chat/
+│   │   │   │   │   ├── loading.tsx
+│   │   │   │   │   ├── page.tsx
+│   │   │   │   │   └── {[threadId]}/
+│   │   │   │   ├── code/
+│   │   │   │   │   ├── debug/
+│   │   │   │   │   │   └── page.tsx
+│   │   │   │   │   ├── page.tsx
+│   │   │   │   │   └── templates/
+│   │   │   │   │       └── page.tsx
+│   │   │   │   ├── documents/
+│   │   │   │   │   ├── [id]/
+│   │   │   │   │   │   ├── page.tsx
+│   │   │   │   │   │   ├── qa/
+│   │   │   │   │   │   │   └── page.tsx
+│   │   │   │   │   │   └── viewer/
+│   │   │   │   │   │       └── page.tsx
+│   │   │   │   │   ├── components/
+│   │   │   │   │   │   ├── DocumentViewer.tsx
+│   │   │   │   │   │   ├── FileManager.tsx
+│   │   │   │   │   │   └── QAInterface.tsx
+│   │   │   │   │   ├── page.tsx
+│   │   │   │   │   ├── README.md
+│   │   │   │   │   └── upload/
+│   │   │   │   │       └── page.tsx
+│   │   │   │   ├── layout.tsx
+│   │   │   │   ├── marketplace/
+│   │   │   │   │   ├── [modelId]/
+│   │   │   │   │   │   └── page.tsx
+│   │   │   │   │   ├── browse/
+│   │   │   │   │   │   └── page.tsx
+│   │   │   │   │   └── page.tsx
+│   │   │   │   ├── notebook/
+│   │   │   │   │   ├── [notebookId]/
+│   │   │   │   │   │   ├── page.tsx
+│   │   │   │   │   │   └── {share}/
+│   │   │   │   │   ├── new/
+│   │   │   │   │   │   └── page.tsx
+│   │   │   │   │   └── page.tsx
+│   │   │   │   ├── page.tsx
+│   │   │   │   ├── projects/
+│   │   │   │   │   ├── [projectId]/
+│   │   │   │   │   │   ├── page.tsx
+│   │   │   │   │   │   └── {kanban}/
+│   │   │   │   │   ├── new/
+│   │   │   │   │   │   └── page.tsx
+│   │   │   │   │   └── page.tsx
+│   │   │   │   ├── research/
+│   │   │   │   │   ├── citations/
+│   │   │   │   │   │   └── page.tsx
+│   │   │   │   │   ├── literature/
+│   │   │   │   │   │   └── page.tsx
+│   │   │   │   │   ├── page.tsx
+│   │   │   │   │   └── summarize/
+│   │   │   │   │       └── page.tsx
+│   │   │   │   └── settings/
+│   │   │   │       ├── api-keys/
+│   │   │   │       │   └── page.tsx
+│   │   │   │       ├── billing/
+│   │   │   │       │   └── page.tsx
+│   │   │   │       ├── page.tsx
+│   │   │   │       ├── preferences/
+│   │   │   │       │   └── page.tsx
+│   │   │   │       └── test-visibility.tsx
+│   │   │   ├── debug-oauth/
+│   │   │   │   └── page.tsx
+│   │   │   ├── error.tsx
+│   │   │   ├── globals.css
+│   │   │   ├── layout.tsx
+│   │   │   ├── loading.tsx
+│   │   │   ├── not-found.tsx
+│   │   │   ├── page.tsx
+│   │   │   ├── test-auth/
+│   │   │   │   └── page.tsx
+│   │   │   ├── test-settings/
+│   │   │   │   └── page.tsx
+│   │   │   └── test-upload/
+│   │   │       └── page.tsx
+│   │   ├── components/
+│   │   │   ├── analysis/
+│   │   │   │   ├── ChartRenderer.tsx
+│   │   │   │   ├── DataTable.tsx
+│   │   │   │   ├── ExportOptions.tsx
+│   │   │   │   ├── FilterPanel.tsx
+│   │   │   │   └── StatsSummary.tsx
+│   │   │   ├── auth/
+│   │   │   │   ├── AuthGuard.tsx
+│   │   │   │   ├── ForgotPasswordForm.tsx
+│   │   │   │   ├── LoginForm.tsx
+│   │   │   │   ├── RegisterForm.tsx
+│   │   │   │   ├── SocialAuth.tsx
+│   │   │   │   ├── SocialLogin.tsx
+│   │   │   │   └── UserProfile.tsx
+│   │   │   ├── blockchain/
+│   │   │   │   ├── ContractAuditor.tsx
+│   │   │   │   ├── GasEstimator.tsx
+│   │   │   │   ├── MarketplaceBrowser.tsx
+│   │   │   │   ├── TransactionStatus.tsx
+│   │   │   │   └── WalletConnect.tsx
+│   │   │   ├── chat/
+│   │   │   │   ├── ChatHistory.tsx
+│   │   │   │   ├── ChatInterface.tsx
+│   │   │   │   ├── CodeHighlight.tsx
+│   │   │   │   ├── MessageBubble.tsx
+│   │   │   │   ├── StreamingText.tsx
+│   │   │   │   └── TypingIndicator.tsx
+│   │   │   ├── dashboard/
+│   │   │   │   ├── Notifications.tsx
+│   │   │   │   ├── QuickActions.tsx
+│   │   │   │   ├── RecentActivity.tsx
+│   │   │   │   ├── StatsCards.tsx
+│   │   │   │   └── UsageCharts.tsx
+│   │   │   ├── documents/
+│   │   │   │   ├── DocumentList.tsx
+│   │   │   │   ├── DocumentSearch.tsx
+│   │   │   │   ├── DocumentUpload.tsx
+│   │   │   │   ├── DocumentViewer.tsx
+│   │   │   │   └── HighlightedText.tsx
+│   │   │   ├── editor/
+│   │   │   │   ├── CodeEditor.tsx
+│   │   │   │   ├── CollaborationCursor.tsx
+│   │   │   │   ├── EditorToolbar.tsx
+│   │   │   │   ├── LanguageSelector.tsx
+│   │   │   │   └── OutputPanel.tsx
+│   │   │   ├── layout/
+│   │   │   │   ├── Footer.tsx
+│   │   │   │   ├── Header.tsx
+│   │   │   │   ├── MobileNav.tsx
+│   │   │   │   ├── Navigation.tsx
+│   │   │   │   ├── Sidebar.tsx
+│   │   │   │   └── TopNav.tsx
+│   │   │   ├── research/
+│   │   │   │   ├── CitationManager.tsx
+│   │   │   │   ├── GapAnalyzer.tsx
+│   │   │   │   ├── PaperAnalyzer.tsx
+│   │   │   │   ├── ReferenceList.tsx
+│   │   │   │   └── Summarizer.tsx
+│   │   │   ├── SettingsShowcase.tsx
+│   │   │   ├── shared/
+│   │   │   │   ├── ConfirmDialog.tsx
+│   │   │   │   ├── DataGrid.tsx
+│   │   │   │   ├── DateRangePicker.tsx
+│   │   │   │   ├── EmptyState.tsx
+│   │   │   │   ├── ErrorBoundary.tsx
+│   │   │   │   ├── FileUpload.tsx
+│   │   │   │   ├── LoadingSpinner.tsx
+│   │   │   │   ├── ProgressBar.tsx
+│   │   │   │   ├── SearchBar.tsx
+│   │   │   │   └── TagInput.tsx
+│   │   │   └── ui/                    # ShadCN UI components
+│   │   │       ├── alert.tsx
+│   │   │       ├── avatar.tsx
+│   │   │       ├── badge.tsx
+│   │   │       ├── button.tsx
+│   │   │       ├── card.tsx
+│   │   │       ├── checkbox.tsx
+│   │   │       ├── dialog.tsx
+│   │   │       ├── dropdown-menu.tsx
+│   │   │       ├── form.tsx
+│   │   │       ├── input.tsx
+│   │   │       ├── label.tsx
+│   │   │       ├── progress.tsx
+│   │   │       ├── scroll-area.tsx
+│   │   │       ├── select.tsx
+│   │   │       ├── separator.tsx
+│   │   │       ├── settings-demo.tsx
+│   │   │       ├── sheet.tsx
+│   │   │       ├── skeleton.tsx
+│   │   │       ├── slider.tsx
+│   │   │       ├── switch.tsx
+│   │   │       ├── table.tsx
+│   │   │       ├── tabs.tsx
+│   │   │       ├── textarea.tsx
+│   │   │       ├── theme-toggle.tsx
+│   │   │       ├── toast.tsx
+│   │   │       ├── tooltip.tsx
+│   │   │       └── use-toast.tsx
+│   │   ├── contexts/
+│   │   │   ├── EnhancedSettingsContext.tsx
+│   │   │   ├── LoadingContext.tsx
+│   │   │   ├── SettingsContext.tsx
+│   │   │   └── UserContext.tsx
+│   │   ├── hooks/                     # Custom React hooks
+│   │   │   ├── useAnalysis.ts
+│   │   │   ├── useAsync.ts
+│   │   │   ├── useAuth.ts
+│   │   │   ├── useChat.ts
+│   │   │   ├── useDashboardData.ts
+│   │   │   ├── useDebounce.ts
+│   │   │   ├── useDocuments.ts
+│   │   │   ├── useEditor.ts
+│   │   │   ├── useGlobalSettings.ts
+│   │   │   ├── useLocalStorage.ts
+│   │   │   ├── usePagination.ts
+│   │   │   ├── useUpload.ts
+│   │   │   ├── useUserSettings.ts
+│   │   │   ├── useWeb3.ts
+│   │   │   └── useWebSocket.ts
+│   │   ├── lib/                       # Utility functions & configs
+│   │   │   ├── ai/
+│   │   │   │   ├── embeddings.ts
+│   │   │   │   ├── groq.ts
+│   │   │   │   └── prompts.ts
+│   │   │   ├── api/
+│   │   │   │   ├── client.ts
+│   │   │   │   ├── endpoints.ts
+│   │   │   │   └── types.ts
+│   │   │   ├── auth/
+│   │   │   │   ├── flow.ts
+│   │   │   │   ├── integrated-auth.ts
+│   │   │   │   ├── permissions.ts
+│   │   │   │   ├── persistence.ts
+│   │   │   │   ├── session.ts
+│   │   │   │   └── supabase.ts
+│   │   │   ├── database/
+│   │   │   │   ├── mongodb.ts
+│   │   │   │   └── supabase.ts
+│   │   │   ├── firebase/
+│   │   │   │   ├── chat-storage.ts
+│   │   │   │   ├── config.ts
+│   │   │   │   ├── document-storage.ts
+│   │   │   │   ├── firestore.ts
+│   │   │   │   └── storage.ts
+│   │   │   ├── services/
+│   │   │   │   └── settings-service.ts
+│   │   │   ├── storage/
+│   │   │   │   └── s3-storage.ts
+│   │   │   ├── supabase/
+│   │   │   │   ├── document-storage-no-auth.ts
+│   │   │   │   ├── document-storage.ts
+│   │   │   │   └── s3-document-storage.ts
+│   │   │   ├── utils/
+│   │   │   │   ├── cn.ts
+│   │   │   │   ├── constants.ts
+│   │   │   │   ├── crypto.ts
+│   │   │   │   ├── formatters.ts
+│   │   │   │   ├── settings-sync.ts
+│   │   │   │   ├── storage.ts
+│   │   │   │   └── validators.ts
+│   │   │   ├── utils.ts
+│   │   │   └── web3/
+│   │   │       ├── contracts.ts
+│   │   │       ├── providers.ts
+│   │   │       └── wallet.ts
+│   │   ├── store/                     # Zustand state management
+│   │   │   ├── analysisStore.ts
+│   │   │   ├── authStore.ts
+│   │   │   ├── chatStore.ts
+│   │   │   ├── documentStore.ts
+│   │   │   ├── editorStore.ts
+│   │   │   ├── notificationStore.ts
+│   │   │   ├── settingsStore.ts
+│   │   │   └── web3Store.ts
+│   │   ├── styles/
+│   │   └── types/                     # TypeScript definitions
+│   │       ├── analysis.ts
+│   │       ├── api.ts
+│   │       ├── auth.ts
+│   │       ├── blockchain.ts
+│   │       ├── chat.ts
+│   │       ├── database.ts
+│   │       ├── documents.ts
+│   │       ├── editor.ts
+│   │       ├── global.ts
+│   │       ├── research.ts
+│   │       └── simple-document.ts
+│   ├── supabase-documents-schema.sql
+│   ├── tailwind.config.js
+│   ├── test-auth.js
+│   ├── test-db.js
+│   ├── test-rls.js
+│   ├── tests/                         # Frontend tests
+│   │   ├── __tests__/
+│   │   │   ├── components/
+│   │   │   ├── hooks/
+│   │   │   ├── pages/
+│   │   │   └── utils/
+│   │   ├── e2e/
+│   │   │   ├── auth.spec.ts
+│   │   │   ├── chat.spec.ts
+│   │   │   ├── documents.spec.ts
+│   │   │   └── notebook.spec.ts
+│   │   ├── fixtures/
+│   │   └── setup/
+│   │       ├── jest.config.js
+│   │       └── playwright.config.ts
+│   ├── tsconfig.json
+│   └── vercel.json
+├── index.html
+├── infrastructure/
+│   ├── docker/
 │   │   ├── backend/
 │   │   │   ├── Dockerfile
 │   │   │   ├── Dockerfile.dev
 │   │   │   └── requirements.txt
-│   │   ├── redis/
+│   │   ├── frontend/
 │   │   │   ├── Dockerfile
-│   │   │   └── redis.conf
+│   │   │   ├── Dockerfile.dev
+│   │   │   └── nginx.conf
+│   │   ├── nginx/
+│   │   │   ├── Dockerfile
+│   │   │   ├── nginx.conf
+│   │   │   └── ssl/
 │   │   ├── postgres/
 │   │   │   ├── Dockerfile
 │   │   │   └── init.sql
-│   │   └── nginx/
+│   │   └── redis/
 │   │       ├── Dockerfile
-│   │       ├── nginx.conf
-│   │       └── ssl/
-│   ├── kubernetes/                    # Kubernetes manifests (future)
-│   │   ├── namespace.yaml
-│   │   ├── configmap.yaml
-│   │   ├── secrets.yaml
-│   │   ├── frontend/
-│   │   │   ├── deployment.yaml
-│   │   │   ├── service.yaml
-│   │   │   └── ingress.yaml
+│   │       └── redis.conf
+│   ├── kubernetes/
 │   │   ├── backend/
 │   │   │   ├── deployment.yaml
-│   │   │   ├── service.yaml
-│   │   │   └── hpa.yaml
-│   │   └── monitoring/
-│   │       ├── prometheus.yaml
-│   │       └── grafana.yaml
-│   ├── terraform/                     # Cloud infrastructure
-│   │   ├── main.tf                    # Main Terraform config
-│   │   ├── variables.tf               # Variable definitions
-│   │   ├── outputs.tf                 # Output values
-│   │   ├── providers.tf               # Provider configs
-│   │   ├── modules/
-│   │   │   ├── networking/
-│   │   │   ├── compute/
-│   │   │   ├── storage/
-│   │   │   └── monitoring/
-│   │   ├── environments/
-│   │   │   ├── dev/
-│   │   │   ├── staging/
-│   │   │   └── production/
-│   │   └── terraform.tfvars.example
-│   ├── monitoring/                    # Monitoring configs
-│   │   ├── prometheus/
-│   │   │   ├── prometheus.yml
-│   │   │   └── rules/
+│   │   │   ├── hpa.yaml
+│   │   │   └── service.yaml
+│   │   ├── configmap.yaml
+│   │   ├── frontend/
+│   │   │   ├── deployment.yaml
+│   │   │   ├── ingress.yaml
+│   │   │   └── service.yaml
+│   │   ├── monitoring/
+│   │   │   ├── grafana.yaml
+│   │   │   └── prometheus.yaml
+│   │   ├── namespace.yaml
+│   │   └── secrets.yaml
+│   ├── monitoring/
+│   │   ├── alertmanager/
+│   │   │   └── alertmanager.yml
 │   │   ├── grafana/
 │   │   │   ├── dashboards/
 │   │   │   └── provisioning/
-│   │   ├── alertmanager/
-│   │   │   └── alertmanager.yml
-│   │   └── loki/
-│   │       └── loki.yml
-│   └── scripts/
-│       ├── setup-monitoring.sh
-│       ├── backup-data.sh
-│       ├── restore-data.sh
-│       └── security-scan.sh
-│
-├── scripts/                           # Development & deployment scripts
-│   ├── setup/                         # Setup scripts
-│   │   ├── install-deps.sh            # Install all dependencies
-│   │   ├── setup-local-llm.sh         # Setup Phi-2 model
-│   │   ├── init-db.sh                 # Initialize databases
-│   │   ├── dev-env.sh                 # Setup dev environment
-│   │   ├── setup-git-hooks.sh         # Git hooks setup
-│   │   └── install-tools.sh           # Development tools
-│   ├── dev/                           # Development scripts
-│   │   ├── start-dev.sh               # Start full dev stack
-│   │   ├── start-frontend.sh          # Frontend only
-│   │   ├── start-backend.sh           # Backend only
-│   │   ├── start-blockchain.sh        # Blockchain dev node
-│   │   ├── seed-data.sh               # Seed test data
-│   │   ├── generate-types.sh          # Generate TS types
-│   │   ├── run-tests.sh               # Run all tests
-│   │   ├── lint-fix.sh                # Fix linting issues
-│   │   ├── format-code.sh             # Format all code
-│   │   └── clean-cache.sh             # Clean build cache
-│   ├── deploy/                        # Deployment scripts
-│   │   ├── deploy-frontend.sh         # Deploy to Vercel
-│   │   ├── deploy-backend.sh          # Deploy to Railway
-│   │   ├── deploy-contracts.sh        # Deploy smart contracts
-│   │   ├── update-env.sh              # Update environment vars
-│   │   ├── build-prod.sh              # Production build
-│   │   ├── backup-db.sh               # Database backup
-│   │   ├── restore-db.sh              # Database restore
-│   │   └── health-check.sh            # Post-deploy health check
-│   ├── maintenance/                   # Maintenance scripts
-│   │   ├── update-deps.sh             # Update dependencies
-│   │   ├── security-audit.sh          # Security audit
-│   │   ├── performance-test.sh        # Performance testing
-│   │   ├── cleanup-storage.sh         # Clean old files
-│   │   └── generate-reports.sh        # Generate usage reports
-│   └── utils/                         # Utility scripts
-│       ├── validate-env.sh            # Validate environment
-│       ├── check-ports.sh             # Check port availability
-│       ├── generate-secrets.sh        # Generate secure secrets
-│       └── monitor-logs.sh            # Log monitoring
-│
-├── docs/                              # Project documentation
-│   ├── architecture/                  # Architecture docs
-│   │   ├── overview.md                # System overview
-│   │   ├── database-design.md         # Database schema
-│   │   ├── api-design.md              # API architecture
-│   │   ├── security.md                # Security considerations
-│   │   ├── scalability.md             # Scaling strategy
-│   │   └── blockchain-integration.md  # Web3 integration
-│   ├── development/                   # Development guides
-│   │   ├── getting-started.md         # Quick start guide
-│   │   ├── local-setup.md             # Local development
-│   │   ├── coding-standards.md        # Code style guide
-│   │   ├── testing-guide.md           # Testing practices
-│   │   ├── git-workflow.md            # Git workflow
-│   │   └── troubleshooting.md         # Common issues
-│   ├── deployment/                    # Deployment docs
-│   │   ├── vercel-setup.md            # Frontend deployment
-│   │   ├── railway-setup.md           # Backend deployment
-│   │   ├── supabase-setup.md          # Database setup
-│   │   ├── environment-vars.md        # Environment configuration
-│   │   ├── ci-cd-pipeline.md          # CI/CD setup
-│   │   └── monitoring.md              # Monitoring setup
-│   ├── api/                           # API documentation
-│   │   ├── authentication.md          # Auth endpoints
-│   │   ├── chat.md                    # Chat API
-│   │   ├── documents.md               # Document API
-│   │   ├── code.md                    # Code execution API
-│   │   ├── research.md                # Research API
-│   │   ├── analysis.md                # Analysis API
-│   │   ├── blockchain.md              # Blockchain API
-│   │   └── websockets.md              # WebSocket API
-│   ├── user-guides/                   # User documentation
-│   │   ├── getting-started.md         # User onboarding
-│   │   ├── chat-features.md           # Chat functionality
-│   │   ├── document-qa.md             # Document Q&A
-│   │   ├── code-assistant.md          # Code features
-│   │   ├── research-tools.md          # Research features
-│   │   ├── data-analysis.md           # Analysis features
-│   │   └── blockchain-features.md     # Web3 features
-│   ├── business/                      # Business documentation
-│   │   ├── product-requirements.md    # PRD
-│   │   ├── user-personas.md           # Target users
-│   │   ├── feature-roadmap.md         # Feature roadmap
-│   │   ├── pricing-strategy.md        # Pricing model
-│   │   └── go-to-market.md            # GTM strategy
-│   └── legal/                         # Legal documents
-│       ├── privacy-policy.md          # Privacy policy
-│       ├── terms-of-service.md        # Terms of service
-│       ├── data-processing.md         # GDPR compliance
-│       └── security-policy.md         # Security policy
-│
-├── data/                              # Data directory
-│   ├── models/                        # AI models
-│   │   ├── phi-2/                     # Local Phi-2 model
-│   │   ├── embeddings/                # Embedding models
-│   │   └── fine-tuned/                # Custom models
-│   ├── vector-store/                  # Vector databases
-│   │   ├── documents/                 # Document embeddings
-│   │   ├── code/                      # Code embeddings
-│   │   └── research/                  # Research embeddings
-│   ├── datasets/                      # Training/test datasets
-│   │   ├── chat-samples/
-│   │   ├── code-examples/
-│   │   └── research-papers/
-│   ├── backups/                       # Data backups
-│   │   ├── daily/
-│   │   ├── weekly/
-│   │   └── monthly/
-│   └── temp/                          # Temporary files
-│       ├── uploads/
-│       ├── processing/
-│       └── exports/
-│
-├── config/                            # Configuration files
-│   ├── development/                   # Dev environment configs
-│   │   ├── database.yml
-│   │   ├── redis.yml
-│   │   ├── ai-models.yml
-│   │   └── blockchain.yml
-│   ├── staging/                       # Staging configs
-│   │   ├── database.yml
-│   │   ├── redis.yml
-│   │   ├── ai-models.yml
-│   │   └── blockchain.yml
-│   ├── production/                    # Production configs
-│   │   ├── database.yml
-│   │   ├── redis.yml
-│   │   ├── ai-models.yml
-│   │   └── blockchain.yml
-│   ├── security/                      # Security configs
-│   │   ├── cors.yml
-│   │   ├── rate-limits.yml
-│   │   ├── auth-policies.yml
-│   │   └── encryption.yml
-│   └── monitoring/                    # Monitoring configs
-│       ├── metrics.yml
-│       ├── alerts.yml
-│       └── logging.yml
-│
-├── .github/                           # GitHub configurations (detailed above)
-├── .gitignore                         # Git ignore rules
-├── .gitattributes                     # Git attributes
-├── .pre-commit-config.yaml            # Pre-commit hooks
-├── .editorconfig                      # Editor configuration
-├── .nvmrc                             # Node version
-├── docker-compose.yml                 # Local development stack
-├── docker-compose.prod.yml            # Production stack
-├── docker-compose.test.yml            # Testing environment
-├── Makefile                           # Common commands
-├── package.json                       # Root package.json (workspaces)
-├── package-lock.json                  # Root lock file
-├── lerna.json                         # Monorepo configuration
-├── .env.example                       # Environment template
-├── LICENSE                            # Project license
-├── README.md                          # Main project README
-├── CONTRIBUTING.md                    # Contribution guidelines
-├── SECURITY.md                        # Security policy
-├── CHANGELOG.md                       # Version changelog
-└── CODE_OF_CONDUCT.md                 # Code of conduct
+│   │   ├── loki/
+│   │   │   └── loki.yml
+│   │   └── prometheus/
+│   │       ├── rules/
+│   │       └── {prometheus.yml}
+│   ├── scripts/
+│   │   ├── backup-data.sh
+│   │   ├── restore-data.sh
+│   │   ├── security-scan.sh
+│   │   └── setup-monitoring.sh
+│   └── terraform/
+│       ├── environments/
+│       │   ├── dev/
+│       │   ├── production/
+│       │   └── staging/
+│       ├── main.tf
+│       ├── modules/
+│       │   ├── compute/
+│       │   ├── monitoring/
+│       │   ├── networking/
+│       │   └── storage/
+│       ├── outputs.tf
+│       ├── providers.tf
+│       ├── terraform.tfvars.example
+│       └── variables.tf
+├── lerna.json
+├── LICENSE
+├── Makefile
+├── package-lock.json
+├── README.md
+├── scripts/
+│   ├── deploy/
+│   │   ├── backup-db.sh
+│   │   ├── build-prod.sh
+│   │   ├── deploy-backend.sh
+│   │   ├── deploy-contracts.sh
+│   │   ├── deploy-frontend.sh
+│   │   ├── health-check.sh
+│   │   ├── restore-db.sh
+│   │   └── update-env.sh
+│   ├── dev/
+│   │   ├── clean-cache.sh
+│   │   ├── format-code.sh
+│   │   ├── generate-types.sh
+│   │   ├── lint-fix.sh
+│   │   ├── run-tests.sh
+│   │   ├── seed-data.sh
+│   │   ├── start-backend.sh
+│   │   ├── start-blockchain.sh
+│   │   ├── start-dev.sh
+│   │   └── start-frontend.sh
+│   ├── maintenance/
+│   │   ├── cleanup-storage.sh
+│   │   ├── generate-reports.sh
+│   │   ├── performance-test.sh
+│   │   ├── security-audit.sh
+│   │   └── update-deps.sh
+│   ├── setup/
+│   │   ├── dev-env.sh
+│   │   ├── init-db.sh
+│   │   ├── install-deps.sh
+│   │   ├── install-tools.sh
+│   │   ├── setup-git-hooks.sh
+│   │   └── setup-local-llm.sh
+│   └── utils/
+│       ├── check-ports.sh
+│       ├── generate-secrets.sh
+│       ├── monitor-logs.sh
+│       └── validate-env.sh
+├── SECURITY.md
+├── setup-settings-db.sql
+├── SETTINGS_INSTALLATION.md
+├── storage.rules
+├── supabase-migration.sql
+├── supabase-setup.sql
+└── user_settings_migration.sql
+```
