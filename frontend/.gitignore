@@ -119,7 +119,7 @@ weights/
 *.db
 *.sqlite
 *.sqlite3
-
+kaggle_cs_dataset/
 # =================================
 # Security Keys
 # =================================
