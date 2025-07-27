@@ -1,0 +1,25 @@
+{
+  "model_config": {
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "max_seq_length": 512,
+    "batch_size": 16,
+    "learning_rate": 2e-05,
+    "num_epochs": 4,
+    "warmup_steps": 100
+  },
+  "data_config": {
+    "max_question_length": 200,
+    "max_answer_length": 1200,
+    "train_batch_size": 16,
+    "eval_batch_size": 32
+  },
+  "training_config": {
+    "gradient_accumulation_steps": 2,
+    "max_grad_norm": 1.0,
+    "weight_decay": 0.01,
+    "adam_epsilon": 1e-08,
+    "save_steps": 500,
+    "eval_steps": 500,
+    "logging_steps": 100
+  }
+}

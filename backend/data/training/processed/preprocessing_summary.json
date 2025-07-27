@@ -1,0 +1,48 @@
+{
+  "processing_summary": {
+    "original_count": 330754,
+    "after_cleaning": 330487,
+    "after_filtering": 328803,
+    "after_deduplication": 31,
+    "final_count": 25,
+    "module_distribution": {
+      "code_assistant": 328493,
+      "data_analysis": 301,
+      "research_tools": 2,
+      "blockchain": 3,
+      "document_qa": 3,
+      "chat": 1
+    },
+    "quality_stats": {
+      "high": 0,
+      "medium": 4,
+      "low": 21
+    }
+  },
+  "module_distribution": {
+    "code_assistant": 25
+  },
+  "difficulty_distribution": {
+    "beginner": 23,
+    "intermediate": 2,
+    "advanced": 0
+  },
+  "quality_distribution": {
+    "high": 0,
+    "medium": 4,
+    "low": 21
+  },
+  "total_processed": 25,
+  "processing_timestamp": "2025-07-27T13:53:37.534323",
+  "file_locations": {
+    "all_records": "backend/data/training/processed/filtered_qa_pairs.jsonl",
+    "module_splits": {
+      "code_assistant": "code_assistant_questions.jsonl"
+    },
+    "difficulty_splits": {
+      "beginner": "beginner_level_questions.jsonl",
+      "intermediate": "intermediate_level_questions.jsonl",
+      "advanced": "advanced_level_questions.jsonl"
+    }
+  }
+}

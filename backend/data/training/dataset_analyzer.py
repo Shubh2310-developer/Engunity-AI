@@ -53,7 +53,7 @@ class EngunityDatasetAnalyzer:
     Analyze CS dataset for Engunity AI RAG training pipeline
     """
     
-    def __init__(self, dataset_path: str = "backend/data/training/kaggle_cs_dataset/train.csv"):
+    def __init__(self, dataset_path: str = "backend/data/training/kaggle_cs_dataset/train_reduced.csv"):
         """Initialize the analyzer with dataset path"""
         self.dataset_path = Path(dataset_path)
         self.output_dir = Path("backend/data/training/analysis_output")
@@ -145,7 +145,22 @@ class EngunityDatasetAnalyzer:
                 return False
             
             # Load CSV with error handling
-            self.df = pd.read_csv(self.dataset_path, encoding='utf-8')
+            # Use csv reader instead of pandas due to compatibility issues
+            import csv
+            rows = []
+            with open(self.dataset_path, 'r', encoding='utf-8', errors='ignore') as f:
+                reader = csv.reader(f)
+                headers = next(reader)
+                for row in reader:
+                    if len(row) == len(headers):  # Only keep complete rows
+                        rows.append(row)
+            
+            # Create simple data structure instead of DataFrame
+            self.data = {
+                'headers': headers,
+                'rows': rows,
+                'shape': (len(rows), len(headers))
+            }
             logger.info(f"Dataset loaded successfully: {len(self.df)} rows, {len(self.df.columns)} columns")
             
             # Display basic info
@@ -819,7 +834,7 @@ def main():
     parser = argparse.ArgumentParser(description='Analyze CS dataset for Engunity AI RAG training')
     parser.add_argument(
         '--dataset-path', 
-        default='backend/data/training/kaggle_cs_dataset/train.csv',
+        default='backend/data/training/kaggle_cs_dataset/train_reduced.csv',
         help='Path to the CS dataset CSV file'
     )
     parser.add_argument(

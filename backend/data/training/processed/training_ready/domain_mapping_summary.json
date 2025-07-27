@@ -1,0 +1,168 @@
+{
+  "domain_mapping_summary": {
+    "total_modules": 5,
+    "total_records_mapped": 248,
+    "cross_module_records": 18,
+    "cs_topic_mappings": {
+      "programming_fundamentals": {
+        "primary_module": "code_assistant",
+        "secondary_modules": [
+          "notebook"
+        ],
+        "description": "Basic programming concepts and code development"
+      },
+      "algorithms": {
+        "primary_module": "research_tools",
+        "secondary_modules": [
+          "code_assistant",
+          "data_analysis"
+        ],
+        "description": "Algorithmic thinking and computational efficiency"
+      },
+      "data_structures": {
+        "primary_module": "data_analysis",
+        "secondary_modules": [
+          "code_assistant",
+          "research_tools"
+        ],
+        "description": "Data organization and manipulation structures"
+      },
+      "software_engineering": {
+        "primary_module": "document_qa",
+        "secondary_modules": [
+          "code_assistant",
+          "research_tools"
+        ],
+        "description": "Software development processes and best practices"
+      },
+      "machine_learning": {
+        "primary_module": "data_analysis",
+        "secondary_modules": [
+          "research_tools",
+          "notebook"
+        ],
+        "description": "Machine learning algorithms and data science"
+      },
+      "natural_language_processing": {
+        "primary_module": "document_qa",
+        "secondary_modules": [
+          "chat",
+          "research_tools"
+        ],
+        "description": "Text processing and language understanding"
+      },
+      "database_systems": {
+        "primary_module": "data_analysis",
+        "secondary_modules": [
+          "document_qa",
+          "code_assistant"
+        ],
+        "description": "Database design and data management"
+      },
+      "web_development": {
+        "primary_module": "code_assistant",
+        "secondary_modules": [
+          "notebook",
+          "document_qa"
+        ],
+        "description": "Web application development"
+      },
+      "computer_networks": {
+        "primary_module": "research_tools",
+        "secondary_modules": [
+          "document_qa"
+        ],
+        "description": "Network protocols and distributed systems"
+      },
+      "computer_security": {
+        "primary_module": "research_tools",
+        "secondary_modules": [
+          "document_qa",
+          "code_assistant"
+        ],
+        "description": "Cybersecurity and secure systems"
+      },
+      "operating_systems": {
+        "primary_module": "research_tools",
+        "secondary_modules": [
+          "code_assistant"
+        ],
+        "description": "Operating system concepts and system programming"
+      },
+      "human_computer_interaction": {
+        "primary_module": "chat",
+        "secondary_modules": [
+          "document_qa",
+          "research_tools"
+        ],
+        "description": "User interface design and interaction"
+      }
+    }
+  },
+  "module_statistics": {
+    "data_analysis": {
+      "total_records": 18,
+      "train_count": 12,
+      "val_count": 2,
+      "test_count": 4,
+      "train_ratio": 0.6666666666666666,
+      "val_ratio": 0.1111111111111111,
+      "test_ratio": 0.2222222222222222
+    },
+    "document_qa": {
+      "total_records": 36,
+      "train_count": 24,
+      "val_count": 5,
+      "test_count": 7,
+      "train_ratio": 0.6666666666666666,
+      "val_ratio": 0.1388888888888889,
+      "test_ratio": 0.19444444444444445
+    },
+    "code_assistant": {
+      "total_records": 93,
+      "train_count": 64,
+      "val_count": 13,
+      "test_count": 16,
+      "train_ratio": 0.6881720430107527,
+      "val_ratio": 0.13978494623655913,
+      "test_ratio": 0.17204301075268819
+    },
+    "research_tools": {
+      "total_records": 46,
+      "train_count": 31,
+      "val_count": 6,
+      "test_count": 9,
+      "train_ratio": 0.6739130434782609,
+      "val_ratio": 0.13043478260869565,
+      "test_ratio": 0.1956521739130435
+    },
+    "notebook": {
+      "total_records": 55,
+      "train_count": 37,
+      "val_count": 7,
+      "test_count": 11,
+      "train_ratio": 0.6727272727272727,
+      "val_ratio": 0.12727272727272726,
+      "test_ratio": 0.2
+    }
+  },
+  "processing_metadata": {
+    "mapping_timestamp": "2025-07-27T15:54:07.185287",
+    "mapping_version": "1.0",
+    "training_config": {
+      "splits": {
+        "train": 0.7,
+        "validation": 0.15,
+        "test": 0.15
+      },
+      "min_samples_per_module": 50,
+      "max_samples_per_module": 5000,
+      "quality_weights": {
+        "high": 1.0,
+        "medium": 0.7,
+        "low": 0.3
+      },
+      "cross_module_overlap": 0.1
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "splits_info": {
+    "total_records": 93,
+    "train_count": 64,
+    "val_count": 13,
+    "test_count": 16,
+    "train_ratio": 0.6881720430107527,
+    "val_ratio": 0.13978494623655913,
+    "test_ratio": 0.17204301075268819
+  },
+  "quality_distribution": {
+    "train": {
+      "medium": 53,
+      "low": 11
+    },
+    "validation": {
+      "medium": 11,
+      "low": 2
+    },
+    "test": {
+      "medium": 12,
+      "low": 4
+    }
+  }
+}

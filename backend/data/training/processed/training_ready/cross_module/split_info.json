@@ -1,0 +1,24 @@
+{
+  "splits_info": {
+    "total_records": 18,
+    "train_count": 15,
+    "val_count": 1,
+    "test_count": 2
+  },
+  "module_distribution": {
+    "train": {
+      "document_qa": 2,
+      "research_tools": 3,
+      "notebook": 3,
+      "data_analysis": 1,
+      "code_assistant": 6
+    },
+    "validation": {
+      "code_assistant": 1
+    },
+    "test": {
+      "notebook": 1,
+      "code_assistant": 1
+    }
+  }
+}

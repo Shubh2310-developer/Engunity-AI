@@ -1,0 +1,471 @@
+{
+  "programming_comprehension": {
+    "category_description": "Test understanding of code structure and logic",
+    "evaluation_dimensions": {
+      "correctness": {
+        "weight": 0.3,
+        "description": "Factual accuracy and technical correctness",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional correctness",
+          "good": "Shows good correctness",
+          "fair": "Adequate correctness",
+          "poor": "Insufficient correctness"
+        }
+      },
+      "completeness": {
+        "weight": 0.2,
+        "description": "Coverage of all relevant aspects",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional completeness",
+          "good": "Shows good completeness",
+          "fair": "Adequate completeness",
+          "poor": "Insufficient completeness"
+        }
+      },
+      "clarity": {
+        "weight": 0.2,
+        "description": "Clear and understandable explanations",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional clarity",
+          "good": "Shows good clarity",
+          "fair": "Adequate clarity",
+          "poor": "Insufficient clarity"
+        }
+      },
+      "relevance": {
+        "weight": 0.15,
+        "description": "Relevance to the specific question asked",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional relevance",
+          "good": "Shows good relevance",
+          "fair": "Adequate relevance",
+          "poor": "Insufficient relevance"
+        }
+      },
+      "code_quality": {
+        "weight": 0.1,
+        "description": "Quality of code examples (if applicable)",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional code quality",
+          "good": "Shows good code quality",
+          "fair": "Adequate code quality",
+          "poor": "Insufficient code quality"
+        }
+      },
+      "innovation": {
+        "weight": 0.05,
+        "description": "Creative or insightful approaches",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional innovation",
+          "good": "Shows good innovation",
+          "fair": "Adequate innovation",
+          "poor": "Insufficient innovation"
+        }
+      }
+    },
+    "scoring_guidelines": {},
+    "difficulty_adjustments": {}
+  },
+  "algorithm_explanation": {
+    "category_description": "Test ability to explain algorithmic concepts and complexity",
+    "evaluation_dimensions": {
+      "correctness": {
+        "weight": 0.3,
+        "description": "Factual accuracy and technical correctness",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional correctness",
+          "good": "Shows good correctness",
+          "fair": "Adequate correctness",
+          "poor": "Insufficient correctness"
+        }
+      },
+      "completeness": {
+        "weight": 0.2,
+        "description": "Coverage of all relevant aspects",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional completeness",
+          "good": "Shows good completeness",
+          "fair": "Adequate completeness",
+          "poor": "Insufficient completeness"
+        }
+      },
+      "clarity": {
+        "weight": 0.2,
+        "description": "Clear and understandable explanations",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional clarity",
+          "good": "Shows good clarity",
+          "fair": "Adequate clarity",
+          "poor": "Insufficient clarity"
+        }
+      },
+      "relevance": {
+        "weight": 0.15,
+        "description": "Relevance to the specific question asked",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional relevance",
+          "good": "Shows good relevance",
+          "fair": "Adequate relevance",
+          "poor": "Insufficient relevance"
+        }
+      },
+      "code_quality": {
+        "weight": 0.1,
+        "description": "Quality of code examples (if applicable)",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional code quality",
+          "good": "Shows good code quality",
+          "fair": "Adequate code quality",
+          "poor": "Insufficient code quality"
+        }
+      },
+      "innovation": {
+        "weight": 0.05,
+        "description": "Creative or insightful approaches",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional innovation",
+          "good": "Shows good innovation",
+          "fair": "Adequate innovation",
+          "poor": "Insufficient innovation"
+        }
+      }
+    },
+    "scoring_guidelines": {},
+    "difficulty_adjustments": {}
+  },
+  "code_documentation": {
+    "category_description": "Test generation and understanding of code documentation",
+    "evaluation_dimensions": {
+      "correctness": {
+        "weight": 0.3,
+        "description": "Factual accuracy and technical correctness",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional correctness",
+          "good": "Shows good correctness",
+          "fair": "Adequate correctness",
+          "poor": "Insufficient correctness"
+        }
+      },
+      "completeness": {
+        "weight": 0.2,
+        "description": "Coverage of all relevant aspects",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional completeness",
+          "good": "Shows good completeness",
+          "fair": "Adequate completeness",
+          "poor": "Insufficient completeness"
+        }
+      },
+      "clarity": {
+        "weight": 0.2,
+        "description": "Clear and understandable explanations",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional clarity",
+          "good": "Shows good clarity",
+          "fair": "Adequate clarity",
+          "poor": "Insufficient clarity"
+        }
+      },
+      "relevance": {
+        "weight": 0.15,
+        "description": "Relevance to the specific question asked",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional relevance",
+          "good": "Shows good relevance",
+          "fair": "Adequate relevance",
+          "poor": "Insufficient relevance"
+        }
+      },
+      "code_quality": {
+        "weight": 0.1,
+        "description": "Quality of code examples (if applicable)",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional code quality",
+          "good": "Shows good code quality",
+          "fair": "Adequate code quality",
+          "poor": "Insufficient code quality"
+        }
+      },
+      "innovation": {
+        "weight": 0.05,
+        "description": "Creative or insightful approaches",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional innovation",
+          "good": "Shows good innovation",
+          "fair": "Adequate innovation",
+          "poor": "Insufficient innovation"
+        }
+      }
+    },
+    "scoring_guidelines": {},
+    "difficulty_adjustments": {}
+  },
+  "data_analysis_tasks": {
+    "category_description": "Test data processing and analysis capabilities",
+    "evaluation_dimensions": {
+      "correctness": {
+        "weight": 0.3,
+        "description": "Factual accuracy and technical correctness",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional correctness",
+          "good": "Shows good correctness",
+          "fair": "Adequate correctness",
+          "poor": "Insufficient correctness"
+        }
+      },
+      "completeness": {
+        "weight": 0.2,
+        "description": "Coverage of all relevant aspects",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional completeness",
+          "good": "Shows good completeness",
+          "fair": "Adequate completeness",
+          "poor": "Insufficient completeness"
+        }
+      },
+      "clarity": {
+        "weight": 0.2,
+        "description": "Clear and understandable explanations",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional clarity",
+          "good": "Shows good clarity",
+          "fair": "Adequate clarity",
+          "poor": "Insufficient clarity"
+        }
+      },
+      "relevance": {
+        "weight": 0.15,
+        "description": "Relevance to the specific question asked",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional relevance",
+          "good": "Shows good relevance",
+          "fair": "Adequate relevance",
+          "poor": "Insufficient relevance"
+        }
+      },
+      "code_quality": {
+        "weight": 0.1,
+        "description": "Quality of code examples (if applicable)",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional code quality",
+          "good": "Shows good code quality",
+          "fair": "Adequate code quality",
+          "poor": "Insufficient code quality"
+        }
+      },
+      "innovation": {
+        "weight": 0.05,
+        "description": "Creative or insightful approaches",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional innovation",
+          "good": "Shows good innovation",
+          "fair": "Adequate innovation",
+          "poor": "Insufficient innovation"
+        }
+      }
+    },
+    "scoring_guidelines": {},
+    "difficulty_adjustments": {}
+  },
+  "research_methodology": {
+    "category_description": "Test academic research and methodology understanding",
+    "evaluation_dimensions": {
+      "correctness": {
+        "weight": 0.3,
+        "description": "Factual accuracy and technical correctness",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional correctness",
+          "good": "Shows good correctness",
+          "fair": "Adequate correctness",
+          "poor": "Insufficient correctness"
+        }
+      },
+      "completeness": {
+        "weight": 0.2,
+        "description": "Coverage of all relevant aspects",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional completeness",
+          "good": "Shows good completeness",
+          "fair": "Adequate completeness",
+          "poor": "Insufficient completeness"
+        }
+      },
+      "clarity": {
+        "weight": 0.2,
+        "description": "Clear and understandable explanations",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional clarity",
+          "good": "Shows good clarity",
+          "fair": "Adequate clarity",
+          "poor": "Insufficient clarity"
+        }
+      },
+      "relevance": {
+        "weight": 0.15,
+        "description": "Relevance to the specific question asked",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional relevance",
+          "good": "Shows good relevance",
+          "fair": "Adequate relevance",
+          "poor": "Insufficient relevance"
+        }
+      },
+      "code_quality": {
+        "weight": 0.1,
+        "description": "Quality of code examples (if applicable)",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional code quality",
+          "good": "Shows good code quality",
+          "fair": "Adequate code quality",
+          "poor": "Insufficient code quality"
+        }
+      },
+      "innovation": {
+        "weight": 0.05,
+        "description": "Creative or insightful approaches",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional innovation",
+          "good": "Shows good innovation",
+          "fair": "Adequate innovation",
+          "poor": "Insufficient innovation"
+        }
+      }
+    },
+    "scoring_guidelines": {},
+    "difficulty_adjustments": {}
+  },
+  "system_integration": {
+    "category_description": "Test understanding of system design and integration",
+    "evaluation_dimensions": {
+      "correctness": {
+        "weight": 0.3,
+        "description": "Factual accuracy and technical correctness",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional correctness",
+          "good": "Shows good correctness",
+          "fair": "Adequate correctness",
+          "poor": "Insufficient correctness"
+        }
+      },
+      "completeness": {
+        "weight": 0.2,
+        "description": "Coverage of all relevant aspects",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional completeness",
+          "good": "Shows good completeness",
+          "fair": "Adequate completeness",
+          "poor": "Insufficient completeness"
+        }
+      },
+      "clarity": {
+        "weight": 0.2,
+        "description": "Clear and understandable explanations",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional clarity",
+          "good": "Shows good clarity",
+          "fair": "Adequate clarity",
+          "poor": "Insufficient clarity"
+        }
+      },
+      "relevance": {
+        "weight": 0.15,
+        "description": "Relevance to the specific question asked",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional relevance",
+          "good": "Shows good relevance",
+          "fair": "Adequate relevance",
+          "poor": "Insufficient relevance"
+        }
+      },
+      "code_quality": {
+        "weight": 0.1,
+        "description": "Quality of code examples (if applicable)",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional code quality",
+          "good": "Shows good code quality",
+          "fair": "Adequate code quality",
+          "poor": "Insufficient code quality"
+        }
+      },
+      "innovation": {
+        "weight": 0.05,
+        "description": "Creative or insightful approaches",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional innovation",
+          "good": "Shows good innovation",
+          "fair": "Adequate innovation",
+          "poor": "Insufficient innovation"
+        }
+      }
+    },
+    "scoring_guidelines": {},
+    "difficulty_adjustments": {}
+  },
+  "cross_module_integration": {
+    "category_description": "Test integration across multiple SaaS modules",
+    "evaluation_dimensions": {
+      "correctness": {
+        "weight": 0.3,
+        "description": "Factual accuracy and technical correctness",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional correctness",
+          "good": "Shows good correctness",
+          "fair": "Adequate correctness",
+          "poor": "Insufficient correctness"
+        }
+      },
+      "completeness": {
+        "weight": 0.2,
+        "description": "Coverage of all relevant aspects",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional completeness",
+          "good": "Shows good completeness",
+          "fair": "Adequate completeness",
+          "poor": "Insufficient completeness"
+        }
+      },
+      "clarity": {
+        "weight": 0.2,
+        "description": "Clear and understandable explanations",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional clarity",
+          "good": "Shows good clarity",
+          "fair": "Adequate clarity",
+          "poor": "Insufficient clarity"
+        }
+      },
+      "relevance": {
+        "weight": 0.15,
+        "description": "Relevance to the specific question asked",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional relevance",
+          "good": "Shows good relevance",
+          "fair": "Adequate relevance",
+          "poor": "Insufficient relevance"
+        }
+      },
+      "code_quality": {
+        "weight": 0.1,
+        "description": "Quality of code examples (if applicable)",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional code quality",
+          "good": "Shows good code quality",
+          "fair": "Adequate code quality",
+          "poor": "Insufficient code quality"
+        }
+      },
+      "innovation": {
+        "weight": 0.05,
+        "description": "Creative or insightful approaches",
+        "scoring_criteria": {
+          "excellent": "Demonstrates exceptional innovation",
+          "good": "Shows good innovation",
+          "fair": "Adequate innovation",
+          "poor": "Insufficient innovation"
+        }
+      }
+    },
+    "scoring_guidelines": {},
+    "difficulty_adjustments": {}
+  }
+}
