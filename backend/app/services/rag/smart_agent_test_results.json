@@ -1,0 +1,26 @@
+{
+  "document_loading": {
+    "success": true,
+    "documents_loaded": 4,
+    "message": "Successfully loaded 4 document chunks"
+  },
+  "document_retrieval": {
+    "success": true,
+    "documents_retrieved": 3,
+    "relevant_found": true,
+    "message": "Retrieved 3 documents, relevant: True"
+  },
+  "answer_generation": {
+    "success": true,
+    "total_queries": 4,
+    "successful_queries": 0,
+    "success_rate": 0.0,
+    "message": "Success rate: 0.00%"
+  },
+  "training_loop": {
+    "success": true,
+    "examples_trained": 2,
+    "average_loss": 0.3599979132413864,
+    "message": "Trained on 2 examples, avg loss: 0.3600"
+  }
+}

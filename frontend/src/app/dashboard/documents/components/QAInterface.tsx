@@ -72,6 +72,17 @@ interface ChatMessage {
   documentId: string;
   sources?: Source[];
   isError?: boolean;
+  confidence?: number;
+  responseTime?: number;
+  tokenUsage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  csEnhanced?: boolean;
+  ragVersion?: string;
+  isStreaming?: boolean;
+  tokens?: number;
   metadata?: {
     tokensUsed?: number;
     processingTime?: number;
@@ -459,14 +470,14 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
   const { user } = useAuth();
   const { toast } = useToast();
 
-  // Helper function for toast
-  const showToast = (title: string, description: string, variant: 'default' | 'destructive' = 'default') => {
+  // Helper function for toast (memoized to prevent infinite loops)
+  const showToast = useCallback((title: string, description: string, variant: 'default' | 'destructive' = 'default') => {
     toast({
       title,
       description,
       variant,
     });
-  };
+  }, [toast]);
   
   // State management
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -474,7 +485,15 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-  const [activeSessionId, setActiveSessionId] = useState<string | null | undefined>(initialSessionId);
+  // Create stable session ID (memoized to prevent recreation)
+  const sessionId = useMemo(() => {
+    return initialSessionId || `doc_${document.id}_${Date.now()}`;
+  }, [initialSessionId, document.id]);
+
+  // Initialize session ID more reliably
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+    return sessionId;
+  });
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState<ChatSettings>({
     autoScroll: true,
@@ -511,30 +530,46 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
     return baseQuestions;
   }, [document.name]);
 
-  // Load chat history
-  useEffect(() => {
-    const loadChatHistory = async () => {
-      if (!user || !activeSessionId) {
-        setIsLoadingHistory(false);
-        return;
-      }
-      
-      setIsLoadingHistory(true);
-      try {
-        // TODO: Implement getChatHistory
-        // const history = await getChatHistory(activeSessionId);
-        // setMessages(history);
+  // Load chat history (memoized to prevent loops)
+  const loadChatHistory = useCallback(async () => {
+    if (!user || !activeSessionId) {
+      setIsLoadingHistory(false);
+      return;
+    }
+    
+    setIsLoadingHistory(true);
+    try {
+      // Fetch chat history from API
+      const response = await fetch(`/api/documents/${document.id}/qa?sessionId=${activeSessionId}&limit=50`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.messages) {
+          const formattedMessages: ChatMessage[] = data.messages.map((msg: any) => ({
+            id: msg.id,
+            role: msg.role,
+            content: msg.content,
+            timestamp: msg.timestamp,
+            confidence: msg.confidence,
+            sources: msg.sources || []
+          }));
+          setMessages(formattedMessages);
+        }
+      } else {
+        // No history or error - start with empty messages
         setMessages([]);
-      } catch (error) {
-        console.error('Error loading chat history:', error);
-        showToast('Error', 'Failed to load chat history.', 'destructive');
-      } finally {
-        setIsLoadingHistory(false);
       }
-    };
+    } catch (error) {
+      console.error('Error loading chat history:', error);
+      showToast('Error', 'Failed to load chat history.', 'destructive');
+      setMessages([]); // Ensure we still set to empty array
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, [user, activeSessionId, document.id, showToast]);
 
+  useEffect(() => {
     loadChatHistory();
-  }, [user, activeSessionId, showToast]);
+  }, [loadChatHistory]);
 
   // Auto-scroll functionality
   useEffect(() => {
@@ -694,7 +729,8 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
     e.preventDefault();
     if (!inputValue.trim() || isLoading || !user) return;
 
-    const currentSessionId = activeSessionId || `doc_${document.id}_${Date.now()}`;
+    // Use the stable session ID from useMemo
+    const currentSessionId = activeSessionId || sessionId;
     if (!activeSessionId) {
       setActiveSessionId(currentSessionId);
     }
@@ -722,65 +758,81 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
     abortControllerRef.current = new AbortController();
 
     try {
-      const response = await fetch('/api/chat/stream', {
+      // Use document-specific Q&A endpoint instead of general chat stream
+      const response = await fetch(`/api/documents/${document.id}/qa`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: userMessage.content,
-          documentId: document.id,
+          question: userMessage.content,
           sessionId: currentSessionId,
-          userId: user.uid,
-          settings: {
-            temperature: settings.temperature,
-            maxTokens: settings.maxTokens,
-            stream: settings.streamResponse
-          }
+          useWebSearch: true,
+          temperature: settings.temperature,
+          maxSources: 5
         }),
         signal: abortControllerRef.current.signal,
       });
 
-      if (!response.ok || !response.body) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`HTTP error! status: ${response.status} - ${errorData.error || 'Unknown error'}`);
       }
 
-      const streamingId = Date.now().toString();
-      setStreamingMessage({
-        id: streamingId,
+      // Handle JSON response instead of streaming
+      const qaResponse = await response.json();
+      
+      if (!qaResponse.success) {
+        throw new Error(qaResponse.error || 'Unknown error from Q&A service');
+      }
+
+      // Create assistant message from Q&A response
+      const assistantMessage: ChatMessage = {
+        id: qaResponse.messageId || Date.now().toString(),
         role: 'assistant',
-        content: '',
-        isStreaming: true,
+        content: qaResponse.answer,
         timestamp: new Date(),
         documentId: document.id,
-        sources: [],
-        tokens: 0
-      });
+        sources: qaResponse.sources || [],
+        confidence: qaResponse.confidence,
+        responseTime: qaResponse.responseTime,
+        tokenUsage: qaResponse.tokenUsage,
+        csEnhanced: qaResponse.csEnhanced || false,
+        ragVersion: qaResponse.ragVersion || '2.0.0'
+      };
 
-      await handleStreamedResponse(response.body.getReader(), streamingId, currentSessionId);
+      // Add assistant message to chat
+      setMessages(prev => [...prev, assistantMessage]);
+      
+      // Play receive sound
+      if (settings.soundEnabled) {
+        new Audio('/sounds/receive.mp3').play().catch(() => {});
+      }
 
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        console.log('Stream was aborted by the user.');
-        setStreamingMessage(null);
+        console.log('Request was aborted by the user.');
         return;
       }
 
-      console.error('Error streaming response:', error);
+      console.error('Error processing Q&A request:', error);
       const errorMessage: ChatMessage = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: 'I apologize, but I encountered an error. Please try again or contact support if the issue persists.',
+        content: `I apologize, but I encountered an error processing your question: ${error.message}. Please try again or contact support if the issue persists.`,
         timestamp: new Date(),
         documentId: document.id,
         isError: true,
       };
       
       setMessages(prev => [...prev, errorMessage]);
-      setStreamingMessage(null);
       
       showToast('Error', 'Failed to get a response from the assistant.', 'destructive');
     } finally {
       setIsLoading(false);
+      setInputValue('');
       abortControllerRef.current = null;
+      
+      // Focus input for next question
+      setTimeout(() => inputRef.current?.focus(), 100);
     }
   };
 

@@ -1,0 +1,48 @@
+{
+  "test_execution": {
+    "execution_time": 4.452659368515015,
+    "total_tests": 4,
+    "successful_tests": 0,
+    "success_rate": 0.0,
+    "failed": false
+  },
+  "detailed_results": {
+    "backend_components": {
+      "status": "failed"
+    },
+    "frontend_integration": {
+      "document_qa_api": {
+        "api_endpoint_accessible": true,
+        "request_format_valid": true,
+        "response_format_valid": true,
+        "cs_enhanced_metadata": true,
+        "fallback_mechanism": true
+      },
+      "status": "simulated"
+    },
+    "end_to_end": {
+      "status": "failed"
+    },
+    "performance": {
+      "status": "failed"
+    },
+    "errors": [
+      "Backend test error: cannot import name 'PreTrainedModel' from 'transformers' (/home/ghost/.local/lib/python3.10/site-packages/transformers/__init__.py)",
+      "E2E test error: cannot import name 'PreTrainedModel' from 'transformers' (/home/ghost/.local/lib/python3.10/site-packages/transformers/__init__.py)",
+      "Performance test error: cannot import name 'PreTrainedModel' from 'transformers' (/home/ghost/.local/lib/python3.10/site-packages/transformers/__init__.py)",
+      "Error handling test error: cannot import name 'PreTrainedModel' from 'transformers' (/home/ghost/.local/lib/python3.10/site-packages/transformers/__init__.py)"
+    ]
+  },
+  "summary": {
+    "backend_components_ready": false,
+    "frontend_integration_ready": true,
+    "end_to_end_working": false,
+    "performance_acceptable": false,
+    "error_handling_robust": false
+  },
+  "recommendations": [
+    "Review and fix errors encountered during testing",
+    "Some queries failed confidence thresholds - review model training"
+  ],
+  "generated_at": 1753697795.6716337
+}

@@ -1,0 +1,67 @@
+{
+  "test_summary": {
+    "total_tests": 4,
+    "successful_tests": 2,
+    "success_rate": 50.0,
+    "all_tests_passed": false
+  },
+  "component_results": {
+    "feedback_analyzer": {
+      "status": "success",
+      "feedback_collected": true,
+      "analytics_working": true,
+      "feedback_count": 1
+    },
+    "prompt_templates": {
+      "status": "failed",
+      "error": "CSPromptTemplates.get_template() got an unexpected keyword argument 'difficulty'"
+    },
+    "query_processor": {
+      "status": "failed",
+      "error": "ProcessedQuery.__init__() missing 3 required positional arguments: 'query_type', 'query_intent', and 'confidence_score'"
+    },
+    "basic_workflow": {
+      "status": "success",
+      "questions_processed": 3,
+      "avg_processing_time": 0.10029562314351399,
+      "avg_confidence": 0.85,
+      "workflow_results": [
+        {
+          "question": "What is the time complexity of binary search?",
+          "answer": "This is a simulated CS-enhanced answer for: What is the time complexity of binary search?",
+          "confidence": 0.85,
+          "sources": [
+            "CS Textbook Chapter 5",
+            "Algorithm Documentation"
+          ],
+          "processing_time": 0.10031557083129883
+        },
+        {
+          "question": "Explain the difference between arrays and linked lists",
+          "answer": "This is a simulated CS-enhanced answer for: Explain the difference between arrays and linked lists",
+          "confidence": 0.85,
+          "sources": [
+            "CS Textbook Chapter 5",
+            "Algorithm Documentation"
+          ],
+          "processing_time": 0.10031938552856445
+        },
+        {
+          "question": "How does object-oriented programming work?",
+          "answer": "This is a simulated CS-enhanced answer for: How does object-oriented programming work?",
+          "confidence": 0.85,
+          "sources": [
+            "CS Textbook Chapter 5",
+            "Algorithm Documentation"
+          ],
+          "processing_time": 0.10025191307067871
+        }
+      ]
+    }
+  },
+  "recommendations": [
+    "Fix failed components: prompt_templates, query_processor",
+    "Core components working - can proceed with integration"
+  ],
+  "generated_at": 1753697835.43133
+}
