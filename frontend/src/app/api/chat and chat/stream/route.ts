@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ChatService } from '@/lib/database/mongodb';
 
 // Configuration
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
@@ -8,7 +7,6 @@ const API_KEY = process.env.API_KEY;
 interface ChatStreamRequest {
   message: string;
   sessionId?: string;
-  userId?: string;
   model?: string;
   temperature?: number;
   maxTokens?: number;
