@@ -65,8 +65,7 @@ const registerSchema = z.object({
       const domain = email.split('@')[1]?.toLowerCase();
       return !blockedDomains.includes(domain);
     }, 'Please use a valid email domain (Gmail, Outlook, etc.)')
-    .toLowerCase()
-    .trim(),
+    .transform((email) => email.toLowerCase().trim()),
   password: z
     .string()
     .min(1, 'Password is required')

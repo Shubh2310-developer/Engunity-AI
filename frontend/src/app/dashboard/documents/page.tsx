@@ -21,7 +21,10 @@ import {
   Archive,
   Code,
   Book,
-  Presentation
+  Presentation,
+  Brain,
+  Zap,
+  Activity
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -46,6 +49,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/components/ui/use-toast';
 
 import { useAuth } from '@/hooks/useAuth';
+import { useRAG } from '@/hooks/useRAG';
 import { supabase } from '@/lib/auth/supabase';
 import { 
   updateDocumentStatusNoAuth 
@@ -84,12 +88,14 @@ const DocumentsPage: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
+  const { analyzeDocument, loading: ragLoading, error: ragError } = useRAG();
   const [documents, setDocuments] = useState<SupabaseDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<'all' | 'uploading' | 'processing' | 'processed' | 'failed'>('all');
   const [uploadingFiles, setUploadingFiles] = useState<string[]>([]);
   const [dragActive, setDragActive] = useState(false);
+  const [analyzingDocs, setAnalyzingDocs] = useState<Set<string>>(new Set());
 
   // Fetch documents on component mount
   useEffect(() => {
@@ -328,7 +334,9 @@ const DocumentsPage: React.FC = () => {
 
   const handleAnalyzeDocument = async (documentId: string) => {
     try {
-      await updateDocumentStatusNoAuth(documentId, 'processing');
+      setAnalyzingDocs(prev => new Set(prev).add(documentId));
+      
+      // Update UI immediately
       setDocuments(prev => 
         prev.map(doc => 
           doc.id === documentId 
@@ -337,35 +345,74 @@ const DocumentsPage: React.FC = () => {
         )
       );
       
-      // Get authentication session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        throw new Error(`Authentication error: ${sessionError.message}`);
-      }
-
-      if (!session || !session.access_token) {
-        throw new Error('No valid authentication session. Please sign in again.');
-      }
-      
-      // Trigger backend processing
-      const response = await fetch('/api/documents/process', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({ documentId })
+      // Start RAG analysis
+      await analyzeDocument(documentId, {
+        enable_advanced_processing: true,
+        chunk_strategy: 'smart',
+        extract_metadata: true
       });
 
-      if (!response.ok) {
-        throw new Error('Analysis failed');
-      }
-
-      toast('Document analysis is in progress', { variant: 'success' });
-    } catch (error) {
-      console.error('Analysis error:', error);
-      toast('Failed to start document analysis', { variant: 'error' });
+      toast('RAG document analysis started successfully!', { variant: 'success' });
+      
+      // Poll for status updates (optional)
+      const pollInterval = setInterval(async () => {
+        try {
+          const { data: updatedDoc } = await supabase
+            .from('documents')
+            .select('*')
+            .eq('id', documentId)
+            .single();
+          
+          if (updatedDoc && updatedDoc.status === 'processed') {
+            setDocuments(prev => 
+              prev.map(doc => 
+                doc.id === documentId 
+                  ? { ...doc, status: 'processed' as SupabaseDocument['status'] }
+                  : doc
+              )
+            );
+            clearInterval(pollInterval);
+            setAnalyzingDocs(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(documentId);
+              return newSet;
+            });
+            toast('Document is ready for AI questions!', { variant: 'success' });
+          }
+        } catch (error) {
+          console.error('Status polling error:', error);
+        }
+      }, 3000);
+      
+      // Clean up after 2 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setAnalyzingDocs(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(documentId);
+          return newSet;
+        });
+      }, 120000);
+      
+    } catch (error: any) {
+      console.error('RAG Analysis error:', error);
+      
+      // Revert status on error
+      setDocuments(prev => 
+        prev.map(doc => 
+          doc.id === documentId 
+            ? { ...doc, status: 'failed' as SupabaseDocument['status'] }
+            : doc
+        )
+      );
+      
+      setAnalyzingDocs(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(documentId);
+        return newSet;
+      });
+      
+      toast(`RAG analysis failed: ${error.message}`, { variant: 'error' });
     }
   };
 
@@ -476,14 +523,23 @@ const DocumentsPage: React.FC = () => {
         {/* Header Section */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="heading-lg">Document Library</h1>
+            <div className="flex items-center gap-3 mb-2">
+              <h1 className="heading-lg">Document Library</h1>
+              <div className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-ai-primary/10 to-purple-500/10 rounded-full border border-ai-primary/20">
+                <Zap className="h-4 w-4 text-ai-primary" />
+                <span className="text-sm font-medium text-ai-primary">RAG Powered</span>
+              </div>
+            </div>
             <p className="text-body text-slate-600 mt-2">
-              Upload, process, and analyze your documents with AI-powered insights
+              Upload, process, and analyze your documents with AI-powered RAG (BGE + Phi-2) insights
             </p>
             <div className="mt-3 text-xs text-slate-500">
               <strong>Supported formats:</strong> PDF, Word (DOC/DOCX), Excel (XLS/XLSX), PowerPoint (PPT/PPTX), 
               Text (TXT/MD/CSV), Code files (JS/TS/PY/JAVA/C/C++/PHP), Archives (ZIP/RAR/7Z), 
               eBooks (EPUB/MOBI), and more
+            </div>
+            <div className="mt-2 text-xs text-ai-primary">
+              <strong>✨ New:</strong> Advanced RAG analysis with BGE-small retrieval + Phi-2 generation for precise document Q&A
             </div>
           </div>
           
@@ -653,6 +709,7 @@ const DocumentsPage: React.FC = () => {
                                     size="sm"
                                     className="hover-lift"
                                     onClick={() => router.push(`/dashboard/documents/${document.id}/viewer`)}
+                                    title="View Document"
                                   >
                                     <Eye className="h-4 w-4" />
                                   </Button>
@@ -660,24 +717,37 @@ const DocumentsPage: React.FC = () => {
                                   <Button
                                     variant="ghost" 
                                     size="sm"
-                                    className="hover-lift"
+                                    className="hover-lift text-ai-primary hover:text-ai-primary/80"
                                     onClick={() => router.push(`/dashboard/documents/${document.id}/qa`)}
+                                    title="Ask AI Questions"
                                   >
                                     <MessageSquare className="h-4 w-4" />
                                   </Button>
                                 </>
                               )}
                               
-                              {(document.status === 'failed') && (
+                              {(document.status === 'uploading' || document.status === 'failed') && (
                                 <Button
                                   variant="ghost"
                                   size="sm"
                                   className="hover-lift text-blue-600 hover:text-blue-700"
                                   onClick={() => handleAnalyzeDocument(document.id)}
-                                  disabled={false}
+                                  disabled={analyzingDocs.has(document.id) || ragLoading}
+                                  title="Start RAG Analysis"
                                 >
-                                  Retry
+                                  {analyzingDocs.has(document.id) ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Brain className="h-4 w-4" />
+                                  )}
                                 </Button>
+                              )}
+                              
+                              {document.status === 'processing' && (
+                                <div className="flex items-center gap-2 text-sm text-slate-600">
+                                  <Activity className="h-4 w-4 animate-pulse text-ai-primary" />
+                                  <span className="text-xs">Analyzing...</span>
+                                </div>
                               )}
                               
                               <DropdownMenu>
@@ -687,6 +757,15 @@ const DocumentsPage: React.FC = () => {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
+                                  {document.status !== 'processing' && (
+                                    <DropdownMenuItem
+                                      onClick={() => handleAnalyzeDocument(document.id)}
+                                      disabled={analyzingDocs.has(document.id) || ragLoading}
+                                    >
+                                      <Brain className="h-4 w-4 mr-2" />
+                                      {document.status === 'processed' ? 'Re-analyze with RAG' : 'Analyze with RAG'}
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuItem>
                                     <Download className="h-4 w-4 mr-2" />
                                     Download
