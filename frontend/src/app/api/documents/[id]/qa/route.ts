@@ -35,6 +35,9 @@ function cleanResponse(text: string): string {
     /POST \/api\/[^\n]*\n?/g,
     /✅ Retrieved \d+ messages[^\n]*\n?/g,
     /Object-based programming languages[^\n]*\n?/g,
+    // Remove asterisk-formatted patterns
+    /\*+[^*]*\*+/g,                            // Remove content surrounded by asterisks
+    /\*+/g,                                    // Remove standalone asterisks
   ];
 
   // Apply source reference removal patterns
@@ -81,8 +84,9 @@ function cleanResponse(text: string): string {
   // Step 3: Reconstruct with proper formatting
   cleaned = processedLines.join('\n');
 
-  // Step 4: Fix formatting while preserving content structure
+  // Step 4: Remove asterisks and fix formatting while preserving content structure
   cleaned = cleaned
+    .replace(/\*+/g, '')                       // Remove all asterisks
     .replace(/[ \t]+/g, ' ')                    // Multiple spaces to single space
     .replace(/\n\s*\n\s*\n+/g, '\n\n')         // Multiple newlines to double newline
     .replace(/\.\s*([A-Z])/g, '. $1')          // Ensure space after periods
