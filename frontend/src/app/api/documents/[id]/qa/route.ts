@@ -2,6 +2,105 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDocumentByIdNoAuth } from '@/lib/supabase/document-storage-no-auth';
 import { ChatService, ChatMessage } from '@/lib/database/mongodb';
 
+// Smart response cleaner utility
+function cleanResponse(text: string): string {
+  if (!text || typeof text !== 'string') {
+    return text || '';
+  }
+
+  let cleaned = text;
+
+  // Step 1: Remove source reference patterns (keep existing patterns but be more precise)
+  const sourcePatterns = [
+    /\*\*From the document from [^:]*:\*\*\s*/gi,
+    /\*\*From the document[^:]*:\*\*\s*/gi,
+    /\*\*From web sources:\*\*\s*/gi,
+    /From web sources:\s*/gi,
+    /--- [Ss]ource \d+[^\n]*---\s*/g,
+    /--- [Ss]ource \d+[^\n]*\n/g,
+    /\([Ss]core: [-+]?[0-9]*\.?[0-9]+\)\s*/g,
+    /Based on web search for[^\n]*\n?/gi,
+    /Web search performed for[^\n]*\n?/gi,
+    /Additional information may be available from other sources\.\s*/gi,
+    /the answer [^.]*inappropriate[^\n]*\n?/gi,
+    /please make sure the answer [^.]*appropriate[^\n]*\n?/gi,
+    // System messages
+    /✓ Compiled \/api\/[^\n]*\n?/g,
+    /✅ Supabase client[^\n]*\n?/g,
+    /🔑 Admin access[^\n]*\n?/g,
+    /📜 Fetching chat[^\n]*\n?/g,
+    /🤖 CS-RAG:[^\n]*\n?/g,
+    /💾 Chat saved:[^\n]*\n?/g,
+    /GET \/api\/[^\n]*\n?/g,
+    /POST \/api\/[^\n]*\n?/g,
+    /✅ Retrieved \d+ messages[^\n]*\n?/g,
+    /Object-based programming languages[^\n]*\n?/g,
+  ];
+
+  // Apply source reference removal patterns
+  for (const pattern of sourcePatterns) {
+    cleaned = cleaned.replace(pattern, '');
+  }
+
+  // Step 2: Process lines more intelligently
+  const lines = cleaned.split('\n');
+  const processedLines: string[] = [];
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    
+    // Skip truly empty lines
+    if (!trimmedLine) {
+      continue;
+    }
+
+    // Remove lines that are ONLY source references or empty numbered items
+    const shouldRemove = [
+      /^--- [Ss]ource.*/,
+      /^\*\*From .*:\*\*\s*$/,
+      /^Based on web search.*/,
+      /^Web search performed.*/,
+      /^Additional information may be available.*/,
+      /^\d+\.\s*$/,  // Remove empty numbered items like "1." "2."
+      /^✓ Compiled.*/,
+      /^✅ Supabase.*/,
+      /^🔑 Admin.*/,
+      /^📜 Fetching.*/,
+      /^🤖 CS-RAG.*/,
+      /^💾 Chat.*/,
+      /^(GET|POST) \/api.*/,
+      /^✅ Retrieved.*/,
+      /^Object-based programming languages.*/,
+    ].some(pattern => pattern.test(trimmedLine));
+
+    if (!shouldRemove) {
+      processedLines.push(trimmedLine);
+    }
+  }
+
+  // Step 3: Reconstruct with proper formatting
+  cleaned = processedLines.join('\n');
+
+  // Step 4: Fix formatting while preserving content structure
+  cleaned = cleaned
+    .replace(/[ \t]+/g, ' ')                    // Multiple spaces to single space
+    .replace(/\n\s*\n\s*\n+/g, '\n\n')         // Multiple newlines to double newline
+    .replace(/\.\s*([A-Z])/g, '. $1')          // Ensure space after periods
+    .replace(/\?\s*([A-Z])/g, '? $1')          // Ensure space after question marks
+    .replace(/!\s*([A-Z])/g, '! $1')           // Ensure space after exclamation marks
+    .trim();
+
+  // Step 5: Ensure proper ending
+  if (cleaned && !cleaned.endsWith('.') && !cleaned.endsWith('!') && !cleaned.endsWith('?') && !cleaned.endsWith(':')) {
+    // Only add period if the last character is alphanumeric
+    if (cleaned[cleaned.length - 1].match(/[a-zA-Z0-9]/)) {
+      cleaned += '.';
+    }
+  }
+
+  return cleaned;
+}
+
 // Configuration for CS-Enhanced RAG Backend
 const RAG_BACKEND_URL = process.env.RAG_BACKEND_URL || 'http://localhost:8000';
 const RAG_API_KEY = process.env.RAG_API_KEY;
@@ -196,9 +295,9 @@ async function callCSRagBackend(documentId: string, request: CSRagRequest): Prom
     headers['Authorization'] = `Bearer ${RAG_API_KEY}`;
   }
 
-  // Timeout for RAG processing - 15 seconds maximum
+  // Timeout for RAG processing - 30 seconds maximum to handle complex queries
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
   try {
     const response = await fetch(`${RAG_BACKEND_URL}/api/v1/documents/${documentId}/qa`, {
@@ -345,14 +444,20 @@ export async function POST(
         messageId: `msg_user_${Date.now()}`
       };
       
-      await ChatService.saveMessage(userMessage);
+      try {
+        await ChatService.saveMessage(userMessage);
+      } catch (mongoError) {
+        console.warn('Failed to save instant user message to MongoDB:', mongoError);
+      }
+      
+      const cleanedInstantAnswer = cleanResponse(instantAnswer);
       
       // Save instant assistant message
       const instantAssistantMessage: Omit<ChatMessage, '_id'> = {
         sessionId: instantSessionId,
         documentId,
         role: 'assistant',
-        content: instantAnswer,
+        content: cleanedInstantAnswer,
         timestamp: new Date(),
         messageId: `msg_instant_${Date.now()}`,
         confidence: 0.95,
@@ -366,19 +471,23 @@ export async function POST(
         processingTime,
         tokenUsage: {
           promptTokens: question.length,
-          completionTokens: instantAnswer.length,
-          totalTokens: question.length + instantAnswer.length
+          completionTokens: cleanedInstantAnswer.length,
+          totalTokens: question.length + cleanedInstantAnswer.length
         },
         csEnhanced: true,
         ragVersion: '3.0-instant',
         processingMode: 'Instant'
       };
 
-      await ChatService.saveMessage(instantAssistantMessage);
+      try {
+        await ChatService.saveMessage(instantAssistantMessage);
+      } catch (mongoError) {
+        console.warn('Failed to save instant assistant message to MongoDB:', mongoError);
+      }
 
       return NextResponse.json({
         success: true,
-        answer: instantAnswer,
+        answer: cleanedInstantAnswer,
         sources: [{
           id: 'instant_source',
           type: 'knowledge_base',
@@ -393,8 +502,8 @@ export async function POST(
         responseTime: processingTime,
         tokenUsage: {
           promptTokens: question.length,
-          completionTokens: instantAnswer.length,
-          totalTokens: question.length + instantAnswer.length
+          completionTokens: cleanedInstantAnswer.length,
+          totalTokens: question.length + cleanedInstantAnswer.length
         },
         csEnhanced: true,
         sourceType: 'instant_cache',
@@ -407,7 +516,7 @@ export async function POST(
           category: document.category
         },
         chatPersisted: true,
-        totalMessages: (await ChatService.getChatHistory(instantSessionId)).length
+        totalMessages: await ChatService.getChatHistory(instantSessionId).then(msgs => msgs.length).catch(() => 0)
       });
       }
     }
@@ -435,19 +544,25 @@ export async function POST(
       messageId: `msg_user_${Date.now()}`
     };
     
-    await ChatService.saveMessage(userMessage);
+    try {
+      await ChatService.saveMessage(userMessage);
+    } catch (mongoError) {
+      console.warn('Failed to save user message to MongoDB:', mongoError);
+    }
     
     try {
       // Try to get document content directly for analysis
       let documentAnswer = await tryDirectDocumentAnalysis(documentId, question, document);
       
       if (documentAnswer) {
+        const cleanedDocumentAnswer = cleanResponse(documentAnswer);
+        
         // Save assistant message with document-based response
         const directAnalysisMessage: Omit<ChatMessage, '_id'> = {
           sessionId: actualSessionId,
           documentId,
           role: 'assistant',
-          content: documentAnswer,
+          content: cleanedDocumentAnswer,
           timestamp: new Date(),
           messageId: `msg_direct_${Date.now()}`,
           confidence: 0.85,
@@ -461,19 +576,23 @@ export async function POST(
           processingTime: Date.now() - startTime,
           tokenUsage: {
             promptTokens: question.length,
-            completionTokens: documentAnswer.length,
-            totalTokens: question.length + documentAnswer.length
+            completionTokens: cleanedDocumentAnswer.length,
+            totalTokens: question.length + cleanedDocumentAnswer.length
           },
           csEnhanced: true,
           ragVersion: '3.0-direct',
           processingMode: 'Document-Direct'
         };
 
-        await ChatService.saveMessage(directAnalysisMessage);
+        try {
+          await ChatService.saveMessage(directAnalysisMessage);
+        } catch (mongoError) {
+          console.warn('Failed to save direct analysis message to MongoDB:', mongoError);
+        }
 
         return NextResponse.json({
           success: true,
-          answer: documentAnswer,
+          answer: cleanedDocumentAnswer,
           sources: [{
             id: 'document_direct',
             type: 'document',
@@ -488,8 +607,8 @@ export async function POST(
           responseTime: Date.now() - startTime,
           tokenUsage: {
             promptTokens: question.length,
-            completionTokens: documentAnswer.length,
-            totalTokens: question.length + documentAnswer.length
+            completionTokens: cleanedDocumentAnswer.length,
+            totalTokens: question.length + cleanedDocumentAnswer.length
           },
           csEnhanced: true,
           sourceType: 'document_analysis',
@@ -502,7 +621,7 @@ export async function POST(
             category: document.category
           },
           chatPersisted: true,
-          totalMessages: (await ChatService.getChatHistory(actualSessionId)).length
+          totalMessages: await ChatService.getChatHistory(actualSessionId).then(msgs => msgs.length).catch(() => 0)
         });
       }
       
@@ -530,12 +649,15 @@ export async function POST(
 
       const processingTime = Date.now() - startTime;
 
+      // Clean the answer from the RAG response
+      const cleanedRagAnswer = cleanResponse(ragResponse.answer);
+      
       // Save assistant message to MongoDB
       const assistantMessage: Omit<ChatMessage, '_id'> = {
         sessionId: actualSessionId,
         documentId,
         role: 'assistant',
-        content: ragResponse.answer,
+        content: cleanedRagAnswer,
         timestamp: new Date(),
         messageId: ragResponse.message_id,
         confidence: ragResponse.confidence,
@@ -549,12 +671,16 @@ export async function POST(
                        ragResponse.source_type === 'web_primary' ? 'Web-first' : 'Document-only'
       };
 
-      await ChatService.saveMessage(assistantMessage);
+      try {
+        await ChatService.saveMessage(assistantMessage);
+      } catch (mongoError) {
+        console.warn('Failed to save RAG assistant message to MongoDB:', mongoError);
+      }
 
       // Enhanced response with CS-RAG metadata
       const response = {
         success: true,
-        answer: ragResponse.answer,
+        answer: cleanedRagAnswer,
         sources: transformedSources,
         confidence: ragResponse.confidence,
         sessionId: actualSessionId,
@@ -588,6 +714,7 @@ export async function POST(
       
       // Generate intelligent fallback with better document integration
       let fallbackAnswer = await generateSmartFallbackResponse(question, document);
+      const cleanedFallbackAnswer = cleanResponse(fallbackAnswer);
 
       const fallbackSources = [{
         id: 'fallback_source',
@@ -604,7 +731,7 @@ export async function POST(
         sessionId: actualSessionId,
         documentId,
         role: 'assistant',
-        content: fallbackAnswer,
+        content: cleanedFallbackAnswer,
         timestamp: new Date(),
         messageId: `msg_fallback_${Date.now()}`,
         confidence: 0.5,
@@ -618,19 +745,23 @@ export async function POST(
         processingTime: Date.now() - startTime,
         tokenUsage: {
           promptTokens: question.length,
-          completionTokens: fallbackAnswer.length,
-          totalTokens: question.length + fallbackAnswer.length
+          completionTokens: cleanedFallbackAnswer.length,
+          totalTokens: question.length + cleanedFallbackAnswer.length
         },
         csEnhanced: false,
         ragVersion: '1.0-fallback',
         processingMode: 'Fallback'
       };
 
-      await ChatService.saveMessage(fallbackAssistantMessage);
+      try {
+        await ChatService.saveMessage(fallbackAssistantMessage);
+      } catch (mongoError) {
+        console.warn('Failed to save fallback assistant message to MongoDB:', mongoError);
+      }
 
       return NextResponse.json({
         success: true,
-        answer: fallbackAnswer,
+        answer: cleanedFallbackAnswer,
         sources: fallbackSources,
         confidence: 0.5,
         sessionId: actualSessionId,
@@ -638,8 +769,8 @@ export async function POST(
         responseTime: Date.now() - startTime,
         tokenUsage: {
           promptTokens: question.length,
-          completionTokens: fallbackAnswer.length,
-          totalTokens: question.length + fallbackAnswer.length
+          completionTokens: cleanedFallbackAnswer.length,
+          totalTokens: question.length + cleanedFallbackAnswer.length
         },
         // Indicate this is a fallback response
         csEnhanced: false,

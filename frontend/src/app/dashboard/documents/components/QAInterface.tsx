@@ -220,7 +220,7 @@ const MessageBubble: React.FC<{
 
           {/* Message Content */}
           <div className="prose prose-sm max-w-none">
-            <div className={`whitespace-pre-wrap break-words leading-relaxed ${isUser ? 'text-white' : 'text-slate-800'} text-body`}>
+            <div className={`whitespace-pre-wrap break-words leading-relaxed ${isUser ? '!text-white' : 'text-slate-800'} text-body`} style={isUser ? { color: '#ffffff !important' } : {}}>
               {displayContent}
               {isStreaming && (
                 <motion.span
@@ -1160,7 +1160,8 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
                 onKeyDown={handleKeyDown}
                 placeholder="Ask a question about this document..."
                 disabled={isLoading}
-                className="min-h-[52px] max-h-32 resize-none pr-20 text-slate-900 placeholder:text-slate-500 bg-white border border-slate-300 focus:border-slate-500 focus:ring-2 focus:ring-slate-200 rounded-2xl px-4 py-3 transition-all duration-200 shadow-sm"
+                className="min-h-[52px] max-h-32 resize-none pr-20 !text-white placeholder:!text-slate-400 !bg-slate-900 border border-slate-700 focus:border-blue-400 focus:ring-2 focus:ring-blue-200 rounded-2xl px-4 py-3 transition-all duration-200 shadow-sm font-medium"
+                style={{ color: '#ffffff !important', backgroundColor: '#0f172a !important' }}
                 maxLength={2000}
               />
               
