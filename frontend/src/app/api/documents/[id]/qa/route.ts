@@ -196,9 +196,9 @@ async function callCSRagBackend(documentId: string, request: CSRagRequest): Prom
     headers['Authorization'] = `Bearer ${RAG_API_KEY}`;
   }
 
-  // Ultra-fast timeout - 3 seconds maximum
+  // Timeout for RAG processing - 15 seconds maximum
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 3000);
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
 
   try {
     const response = await fetch(`${RAG_BACKEND_URL}/api/v1/documents/${documentId}/qa`, {
