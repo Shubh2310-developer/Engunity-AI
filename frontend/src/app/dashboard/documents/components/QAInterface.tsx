@@ -140,11 +140,12 @@ const MessageBubble: React.FC<{
   const isStreaming = 'isStreaming' in message && message.isStreaming;
   const isError = 'isError' in message && message.isError;
   
-  const messageLength = message.content.length;
+  const messageContent = message.content || '';
+  const messageLength = messageContent.length;
   const shouldTruncate = messageLength > 500 && !isExpanded;
   const displayContent = shouldTruncate 
-    ? message.content.substring(0, 500) + '...' 
-    : message.content;
+    ? messageContent.substring(0, 500) + '...' 
+    : messageContent;
 
   const formatTime = (timestamp: Date) => {
     return new Intl.DateTimeFormat('en-US', { 
@@ -246,7 +247,7 @@ const MessageBubble: React.FC<{
           </div>
 
           {/* Sources Section */}
-          {message.sources && message.sources.length > 0 && (
+          {message.sources && Array.isArray(message.sources) && message.sources.length > 0 && (
             <motion.div 
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
@@ -260,16 +261,22 @@ const MessageBubble: React.FC<{
                 </Badge>
               </div>
               <div className="flex flex-wrap gap-2">
-                {message.sources.map((source, index) => (
+                {message.sources.map((source, index) => {
+                  // Defensive check for source object
+                  if (!source || typeof source !== 'object') {
+                    console.warn('Invalid source object at index', index, source);
+                    return null;
+                  }
+                  return (
                   <TooltipProvider key={index}>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Badge 
                           variant="secondary" 
                           className="text-xs cursor-pointer hover:bg-ai-primary hover:text-white transition-all duration-200 group bg-slate-100 border border-slate-200 text-slate-700 px-3 py-1.5"
-                          onClick={() => window.open(`/dashboard/documents/${documentId}/viewer?page=${source.pageNumber}`, '_blank')}
+                          onClick={() => window.open(`/dashboard/documents/${documentId}/viewer?page=${source.metadata?.page || source.pageNumber || 1}`, '_blank')}
                         >
-                          <span className="font-medium">Page {source.pageNumber}</span>
+                          <span className="font-medium">Page {source.metadata?.page || source.pageNumber || 1}</span>
                           <div className="ml-2 opacity-60 group-hover:opacity-100">
                             <ExternalLink className="h-3 w-3" />
                           </div>
@@ -277,18 +284,27 @@ const MessageBubble: React.FC<{
                       </TooltipTrigger>
                       <TooltipContent side="top" className="max-w-xs bg-white border border-slate-200 shadow-professional">
                         <div className="space-y-2 p-2">
-                          <p className="font-medium text-slate-900">Page {source.pageNumber}</p>
+                          <p className="font-medium text-slate-900">Page {source.metadata?.page || source.pageNumber || 1}</p>
                           <p className="text-xs text-slate-600 leading-relaxed">
-                            {source.content.substring(0, 150)}...
+                            {(() => {
+                              try {
+                                const preview = source?.content_preview || source?.content || 'No preview available';
+                                return typeof preview === 'string' ? preview.substring(0, 150) : 'No preview available';
+                              } catch (error) {
+                                console.error('Error rendering source preview:', error, source);
+                                return 'No preview available';
+                              }
+                            })()}...
                           </p>
                           <p className="text-xs text-slate-500">
-                            Confidence: <span className="font-medium">{Math.round(source.confidence * 100)}%</span>
+                            Confidence: <span className="font-medium">{Math.round((source.relevance_score || source.confidence || 0) * 100)}%</span>
                           </p>
                         </div>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
-                ))}
+                  );
+                })}
               </div>
             </motion.div>
           )}
@@ -492,6 +508,27 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
 
   // Initialize session ID more reliably
   const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+    // Clear any potentially corrupted cached messages on component initialization
+    try {
+      const cacheKeys = Object.keys(localStorage).filter(key => 
+        key.includes('qa_messages') || key.includes('chat_history') || key.includes('toast')
+      );
+      if (cacheKeys.length > 0) {
+        console.log('🧹 Clearing potentially corrupted cache on component init (including toast cache)');
+        cacheKeys.forEach(key => localStorage.removeItem(key));
+      }
+      
+      // Clear session storage as well
+      const sessionKeys = Object.keys(sessionStorage).filter(key => 
+        key.includes('qa_messages') || key.includes('chat_history') || key.includes('toast')
+      );
+      if (sessionKeys.length > 0) {
+        console.log('🧹 Clearing potentially corrupted session storage');
+        sessionKeys.forEach(key => sessionStorage.removeItem(key));
+      }
+    } catch (error) {
+      console.warn('Failed to clear cache on init:', error);
+    }
     return sessionId;
   });
   const [showSettings, setShowSettings] = useState(false);
@@ -521,14 +558,14 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
     ];
     
     // Add document-type specific questions
-    if (document.name.toLowerCase().includes('report')) {
+    if (document?.name?.toLowerCase().includes('report')) {
       return [...baseQuestions, "What are the findings?", "What methodology was used?"];
-    } else if (document.name.toLowerCase().includes('contract')) {
+    } else if (document?.name?.toLowerCase().includes('contract')) {
       return [...baseQuestions, "What are the key terms?", "What are the obligations?"];
     }
     
     return baseQuestions;
-  }, [document.name]);
+  }, [document?.name]);
 
   // Load chat history (memoized to prevent loops)
   const loadChatHistory = useCallback(async () => {
@@ -1130,7 +1167,7 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
               {/* Character count */}
               <div className="absolute bottom-3 right-4 flex items-center gap-2">
                 <span className="text-xs text-slate-400 font-medium">
-                  {inputValue.length}/2000
+                  {(inputValue || '').length}/2000
                 </span>
               </div>
             </div>
