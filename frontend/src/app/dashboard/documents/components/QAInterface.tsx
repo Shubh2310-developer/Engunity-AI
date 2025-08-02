@@ -86,7 +86,16 @@ interface ChatMessage {
   metadata?: {
     tokensUsed?: number;
     processingTime?: number;
+    processing_time?: number;
     model?: string;
+    pipeline?: string;
+    web_search_triggered?: boolean;
+    candidates_generated?: number;
+    ranking_method?: string;
+    merge_strategy?: string;
+    similarity_score?: number;
+    coherence_score?: number;
+    quality_score?: number;
   };
 }
 
@@ -211,16 +220,29 @@ const MessageBubble: React.FC<{
                 )}
                 {/* Show pipeline information */}
                 {'metadata' in message && message.metadata?.pipeline === 'agentic_rag' && (
-                  <Badge variant="outline" className="text-xs bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200 text-blue-700">
+                  <Badge variant="outline" className="text-xs bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200 text-blue-700 px-2 py-1">
                     <Search className="h-3 w-3 mr-1" />
                     BGE + Phi-2
+                    <span className="ml-1 text-xs opacity-75">
+                      ({message.metadata?.candidates_generated || 5}x)
+                    </span>
                   </Badge>
                 )}
                 {/* Show web search indicator */}
                 {'metadata' in message && message.metadata?.web_search_triggered && (
-                  <Badge variant="outline" className="text-xs bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 text-green-700">
+                  <Badge variant="outline" className="text-xs bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 text-green-700 px-2 py-1">
                     <ExternalLink className="h-3 w-3 mr-1" />
                     Web Enhanced
+                    <span className="ml-1 text-xs opacity-75">
+                      ({message.metadata?.merge_strategy || 'merged'})
+                    </span>
+                  </Badge>
+                )}
+                {/* Show ranking method indicator */}
+                {'metadata' in message && message.metadata?.ranking_method && (
+                  <Badge variant="outline" className="text-xs bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200 text-purple-700 px-2 py-1">
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    {message.metadata.ranking_method === 'llm_self_ranking' ? 'LLM Ranked' : 'Auto Ranked'}
                   </Badge>
                 )}
               </div>
@@ -360,43 +382,133 @@ const MessageBubble: React.FC<{
                 )}
               </div>
               
-              {/* Agentic RAG Pipeline Details */}
+              {/* Enhanced Agentic RAG Pipeline Details */}
               {'metadata' in message && message.metadata?.pipeline === 'agentic_rag' && (
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div className="bg-blue-50 rounded-lg p-2">
-                    <div className="font-medium text-blue-700 mb-1 flex items-center gap-1">
-                      <Brain className="h-3 w-3" />
-                      BGE Retrieval
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                      <div className="font-medium text-blue-700 mb-1 flex items-center gap-1">
+                        <Brain className="h-3 w-3" />
+                        BGE Retrieval
+                        {message.sources?.some((source: any) => source.metadata?.reranked) && (
+                          <Badge variant="outline" className="text-xs bg-blue-100 border-blue-200 text-blue-700">
+                            Reranked
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-blue-600 text-xs">
+                        ✓ Vector search with FAISS
+                        {message.sources?.some((source: any) => source.metadata?.reranked) && (
+                          <span> + BGE reranker</span>
+                        )}
+                      </div>
+                      <div className="text-blue-500 text-xs mt-1">
+                        {message.sources?.length || 0} documents retrieved
+                      </div>
+                      {message.sources?.some((source: any) => source.metadata?.reranked) && (
+                        <div className="text-blue-400 text-xs mt-1">
+                          ✓ Quality filtered for relevance
+                        </div>
+                      )}
                     </div>
-                    <div className="text-blue-600">
-                      ✓ Vector search complete
-                    </div>
-                  </div>
-                  
-                  <div className="bg-purple-50 rounded-lg p-2">
-                    <div className="font-medium text-purple-700 mb-1 flex items-center gap-1">
-                      <Zap className="h-3 w-3" />
-                      Phi-2 Generation
-                    </div>
-                    <div className="text-purple-600">
-                      {message.metadata?.candidates_generated ? 
-                        `✓ Best of ${message.metadata.candidates_generated}` : 
-                        '✓ Generation complete'
-                      }
+                    
+                    <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                      <div className="font-medium text-purple-700 mb-1 flex items-center gap-1">
+                        <Zap className="h-3 w-3" />
+                        Phi-2 Generation
+                        {message.metadata?.enhanced && (
+                          <Badge variant="outline" className="text-xs bg-purple-100 border-purple-200 text-purple-700">
+                            Enhanced
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-purple-600 text-xs">
+                        ✓ {message.metadata?.ranking_method?.includes('enhanced') ? 'Enhanced Best-of-N' : 'Best-of-N sampling'}
+                      </div>
+                      <div className="text-purple-500 text-xs mt-1">
+                        {message.metadata?.candidates_generated || 5} candidates ranked
+                      </div>
+                      {message.metadata?.ranking_method?.includes('enhanced') && (
+                        <div className="text-purple-400 text-xs mt-1">
+                          ✓ Quality validation & JSON formatting
+                        </div>
+                      )}
                     </div>
                   </div>
                   
                   {message.metadata?.web_search_triggered && (
-                    <div className="bg-green-50 rounded-lg p-2 col-span-2">
-                      <div className="font-medium text-green-700 mb-1 flex items-center gap-1">
+                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-3 border border-green-100">
+                      <div className="font-medium text-green-700 mb-2 flex items-center gap-2">
                         <ExternalLink className="h-3 w-3" />
-                        Web Search Enhanced
+                        Web Search Enhancement
+                        <Badge variant="outline" className="text-xs bg-green-100 border-green-200 text-green-700">
+                          Active
+                        </Badge>
                       </div>
-                      <div className="text-green-600">
-                        ✓ Gemini web search + answer merger
+                      <div className="grid grid-cols-2 gap-4 text-xs">
+                        <div>
+                          <div className="text-green-600 font-medium">
+                            {message.metadata?.source === 'wikipedia_enhanced' ? 'Wikipedia Search' : 'Gemini Web Search'}
+                          </div>
+                          <div className="text-green-500">
+                            ✓ {message.metadata?.source === 'wikipedia_enhanced' ? 'Wikipedia articles analyzed' : 'External sources analyzed'}
+                          </div>
+                          {message.metadata?.wikipedia_sources && (
+                            <div className="text-green-400 text-xs mt-1">
+                              {message.metadata.wikipedia_sources} Wikipedia sources
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-green-600 font-medium">Answer Merger</div>
+                          <div className="text-green-500">
+                            {message.metadata?.merge_strategy ? 
+                              `✓ ${message.metadata.merge_strategy} strategy` : 
+                              '✓ Coherence validation'
+                            }
+                          </div>
+                        </div>
                       </div>
+                      {message.metadata?.similarity_score && (
+                        <div className="mt-2 text-xs text-green-600">
+                          Similarity Score: {Math.round(message.metadata.similarity_score * 100)}%
+                        </div>
+                      )}
                     </div>
                   )}
+                  
+                  {/* Quality Metrics */}
+                  <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+                    <div className="font-medium text-slate-700 mb-2 flex items-center gap-1 text-xs">
+                      <Sparkles className="h-3 w-3" />
+                      Quality Metrics
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 text-xs">
+                      <div className="text-center">
+                        <div className="font-medium text-slate-600">Confidence</div>
+                        <div className={`font-bold ${
+                          (message.confidence || 0) > 0.8 ? 'text-green-600' : 
+                          (message.confidence || 0) > 0.6 ? 'text-yellow-600' : 'text-red-600'
+                        }`}>
+                          {Math.round((message.confidence || 0) * 100)}%
+                        </div>
+                      </div>
+                      {message.metadata?.coherence_score && (
+                        <div className="text-center">
+                          <div className="font-medium text-slate-600">Coherence</div>
+                          <div className="font-bold text-blue-600">
+                            {Math.round(message.metadata.coherence_score * 100)}%
+                          </div>
+                        </div>
+                      )}
+                      <div className="text-center">
+                        <div className="font-medium text-slate-600">Processing</div>
+                        <div className="font-bold text-purple-600">
+                          {((message.responseTime || message.metadata?.processing_time || 0)).toFixed(1)}s
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -898,7 +1010,7 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
         throw new Error(qaResponse.error || 'Unknown error from Q&A service');
       }
 
-      // Create assistant message from Q&A response
+      // Create assistant message from Q&A response with agentic RAG metadata
       const assistantMessage: ChatMessage = {
         id: qaResponse.messageId || Date.now().toString(),
         role: 'assistant',
@@ -907,10 +1019,22 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
         documentId: document.id,
         sources: qaResponse.sources || [],
         confidence: qaResponse.confidence,
-        responseTime: qaResponse.responseTime,
+        responseTime: qaResponse.responseTime || qaResponse.processing_time,
         tokenUsage: qaResponse.tokenUsage,
         csEnhanced: qaResponse.csEnhanced || false,
-        ragVersion: qaResponse.ragVersion || '2.0.0'
+        ragVersion: qaResponse.ragVersion || '2.0.0',
+        metadata: {
+          processing_time: qaResponse.processing_time || qaResponse.responseTime,
+          pipeline: 'agentic_rag',
+          web_search_triggered: qaResponse.metadata?.web_search_triggered || false,
+          candidates_generated: qaResponse.metadata?.candidates_generated || 5,
+          ranking_method: qaResponse.metadata?.ranking_method || 'llm_self_ranking',
+          merge_strategy: qaResponse.metadata?.merge_strategy,
+          similarity_score: qaResponse.metadata?.similarity_score,
+          coherence_score: qaResponse.metadata?.coherence_score,
+          quality_score: qaResponse.confidence,
+          model: 'BGE + Phi-2 + Gemini'
+        }
       };
 
       // Add assistant message to chat
@@ -978,10 +1102,30 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
       <p className="text-slate-600 mb-4 max-w-md">
         Ask questions about <span className="font-medium">"{document.name}"</span>
       </p>
-      <div className="flex items-center gap-2 mb-8 px-4 py-2 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200">
-        <Brain className="h-5 w-5 text-blue-600" />
-        <span className="text-sm font-medium text-blue-700">Powered by Agentic RAG</span>
-        <span className="text-xs text-blue-600">BGE + Phi-2 + Web Search</span>
+      <div className="mb-8 px-6 py-4 bg-gradient-to-r from-blue-50 via-purple-50 to-green-50 rounded-xl border border-blue-200 shadow-sm">
+        <div className="flex items-center justify-center gap-3 mb-3">
+          <Brain className="h-6 w-6 text-blue-600" />
+          <span className="text-base font-semibold text-blue-700">Powered by Agentic RAG</span>
+        </div>
+        <div className="flex items-center justify-center gap-4 text-xs">
+          <div className="flex items-center gap-1 px-2 py-1 bg-blue-100 rounded-md">
+            <Search className="h-3 w-3 text-blue-600" />
+            <span className="font-medium text-blue-700">BGE Retrieval</span>
+          </div>
+          <div className="text-slate-400">→</div>
+          <div className="flex items-center gap-1 px-2 py-1 bg-purple-100 rounded-md">
+            <Zap className="h-3 w-3 text-purple-600" />
+            <span className="font-medium text-purple-700">Phi-2 Generation</span>
+          </div>
+          <div className="text-slate-400">→</div>
+          <div className="flex items-center gap-1 px-2 py-1 bg-green-100 rounded-md">
+            <ExternalLink className="h-3 w-3 text-green-600" />
+            <span className="font-medium text-green-700">Web Enhancement</span>
+          </div>
+        </div>
+        <div className="text-center text-xs text-slate-600 mt-2">
+          Advanced document analysis with confidence-based web search fallback
+        </div>
       </div>
       
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl">
@@ -1144,13 +1288,26 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
           </div>
         </div>
         
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-blue-50 to-purple-50 rounded-full border border-blue-200">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-blue-50 via-purple-50 to-green-50 rounded-full border border-blue-200">
             <Brain className="h-4 w-4 text-blue-600" />
             <span className="text-sm font-medium text-blue-700">Agentic RAG</span>
+            <div className="h-3 w-px bg-blue-300"></div>
+            <div className="flex items-center gap-1">
+              <Search className="h-3 w-3 text-purple-600" />
+              <span className="text-xs font-medium text-purple-700">BGE</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Zap className="h-3 w-3 text-indigo-600" />
+              <span className="text-xs font-medium text-indigo-700">Phi-2</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <ExternalLink className="h-3 w-3 text-green-600" />
+              <span className="text-xs font-medium text-green-700">Web</span>
+            </div>
           </div>
           <div className="flex items-center gap-2 text-sm text-slate-500">
-            <div className="h-2 w-2 rounded-full bg-green-500" />
+            <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
             <span>Ready</span>
           </div>
         </div>

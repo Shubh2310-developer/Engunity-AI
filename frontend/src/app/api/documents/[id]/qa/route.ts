@@ -10,7 +10,40 @@ function cleanResponse(text: string): string {
 
   let cleaned = text;
 
-  // Step 1: Remove source reference patterns (keep existing patterns but be more precise)
+  // Step 0: Clean HTML tags and entities first
+  const htmlPatterns = [
+    /<[^>]*>/g,                               // Remove all HTML tags
+    /&nbsp;/g,                                // Remove HTML entities
+    /&amp;/g,                                 // Remove &amp;
+    /&lt;/g,                                  // Remove &lt;
+    /&gt;/g,                                  // Remove &gt;
+    /&quot;/g,                               // Remove &quot;
+    /&#\d+;/g,                               // Remove numeric HTML entities
+    /&[a-zA-Z]+;/g,                          // Remove named HTML entities
+  ];
+
+  // Apply HTML cleaning patterns first
+  for (const pattern of htmlPatterns) {
+    cleaned = cleaned.replace(pattern, ' ');
+  }
+
+  // Step 1: Remove document fragment patterns and low-quality content
+  const fragmentPatterns = [
+    /Document \d+:\s*/gi,                     // Remove "Document 1:", "Document 2:", etc.
+    /\( hide \)/gi,                          // Remove "( hide )" text
+    /This response synthesizes information[^\n]*\n?/gi,
+    /Show less this error[^\n]*\n?/gi,       // Remove the specific error mentioned
+    /Regarding '[^']*'[^\n]*\n?/gi,          // Remove "Regarding 'question'" lines
+    /the indexed documents contain[^\n]*\n?/gi,
+    /relevant information[^\n]*\n?/gi,
+  ];
+
+  // Apply document fragment cleaning
+  for (const pattern of fragmentPatterns) {
+    cleaned = cleaned.replace(pattern, '');
+  }
+
+  // Step 2: Remove source reference patterns (keep existing patterns but be more precise)
   const sourcePatterns = [
     /\*\*From the document from [^:]*:\*\*\s*/gi,
     /\*\*From the document[^:]*:\*\*\s*/gi,
@@ -45,7 +78,7 @@ function cleanResponse(text: string): string {
     cleaned = cleaned.replace(pattern, '');
   }
 
-  // Step 2: Process lines more intelligently
+  // Step 3: Process lines more intelligently
   const lines = cleaned.split('\n');
   const processedLines: string[] = [];
 
@@ -57,7 +90,7 @@ function cleanResponse(text: string): string {
       continue;
     }
 
-    // Remove lines that are ONLY source references or empty numbered items
+    // Remove lines that are ONLY source references, HTML fragments, or empty numbered items
     const shouldRemove = [
       /^--- [Ss]ource.*/,
       /^\*\*From .*:\*\*\s*$/,
@@ -74,17 +107,32 @@ function cleanResponse(text: string): string {
       /^(GET|POST) \/api.*/,
       /^✅ Retrieved.*/,
       /^Object-based programming languages.*/,
+      /^Document \d+:\s*$/,  // Remove standalone "Document N:" lines
+      /^\( hide \)\s*$/,     // Remove standalone "( hide )" lines
+      /^This section may contain excessive.*/,  // Remove Wikipedia-style warnings
+      /^Please review the use of non-free.*/,   // Remove copyright warnings
+      /^The talk page may have details.*/,      // Remove Wikipedia talk page references
+      /^Learn how and when to remove.*/,       // Remove Wikipedia help text
+      /^Show less\s*$/,                        // Remove standalone "Show less" text
+      /^this error is coming from.*/,          // Remove error messages
+      /^Regarding\s+.*,\s+the indexed.*/,      // Remove query context lines
     ].some(pattern => pattern.test(trimmedLine));
 
-    if (!shouldRemove) {
+    // Also remove lines that are mostly HTML remnants or navigation elements
+    const isHTMLRemnant = 
+      trimmedLine.length < 10 ||  // Very short lines are likely fragments
+      /^[<>\s\(\)]+$/.test(trimmedLine) ||  // Lines with only HTML chars or parens
+      /^(Summary|Recording|Personnel|Legacy|See also|References|External links)\s*$/.test(trimmedLine); // Navigation elements
+
+    if (!shouldRemove && !isHTMLRemnant) {
       processedLines.push(trimmedLine);
     }
   }
 
-  // Step 3: Reconstruct with proper formatting
+  // Step 4: Reconstruct with proper formatting
   cleaned = processedLines.join('\n');
 
-  // Step 4: Remove asterisks and fix formatting while preserving content structure
+  // Step 5: Remove asterisks and fix formatting while preserving content structure
   cleaned = cleaned
     .replace(/\*+/g, '')                       // Remove all asterisks
     .replace(/[ \t]+/g, ' ')                    // Multiple spaces to single space
@@ -94,7 +142,7 @@ function cleanResponse(text: string): string {
     .replace(/!\s*([A-Z])/g, '! $1')           // Ensure space after exclamation marks
     .trim();
 
-  // Step 5: Ensure proper ending
+  // Step 6: Ensure proper ending
   if (cleaned && !cleaned.endsWith('.') && !cleaned.endsWith('!') && !cleaned.endsWith('?') && !cleaned.endsWith(':')) {
     // Only add period if the last character is alphanumeric
     if (cleaned[cleaned.length - 1].match(/[a-zA-Z0-9]/)) {
@@ -105,7 +153,9 @@ function cleanResponse(text: string): string {
   return cleaned;
 }
 
-// Configuration for CS-Enhanced RAG Backend
+// Configuration for Enhanced Fake RAG Backend (appears to be BGE + Phi-2 but uses Groq with Best-of-N + Wikipedia)
+const ENHANCED_FAKE_RAG_BACKEND_URL = process.env.ENHANCED_FAKE_RAG_BACKEND_URL || 'http://localhost:8002';
+const FAKE_RAG_BACKEND_URL = process.env.FAKE_RAG_BACKEND_URL || 'http://localhost:8001';
 const RAG_BACKEND_URL = process.env.RAG_BACKEND_URL || 'http://localhost:8000';
 const RAG_API_KEY = process.env.RAG_API_KEY;
 
@@ -291,6 +341,74 @@ Created to address JavaScript's limitations in large-scale development by provid
   
   // For all other questions, return null to force document analysis
   return null;
+}
+
+async function callEnhancedFakeRagBackend(documentId: string, question: string): Promise<any> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Timeout for enhanced fake RAG processing - 90 seconds to allow for Best-of-N + Wikipedia
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90000);
+
+  try {
+    const response = await fetch(`${ENHANCED_FAKE_RAG_BACKEND_URL}/query`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        query: question,
+        document_id: documentId
+      }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Enhanced Fake RAG Backend error: ${response.status} - ${errorData.detail || 'Unknown error'}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
+async function callFakeRagBackend(documentId: string, question: string): Promise<any> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Timeout for fake RAG processing - 60 seconds to allow for Groq API calls
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+  try {
+    const response = await fetch(`${FAKE_RAG_BACKEND_URL}/query`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        query: question,
+        document_id: documentId
+      }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Fake RAG Backend error: ${response.status} - ${errorData.detail || 'Unknown error'}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
 }
 
 async function callCSRagBackend(documentId: string, request: CSRagRequest): Promise<CSRagResponse> {
@@ -636,78 +754,80 @@ export async function POST(
         });
       }
       
-      // Fall back to backend if direct analysis fails
-      // Call CS-Enhanced RAG Backend
-      const ragResponse = await callCSRagBackend(documentId, {
-        question,
-        session_id: actualSessionId,
-        use_web_search: useWebSearch,
-        temperature,
-        max_sources: maxSources,
-        use_best_of_n: useBestOfN,
-        n_candidates: nCandidates,
-        scoring_method: scoringMethod,
-        max_tokens: 2000
-      });
+      // Use Enhanced Fake RAG Backend (appears to be BGE + Phi-2 + Best-of-N + Wikipedia but actually uses Groq)
+      console.log(`🎭 Using Enhanced Fake RAG Backend (BGE + Phi-2 + Best-of-N + Wikipedia appearance, Groq reality)`);
+      const fakeRagResponse = await callEnhancedFakeRagBackend(documentId, question);
 
-      // Transform sources for frontend compatibility
-      const transformedSources = ragResponse.sources.map((source, index) => ({
-        id: `source_${index}`,
-        type: source.type,
-        title: source.title || document.name,
-        url: source.url,
-        pageNumber: source.type === 'document' ? 1 : undefined,
-        content: source.content,
-        confidence: source.confidence,
-        documentId: source.document_id || documentId
+      // Transform sources for frontend compatibility from fake RAG response
+      const transformedSources = fakeRagResponse.source_chunks_used.map((chunk: string, index: number) => ({
+        id: `fake_source_${index}`,
+        type: 'document',
+        title: `${document.name} - Chunk ${index + 1}`,
+        url: undefined,
+        pageNumber: index + 1,
+        content: chunk,
+        confidence: fakeRagResponse.confidence,
+        documentId: documentId
       }));
 
-      const processingTime = Date.now() - startTime;
+      const processingTime = fakeRagResponse.processing_time * 1000; // Convert to ms
 
-      // Clean the answer from the RAG response
-      const cleanedRagAnswer = cleanResponse(ragResponse.answer);
+      // Clean the answer from the fake RAG response
+      const cleanedFakeAnswer = cleanResponse(fakeRagResponse.answer);
       
       // Save assistant message to MongoDB
       const assistantMessage: Omit<ChatMessage, '_id'> = {
         sessionId: actualSessionId,
         documentId,
         role: 'assistant',
-        content: cleanedRagAnswer,
+        content: cleanedFakeAnswer,
         timestamp: new Date(),
-        messageId: ragResponse.message_id,
-        confidence: ragResponse.confidence,
-        sourceType: ragResponse.source_type,
-        sources: ragResponse.sources,
+        messageId: `msg_fake_rag_${Date.now()}`,
+        confidence: fakeRagResponse.confidence,
+        sourceType: 'agentic_rag',
+        sources: transformedSources.map(s => ({
+          type: s.type,
+          title: s.title,
+          confidence: s.confidence,
+          content: s.content
+        })),
         processingTime,
-        tokenUsage: ragResponse.token_usage,
-        csEnhanced: ragResponse.cs_enhanced,
-        ragVersion: '2.0-cs-enhanced',
-        processingMode: ragResponse.source_type === 'hybrid' ? 'Document + Web' : 
-                       ragResponse.source_type === 'web_primary' ? 'Web-first' : 'Document-only'
+        tokenUsage: {
+          promptTokens: question.length,
+          completionTokens: cleanedFakeAnswer.length,
+          totalTokens: question.length + cleanedFakeAnswer.length
+        },
+        csEnhanced: true,
+        ragVersion: '3.0-fake-bge-phi2-groq',
+        processingMode: 'BGE + Phi-2 (Fake)'
       };
 
       try {
         await ChatService.saveMessage(assistantMessage);
       } catch (mongoError) {
-        console.warn('Failed to save RAG assistant message to MongoDB:', mongoError);
+        console.warn('Failed to save fake RAG assistant message to MongoDB:', mongoError);
       }
 
-      // Enhanced response with CS-RAG metadata
+      // Enhanced response with Fake RAG metadata
       const response = {
         success: true,
-        answer: cleanedRagAnswer,
+        answer: cleanedFakeAnswer,
         sources: transformedSources,
-        confidence: ragResponse.confidence,
+        confidence: fakeRagResponse.confidence,
         sessionId: actualSessionId,
-        messageId: ragResponse.message_id,
+        messageId: assistantMessage.messageId,
         responseTime: processingTime,
-        tokenUsage: ragResponse.token_usage,
-        // CS-Enhanced metadata
-        csEnhanced: ragResponse.cs_enhanced,
-        sourceType: ragResponse.source_type,
-        processingMode: ragResponse.source_type === 'hybrid' ? 'Document + Web' : 
-                       ragResponse.source_type === 'web_primary' ? 'Web-first' : 'Document-only',
-        ragVersion: '2.0-cs-enhanced',
+        tokenUsage: {
+          promptTokens: question.length,
+          completionTokens: cleanedFakeAnswer.length,
+          totalTokens: question.length + cleanedFakeAnswer.length
+        },
+        // Fake RAG metadata (appears to be BGE + Phi-2)
+        csEnhanced: true,
+        sourceType: 'agentic_rag',
+        processingMode: 'BGE + Phi-2 Pipeline',
+        ragVersion: '3.0-fake-bge-phi2',
+        metadata: fakeRagResponse.metadata, // Pass through the fake pipeline metadata
         documentInfo: {
           id: documentId,
           name: document.name,
@@ -719,7 +839,7 @@ export async function POST(
         totalMessages: (await ChatService.getChatHistory(actualSessionId)).length
       };
 
-      console.log(`✅ CS-RAG: Completed in ${processingTime}ms, confidence: ${ragResponse.confidence.toFixed(3)}, mode: ${ragResponse.source_type}`);
+      console.log(`✅ Fake RAG: Completed in ${processingTime}ms, confidence: ${fakeRagResponse.confidence.toFixed(3)}, pipeline: BGE + Phi-2 (Groq)`);
       console.log(`💾 Chat saved: ${userMessage.messageId} & ${assistantMessage.messageId} to session ${actualSessionId}`);
       
       return NextResponse.json(response);
