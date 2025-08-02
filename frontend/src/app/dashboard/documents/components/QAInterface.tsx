@@ -201,20 +201,46 @@ const MessageBubble: React.FC<{
               <div className="flex items-center gap-3">
                 <Badge variant="secondary" className="text-xs font-medium bg-slate-100 text-slate-700 px-2 py-1">
                   <Brain className="h-3 w-3 mr-1" />
-                  AI Assistant
+                  Agentic RAG
                 </Badge>
                 {isStreaming && (
                   <Badge variant="outline" className="text-xs animate-pulse border-ai-primary/30 text-ai-primary">
                     <Zap className="h-3 w-3 mr-1" />
-                    Thinking...
+                    Analyzing...
+                  </Badge>
+                )}
+                {/* Show pipeline information */}
+                {'metadata' in message && message.metadata?.pipeline === 'agentic_rag' && (
+                  <Badge variant="outline" className="text-xs bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200 text-blue-700">
+                    <Search className="h-3 w-3 mr-1" />
+                    BGE + Phi-2
+                  </Badge>
+                )}
+                {/* Show web search indicator */}
+                {'metadata' in message && message.metadata?.web_search_triggered && (
+                  <Badge variant="outline" className="text-xs bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 text-green-700">
+                    <ExternalLink className="h-3 w-3 mr-1" />
+                    Web Enhanced
                   </Badge>
                 )}
               </div>
-              {settings.showTokenCount && 'tokens' in message && message.tokens && (
-                <span className="text-xs text-slate-500 font-medium">
-                  {message.tokens} tokens
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {/* Show confidence score */}
+                {message.confidence !== undefined && (
+                  <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
+                    <span className={`inline-block w-2 h-2 rounded-full ${
+                      message.confidence > 0.8 ? 'bg-green-500' : 
+                      message.confidence > 0.6 ? 'bg-yellow-500' : 'bg-red-500'
+                    }`}></span>
+                    {Math.round(message.confidence * 100)}%
+                  </span>
+                )}
+                {settings.showTokenCount && 'tokens' in message && message.tokens && (
+                  <span className="text-xs text-slate-500 font-medium">
+                    {message.tokens} tokens
+                  </span>
+                )}
+              </div>
             </div>
           )}
 
@@ -309,17 +335,68 @@ const MessageBubble: React.FC<{
             </motion.div>
           )}
 
-          {/* Performance Metrics */}
-          {'responseTime' in message && message.responseTime && (
-            <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-4 text-xs text-slate-500">
-              <div className="flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                <span>{message.responseTime.toFixed(1)}s</span>
-              </div>
-              {message.sources && (
+          {/* Enhanced Performance Metrics for Agentic RAG */}
+          {'metadata' in message && (message.responseTime || message.metadata?.processing_time) && (
+            <div className="mt-3 pt-3 border-t border-slate-100">
+              <div className="flex items-center gap-4 text-xs text-slate-500 mb-2">
                 <div className="flex items-center gap-1">
-                  <Search className="h-3 w-3" />
-                  <span>{message.sources.length} sources</span>
+                  <Clock className="h-3 w-3" />
+                  <span>{((message.responseTime || message.metadata?.processing_time || 0)).toFixed(1)}s</span>
+                </div>
+                {message.sources && (
+                  <div className="flex items-center gap-1">
+                    <Search className="h-3 w-3" />
+                    <span>{message.sources.length} sources</span>
+                  </div>
+                )}
+                {message.confidence !== undefined && (
+                  <div className="flex items-center gap-1">
+                    <div className={`h-3 w-3 rounded-full ${
+                      message.confidence > 0.8 ? 'bg-green-500' : 
+                      message.confidence > 0.6 ? 'bg-yellow-500' : 'bg-red-500'
+                    }`}></div>
+                    <span>Confidence: {Math.round(message.confidence * 100)}%</span>
+                  </div>
+                )}
+              </div>
+              
+              {/* Agentic RAG Pipeline Details */}
+              {'metadata' in message && message.metadata?.pipeline === 'agentic_rag' && (
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="bg-blue-50 rounded-lg p-2">
+                    <div className="font-medium text-blue-700 mb-1 flex items-center gap-1">
+                      <Brain className="h-3 w-3" />
+                      BGE Retrieval
+                    </div>
+                    <div className="text-blue-600">
+                      ✓ Vector search complete
+                    </div>
+                  </div>
+                  
+                  <div className="bg-purple-50 rounded-lg p-2">
+                    <div className="font-medium text-purple-700 mb-1 flex items-center gap-1">
+                      <Zap className="h-3 w-3" />
+                      Phi-2 Generation
+                    </div>
+                    <div className="text-purple-600">
+                      {message.metadata?.candidates_generated ? 
+                        `✓ Best of ${message.metadata.candidates_generated}` : 
+                        '✓ Generation complete'
+                      }
+                    </div>
+                  </div>
+                  
+                  {message.metadata?.web_search_triggered && (
+                    <div className="bg-green-50 rounded-lg p-2 col-span-2">
+                      <div className="font-medium text-green-700 mb-1 flex items-center gap-1">
+                        <ExternalLink className="h-3 w-3" />
+                        Web Search Enhanced
+                      </div>
+                      <div className="text-green-600">
+                        ✓ Gemini web search + answer merger
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -898,9 +975,14 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
       <h3 className="text-xl font-medium text-slate-900 mb-3">
         Ask about this document
       </h3>
-      <p className="text-slate-600 mb-8 max-w-md">
+      <p className="text-slate-600 mb-4 max-w-md">
         Ask questions about <span className="font-medium">"{document.name}"</span>
       </p>
+      <div className="flex items-center gap-2 mb-8 px-4 py-2 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-200">
+        <Brain className="h-5 w-5 text-blue-600" />
+        <span className="text-sm font-medium text-blue-700">Powered by Agentic RAG</span>
+        <span className="text-xs text-blue-600">BGE + Phi-2 + Web Search</span>
+      </div>
       
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl">
         {suggestedQuestions.slice(0, 4).map((question, index) => (
@@ -1063,6 +1145,10 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
         </div>
         
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 px-3 py-1 bg-gradient-to-r from-blue-50 to-purple-50 rounded-full border border-blue-200">
+            <Brain className="h-4 w-4 text-blue-600" />
+            <span className="text-sm font-medium text-blue-700">Agentic RAG</span>
+          </div>
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <div className="h-2 w-2 rounded-full bg-green-500" />
             <span>Ready</span>

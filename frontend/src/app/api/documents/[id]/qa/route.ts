@@ -115,6 +115,9 @@ interface CSRagRequest {
   use_web_search?: boolean;
   temperature?: number;
   max_sources?: number;
+  use_best_of_n?: boolean;
+  n_candidates?: number;
+  scoring_method?: string;
 }
 
 interface CSRagResponse {
@@ -373,7 +376,10 @@ export async function POST(
       sessionId, 
       useWebSearch = true,
       temperature = 0.5,
-      maxSources = 5 
+      maxSources = 5,
+      useBestOfN = false,
+      nCandidates = 5,
+      scoringMethod = "hybrid"
     } = await request.json();
 
     if (!documentId || !question) {
@@ -415,8 +421,9 @@ export async function POST(
 
     console.log(`🤖 CS-RAG: Processing question for document ${documentId}`);
     
-    // Determine if we should use instant response or search the document
-    const shouldUseInstantResponse = await shouldUseInstantResponseForQuestion(question, document);
+    // ALWAYS prioritize document analysis over instant responses for document-specific questions
+    // Only use instant responses for very basic general knowledge questions
+    const shouldUseInstantResponse = false; // Disabled to force document analysis
     
     if (shouldUseInstantResponse) {
       const instantAnswer = getInstantResponse(question, document.name);
@@ -636,7 +643,11 @@ export async function POST(
         session_id: actualSessionId,
         use_web_search: useWebSearch,
         temperature,
-        max_sources: maxSources
+        max_sources: maxSources,
+        use_best_of_n: useBestOfN,
+        n_candidates: nCandidates,
+        scoring_method: scoringMethod,
+        max_tokens: 2000
       });
 
       // Transform sources for frontend compatibility
