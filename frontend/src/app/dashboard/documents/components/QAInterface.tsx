@@ -30,7 +30,8 @@ import {
   Search,
   Settings,
   Volume2,
-  VolumeX
+  VolumeX,
+  Trash2
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -673,16 +674,16 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
   onToggleFullscreen
 }) => {
   const { user } = useAuth();
-  const { toast } = useToast();
+  const { custom: customToast } = useToast();
 
   // Helper function for toast (memoized to prevent infinite loops)
   const showToast = useCallback((title: string, description: string, variant: 'default' | 'destructive' = 'default') => {
-    toast({
+    customToast({
       title,
       description,
-      variant,
+      variant: variant === 'destructive' ? 'error' : 'success',
     });
-  }, [toast]);
+  }, [customToast]);
   
   // State management
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -690,36 +691,51 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-  // Create stable session ID (memoized to prevent recreation)
-  const sessionId = useMemo(() => {
-    return initialSessionId || `doc_${document.id}_${Date.now()}`;
-  }, [initialSessionId, document.id]);
-
-  // Initialize session ID more reliably
-  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
-    // Clear any potentially corrupted cached messages on component initialization
-    try {
-      const cacheKeys = Object.keys(localStorage).filter(key => 
-        key.includes('qa_messages') || key.includes('chat_history') || key.includes('toast')
-      );
-      if (cacheKeys.length > 0) {
-        console.log('🧹 Clearing potentially corrupted cache on component init (including toast cache)');
-        cacheKeys.forEach(key => localStorage.removeItem(key));
+  // Persistent session ID management
+  const [activeSessionId, setActiveSessionId] = useState<string>('');
+  
+  // Initialize session ID with persistence
+  useEffect(() => {
+    const initializeSession = async () => {
+      try {
+        // First check if we have a stored session ID for this document
+        const storageKey = `chat_session_${document.id}`;
+        const storedSessionId = localStorage.getItem(storageKey);
+        
+        if (storedSessionId) {
+          console.log(`🔄 Using existing session: ${storedSessionId}`);
+          setActiveSessionId(storedSessionId);
+          return;
+        }
+        
+        // If no stored session, check if there are existing sessions for this document
+        const response = await fetch(`/api/documents/${document.id}/qa?limit=1`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.sessionId) {
+            console.log(`🔄 Found existing server session: ${data.sessionId}`);
+            setActiveSessionId(data.sessionId);
+            localStorage.setItem(storageKey, data.sessionId);
+            return;
+          }
+        }
+        
+        // Create new session only if none exists
+        const newSessionId = initialSessionId || `doc_${document.id}_${Date.now()}`;
+        console.log(`🆕 Creating new session: ${newSessionId}`);
+        setActiveSessionId(newSessionId);
+        localStorage.setItem(storageKey, newSessionId);
+        
+      } catch (error) {
+        console.error('Error initializing session:', error);
+        // Fallback to timestamp-based session
+        const fallbackSessionId = `doc_${document.id}_${Date.now()}`;
+        setActiveSessionId(fallbackSessionId);
       }
-      
-      // Clear session storage as well
-      const sessionKeys = Object.keys(sessionStorage).filter(key => 
-        key.includes('qa_messages') || key.includes('chat_history') || key.includes('toast')
-      );
-      if (sessionKeys.length > 0) {
-        console.log('🧹 Clearing potentially corrupted session storage');
-        sessionKeys.forEach(key => sessionStorage.removeItem(key));
-      }
-    } catch (error) {
-      console.warn('Failed to clear cache on init:', error);
-    }
-    return sessionId;
-  });
+    };
+    
+    initializeSession();
+  }, [document.id, initialSessionId]);
   const [showSettings, setShowSettings] = useState(false);
   const [settings, setSettings] = useState<ChatSettings>({
     autoScroll: true,
@@ -758,44 +774,58 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
 
   // Load chat history (memoized to prevent loops)
   const loadChatHistory = useCallback(async () => {
-    if (!user || !activeSessionId) {
-      setIsLoadingHistory(false);
+    // Only load history if we have a valid session ID
+    if (!activeSessionId) {
       return;
     }
     
     setIsLoadingHistory(true);
     try {
-      // Fetch chat history from API
+      // Fetch chat history from API - use the active session ID
       const response = await fetch(`/api/documents/${document.id}/qa?sessionId=${activeSessionId}&limit=50`);
       if (response.ok) {
         const data = await response.json();
-        if (data.success && data.messages) {
+        if (data.success && data.messages && data.messages.length > 0) {
           const formattedMessages: ChatMessage[] = data.messages.map((msg: any) => ({
             id: msg.id,
             role: msg.role,
             content: msg.content,
-            timestamp: msg.timestamp,
+            timestamp: new Date(msg.timestamp),
             confidence: msg.confidence,
-            sources: msg.sources || []
+            sources: msg.sources || [],
+            responseTime: msg.responseTime,
+            tokenUsage: msg.tokenUsage,
+            csEnhanced: msg.csEnhanced,
+            ragVersion: msg.ragVersion,
+            metadata: msg.metadata
           }));
           setMessages(formattedMessages);
+          console.log(`✅ Loaded ${formattedMessages.length} chat messages for session ${activeSessionId}`);
+        } else {
+          // No history - start with empty messages
+          setMessages([]);
+          console.log(`📝 No chat history found for session ${activeSessionId}, starting fresh`);
         }
       } else {
         // No history or error - start with empty messages
         setMessages([]);
+        console.log(`🔄 Starting fresh chat for session ${activeSessionId}`);
       }
     } catch (error) {
       console.error('Error loading chat history:', error);
-      showToast('Error', 'Failed to load chat history.', 'destructive');
-      setMessages([]); // Ensure we still set to empty array
+      // Don't show error toast for missing history - it's normal for new chats
+      setMessages([]);
     } finally {
       setIsLoadingHistory(false);
     }
-  }, [user, activeSessionId, document.id, showToast]);
+  }, [activeSessionId, document.id]);
 
+  // Load chat history when session ID is available
   useEffect(() => {
-    loadChatHistory();
-  }, [loadChatHistory]);
+    if (activeSessionId) {
+      loadChatHistory();
+    }
+  }, [activeSessionId, loadChatHistory]);
 
   // Auto-scroll functionality
   useEffect(() => {
@@ -858,6 +888,46 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
       inputRef.current?.focus();
     }
   }, [messages]);
+
+  // Handle clear chat
+  const handleClearChat = useCallback(async () => {
+    if (messages.length === 0) {
+      showToast('Info', 'No messages to clear.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/documents/${document.id}/qa?sessionId=${activeSessionId}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to clear chat history');
+      }
+
+      const result = await response.json();
+      
+      // Clear messages from UI
+      setMessages([]);
+      
+      // Reset session ID to create a new one and update localStorage
+      const newSessionId = `doc_${document.id}_${Date.now()}`;
+      setActiveSessionId(newSessionId);
+      
+      // Update localStorage with new session ID
+      const storageKey = `chat_session_${document.id}`;
+      localStorage.setItem(storageKey, newSessionId);
+      
+      showToast('Success', `Cleared ${result.deletedMessages} messages from chat history.`);
+      
+      console.log(`🗑️ Chat cleared: ${result.deletedMessages} messages, ${result.deletedSessions} sessions`);
+      console.log(`🆕 New session created: ${newSessionId}`);
+      
+    } catch (error) {
+      console.error('Error clearing chat:', error);
+      showToast('Error', 'Failed to clear chat history.', 'destructive');
+    }
+  }, [messages.length, document.id, activeSessionId, showToast]);
 
   // Stop generation
   const handleStopGeneration = useCallback(() => {
@@ -1394,7 +1464,7 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
       {/* Professional Input Area */}
       <div className="border-t border-slate-200 bg-slate-50/50 p-6">
         <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
-          <div className="flex items-end gap-4">
+          <div className="flex items-end gap-3">
             <div className="flex-1 relative">
               <Textarea
                 ref={inputRef}
@@ -1416,6 +1486,24 @@ const QAInterface: React.FC<QAInterfaceProps> = ({
               </div>
             </div>
             
+            {/* Clear Chat Button */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    type="button"
+                    onClick={handleClearChat}
+                    disabled={messages.length === 0 || isLoading}
+                    className="h-[52px] w-[52px] bg-red-600 hover:bg-red-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-2xl transition-all duration-200 shadow-sm hover:shadow-md flex items-center justify-center"
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Clear chat history</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            {/* Send Button */}
             <Button 
               type="submit" 
               disabled={!inputValue.trim() || isLoading} 

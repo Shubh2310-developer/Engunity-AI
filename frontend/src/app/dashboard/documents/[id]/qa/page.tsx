@@ -16,7 +16,7 @@ import type { SupabaseDocument } from '@/lib/supabase/document-storage-no-auth';
 const DocumentQAPage: React.FC = () => {
   const { id } = useParams();
   const router = useRouter();
-  const { toast } = useToast();
+  const { error: showError } = useToast();
   
   const [document, setDocument] = useState<SupabaseDocument | null>(null);
   const [loading, setLoading] = useState(true);
@@ -102,14 +102,14 @@ const DocumentQAPage: React.FC = () => {
       } catch (error: any) {
         console.error('❌ Error fetching document:', error);
         setError(error.message || 'Failed to load document');
-        toast('Failed to load document for Q&A', { variant: 'error' });
+        showError('Failed to load document for Q&A');
       } finally {
         setLoading(false);
       }
     };
 
     fetchDocument();
-  }, [id, toast]);
+  }, [id, showError]);
 
   const handleGoBack = () => {
     router.push('/dashboard/documents');

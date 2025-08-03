@@ -86,7 +86,7 @@ const statusConfig = {
 
 const DocumentsPage: React.FC = () => {
   const { user } = useAuth();
-  const { toast } = useToast();
+  const { error: showError, success: showSuccess, show: toast } = useToast();
   const router = useRouter();
   const { analyzeDocument, loading: ragLoading, error: ragError } = useRAG();
   const [documents, setDocuments] = useState<SupabaseDocument[]>([]);
@@ -169,14 +169,14 @@ const DocumentsPage: React.FC = () => {
         }
       } catch (error) {
         console.error('❌ Error fetching documents:', error);
-        toast('Failed to load documents. Please try again.', { variant: 'error' });
+        showError('Failed to load documents. Please try again.');
       } finally {
         setLoading(false);
       }
     };
 
     fetchDocuments();
-  }, [user, toast]);
+  }, [user, showError]);
 
   // Filter documents based on search and status
   const filteredDocuments = documents.filter(doc => {
@@ -190,7 +190,7 @@ const DocumentsPage: React.FC = () => {
 
     // Check if user is authenticated
     if (!user) {
-      toast('Please sign in to upload documents', { variant: 'error' });
+      showError('Please sign in to upload documents');
       return;
     }
 
@@ -251,10 +251,10 @@ const DocumentsPage: React.FC = () => {
         console.log('Upload successful:', responseData);
         setDocuments(prev => [responseData, ...prev]);
         
-        toast(`${file.name} uploaded successfully`);
+        showSuccess(`${file.name} uploaded successfully`);
       } catch (error: any) {
         console.error('Upload error for', file.name, ':', error);
-        toast(`Failed to upload ${file.name}: ${error.message || error}`);
+        showError(`Failed to upload ${file.name}: ${error.message || error}`);
       } finally {
         setUploadingFiles(prev => prev.filter(id => id !== fileId));
       }
@@ -324,11 +324,11 @@ const DocumentsPage: React.FC = () => {
 
       // Remove from UI
       setDocuments(prev => prev.filter(doc => doc.id !== documentId));
-      toast('Document deleted successfully');
+      showSuccess('Document deleted successfully');
       
     } catch (error: any) {
       console.error('❌ Delete error:', error);
-      toast(`Failed to delete document: ${error.message}`);
+      showError(`Failed to delete document: ${error.message}`);
     }
   };
 
@@ -352,7 +352,7 @@ const DocumentsPage: React.FC = () => {
         extract_metadata: true
       });
 
-      toast('RAG document analysis started successfully!', { variant: 'success' });
+      showSuccess('RAG document analysis started successfully!');
       
       // Poll for status updates (optional)
       const pollInterval = setInterval(async () => {
@@ -377,7 +377,7 @@ const DocumentsPage: React.FC = () => {
               newSet.delete(documentId);
               return newSet;
             });
-            toast('Document is ready for AI questions!', { variant: 'success' });
+            showSuccess('Document is ready for AI questions!');
           }
         } catch (error) {
           console.error('Status polling error:', error);
@@ -412,7 +412,7 @@ const DocumentsPage: React.FC = () => {
         return newSet;
       });
       
-      toast(`RAG analysis failed: ${error.message}`, { variant: 'error' });
+      showError(`RAG analysis failed: ${error.message}`);
     }
   };
 

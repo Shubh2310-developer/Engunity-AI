@@ -15,7 +15,7 @@ interface DocumentsState {
 
 export function useDocuments() {
   const { user } = useAuth();
-  const { toast } = useToast();
+  const { error: showError, success: showSuccess } = useToast();
   
   const [state, setState] = useState<DocumentsState>({
     documents: [],
@@ -74,9 +74,9 @@ export function useDocuments() {
         loading: false, 
         error: errorMessage 
       }));
-      toast.error('Failed to load documents');
+      showError('Failed to load documents');
     }
-  }, [user, toast]);
+  }, [user, showError]);
 
   // Initial fetch
   useEffect(() => {
@@ -228,11 +228,11 @@ export function useDocuments() {
             uploading: prev.uploading.filter(id => id !== uploadId),
           }));
 
-          toast.success(`${file.name} uploaded successfully`);
+          showSuccess(`${file.name} uploaded successfully`);
           return document;
         } catch (error) {
           console.error(`Upload failed for ${file.name}:`, error);
-          toast.error(`Failed to upload ${file.name}`);
+          showError(`Failed to upload ${file.name}`);
           
           setState(prev => ({
             ...prev,
@@ -248,7 +248,7 @@ export function useDocuments() {
       const failed = results.filter(result => result.status === 'rejected').length;
 
       if (failed > 0) {
-        toast.error(`${failed} file(s) failed to upload`);
+        showError(`${failed} file(s) failed to upload`);
       }
       
       return results;
@@ -259,12 +259,12 @@ export function useDocuments() {
         uploading: prev.uploading.filter(id => !uploadIds.includes(id)),
       }));
     }
-  }, [user, toast, uploadDocumentViaAPI]);
+  }, [user, showError, showSuccess, uploadDocumentViaAPI]);
 
   // Delete document from Supabase
   const removeDocument = useCallback(async (documentId: string) => {
     if (!user) {
-      toast.error('User not authenticated');
+      showError('User not authenticated');
       return;
     }
 
@@ -320,18 +320,18 @@ export function useDocuments() {
         documents: prev.documents.filter(doc => doc.id !== documentId),
       }));
 
-      toast.success('Document deleted successfully');
+      showSuccess('Document deleted successfully');
     } catch (error) {
       console.error('Delete error:', error);
-      toast.error('Failed to delete document');
+      showError('Failed to delete document');
       throw error;
     }
-  }, [user, toast]);
+  }, [user, showError]);
 
   // Update document status
   const updateStatus = useCallback(async (documentId: string, status: SimpleDocumentStatus) => {
     if (!user) {
-      toast.error('User not authenticated');
+      showError('User not authenticated');
       return;
     }
 
@@ -360,10 +360,10 @@ export function useDocuments() {
       }));
     } catch (error) {
       console.error('Status update error:', error);
-      toast.error('Failed to update document status');
+      showError('Failed to update document status');
       throw error;
     }
-  }, [user, toast]);
+  }, [user, showError]);
 
   // Process document for analysis
   const processDocument = useCallback(async (documentId: string) => {
@@ -380,14 +380,14 @@ export function useDocuments() {
         throw new Error('Processing failed');
       }
 
-      toast.success('Document processing started');
+      showSuccess('Document processing started');
     } catch (error) {
       console.error('Processing error:', error);
-      toast.error('Failed to process document');
+      showError('Failed to process document');
       await updateStatus(documentId, 'error');
       throw error;
     }
-  }, [updateStatus, toast]);
+  }, [updateStatus, showError]);
 
   // Get document by ID
   const getDocument = useCallback(async (documentId: string) => {
@@ -424,10 +424,10 @@ export function useDocuments() {
       };
     } catch (error) {
       console.error('Get document error:', error);
-      toast.error('Failed to fetch document');
+      showError('Failed to fetch document');
       throw error;
     }
-  }, [user, toast]);
+  }, [user, showError]);
 
   // Refresh documents
   const refresh = useCallback(() => {

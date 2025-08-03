@@ -1035,6 +1035,72 @@ export async function GET(
   }
 }
 
+// Clear chat history for a document
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const documentId = params.id;
+    const { searchParams } = new URL(request.url);
+    const sessionId = searchParams.get('sessionId');
+
+    if (!documentId) {
+      return NextResponse.json(
+        { error: 'Document ID is required' },
+        { status: 400 }
+      );
+    }
+
+    console.log(`🗑️ Clearing chat history for document ${documentId}, session: ${sessionId || 'all'}`);
+
+    let deletedMessages = 0;
+    let deletedSessions = 0;
+
+    if (sessionId) {
+      // Clear specific session
+      const messages = await ChatService.getChatHistory(sessionId);
+      deletedMessages = messages.length;
+      
+      // Delete messages for this session
+      const chatCollection = await import('@/lib/database/mongodb').then(m => m.getChatCollection());
+      const collection = await chatCollection;
+      await collection.deleteMany({ sessionId });
+      
+      // Delete the session
+      const sessionCollection = await import('@/lib/database/mongodb').then(m => m.getChatSessionCollection());
+      const sessions = await sessionCollection;
+      const sessionResult = await sessions.deleteOne({ sessionId });
+      deletedSessions = sessionResult.deletedCount || 0;
+      
+      console.log(`✅ Cleared session ${sessionId}: ${deletedMessages} messages, ${deletedSessions} session`);
+    } else {
+      // Clear all chats for the document
+      const result = await ChatService.deleteDocumentChats(documentId);
+      deletedMessages = result.deletedMessages;
+      deletedSessions = result.deletedSessions;
+      
+      console.log(`✅ Cleared all chats for document ${documentId}: ${deletedMessages} messages, ${deletedSessions} sessions`);
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Chat history cleared successfully',
+      deletedMessages,
+      deletedSessions,
+      documentId,
+      sessionId: sessionId || null
+    });
+
+  } catch (error: any) {
+    console.error('❌ Clear chat history error:', error);
+    return NextResponse.json(
+      { error: 'Failed to clear chat history', details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
 // Enhanced fallback response generator
 async function generateSmartFallbackResponse(question: string, document: any): Promise<string> {
   const questionLower = question.toLowerCase();

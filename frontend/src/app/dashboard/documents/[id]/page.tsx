@@ -38,7 +38,7 @@ interface QAMessage {
 const DocumentViewPage: React.FC = () => {
   const params = useParams();
   const { user } = useAuth();
-  const { toast } = useToast();
+  const { error: showError } = useToast();
   
   const documentId = params.id as string;
   const [document, setDocument] = useState<SupabaseDocument | null>(null);
@@ -71,7 +71,7 @@ const DocumentViewPage: React.FC = () => {
     } catch (error: any) {
       console.error('Error fetching document:', error);
       setError(error.message || 'Failed to load document');
-      toast('Failed to load document', { variant: 'error' });
+      showError('Failed to load document');
     } finally {
       setLoading(false);
     }
@@ -119,7 +119,7 @@ const DocumentViewPage: React.FC = () => {
       setMessages(prev => [...prev, aiMessage]);
     } catch (error: any) {
       console.error('Q&A error:', error);
-      toast('Failed to get answer', { variant: 'error' });
+      showError('Failed to get answer');
       
       const errorMessage: QAMessage = {
         id: `error_${Date.now()}`,

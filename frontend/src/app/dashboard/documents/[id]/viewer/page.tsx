@@ -24,7 +24,7 @@ import type { SupabaseDocument } from '@/lib/supabase/document-storage-no-auth';
 
 const DocumentViewerPage: React.FC = () => {
   const params = useParams();
-  const { toast } = useToast();
+  const { error: showError } = useToast();
   
   const documentId = params.id as string;
   const [document, setDocument] = useState<SupabaseDocument | null>(null);
@@ -66,7 +66,7 @@ const DocumentViewerPage: React.FC = () => {
     } catch (error: any) {
       console.error('Error fetching document:', error);
       setError(error.message || 'Failed to load document');
-      toast('Failed to load document', { variant: 'error' });
+      showError('Failed to load document');
     } finally {
       setLoading(false);
     }
