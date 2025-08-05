@@ -498,7 +498,7 @@ export default function DashboardPage() {
                   {[
                     { title: "Document Analysis", icon: Upload, color: "from-blue-600 to-cyan-600", description: "Process new files", link: "/dashboard/documents" },
                     { title: "Code and Chat Assistant", icon: MessageSquare, color: "from-violet-600 to-purple-600", description: "Get instant answers", link: "/dashboard/chatandcode" },
-                    { title: "Research Analysis", icon: Brain, color: "from-emerald-600 to-teal-600", description: "Research solution" },
+                    { title: "Research Analysis", icon: Brain, color: "from-emerald-600 to-teal-600", description: "Research solution", link: "/dashboard/research" },
                     { title: "Data Analysis", icon: BarChart3, color: "from-amber-600 to-orange-600", description: "Extract insights" },
                     { title: "Github Repos", icon: Code, color: "from-rose-600 to-pink-600", description: "Repositories" },
                     { title: "Projects", icon: FolderOpen, color: "from-indigo-600 to-blue-600", description: "Project analysis" },
