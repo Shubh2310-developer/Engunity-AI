@@ -1,3 +1,6 @@
 
 # Ignore data files
 /data/training/kaggle_cs_dataset/
+
+# Ignore large training checkpoints
+training/**/optimizer.pt
