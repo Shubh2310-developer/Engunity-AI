@@ -1,0 +1,28 @@
+# Phi-2 Model Dependencies for Document Analysis
+# Install with: pip install -r requirements_phi2.txt
+
+# Core ML libraries
+torch>=2.0.0
+transformers>=4.35.0
+accelerate>=0.24.0
+sentencepiece>=0.1.99
+
+# PDF processing
+PyPDF2>=3.0.1
+pdfplumber>=0.9.0
+
+# Text processing
+regex>=2023.0.0
+tokenizers>=0.14.0
+
+# Performance optimization
+bitsandbytes>=0.41.0  # For quantization if needed
+optimum>=1.14.0       # Model optimization
+
+# Async and HTTP
+aiohttp>=3.8.0
+asyncio
+
+# Utilities
+numpy>=1.24.0
+psutil>=5.9.0         # Memory monitoring

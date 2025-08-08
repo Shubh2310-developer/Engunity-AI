@@ -1,0 +1,23 @@
+{
+  "labels": [
+    "Background",
+    "Method",
+    "Comparison",
+    "Result",
+    "Other"
+  ],
+  "label2id": {
+    "Background": 0,
+    "Method": 1,
+    "Comparison": 2,
+    "Result": 3,
+    "Other": 4
+  },
+  "id2label": {
+    "0": "Background",
+    "1": "Method",
+    "2": "Comparison",
+    "3": "Result",
+    "4": "Other"
+  }
+}
