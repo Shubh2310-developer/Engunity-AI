@@ -91,7 +91,8 @@ import {
   Sparkles,
   Bell,
   UploadCloud,
-  Activity
+  Activity,
+  MessageSquare
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -596,7 +597,7 @@ export default function ResearchAnalysisDashboard() {
 
   // Manual refresh function
   const handleRefresh = async () => {
-    if (!user || isLoadingData) return
+    if (!user?.id || isLoadingData) return
     
     setIsLoadingData(true)
     await loadResearchData(user.id)
@@ -616,23 +617,8 @@ export default function ResearchAnalysisDashboard() {
     )
   }
 
-  // Show sign in prompt if not authenticated
-  if (!isAuthenticated || !user) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center space-y-6 p-8">
-          <h1 className="text-3xl font-bold text-slate-900">Welcome to Research Workspace</h1>
-          <p className="text-slate-600 text-lg">Please sign in to access your research tools</p>
-          <button 
-            onClick={() => window.location.href = '/auth/login'}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Sign In
-          </button>
-        </div>
-      </div>
-    )
-  }
+  // Always show the dashboard content - no authentication wall
+  // The page will work in demo mode if not authenticated
 
   return (
     <div className="min-h-screen bg-white">
@@ -653,9 +639,9 @@ export default function ResearchAnalysisDashboard() {
                 <div className="flex items-center gap-6">
                   <div className="relative">
                     <Avatar className="w-20 h-20 ring-4 ring-blue-100 shadow-lg">
-                      <AvatarImage src={user.avatar} alt={user.name} />
+                      <AvatarImage src={user?.avatar} alt={user?.name || 'User'} />
                       <AvatarFallback className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-bold text-xl">
-                        {user.initials}
+                        {user?.initials || 'U'}
                       </AvatarFallback>
                     </Avatar>
                     <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full border-3 border-white shadow-md flex items-center justify-center">
@@ -669,7 +655,7 @@ export default function ResearchAnalysisDashboard() {
                         Research Workspace 🔬
                       </h1>
                     </div>
-                    <p className="text-slate-600 text-lg font-medium">Welcome back, {user.name} 👋</p>
+                    <p className="text-slate-600 text-lg font-medium">Welcome back, {user?.name || 'User'} 👋</p>
                     <p className="text-slate-600 text-base max-w-2xl">
                       Organize, analyze, and summarize your research documents using AI.
                     </p>
@@ -790,7 +776,7 @@ export default function ResearchAnalysisDashboard() {
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-8">
             
             {/* Recent Activity */}
-            <motion.section variants={itemVariants} className="xl:col-span-6">
+            <motion.section variants={itemVariants} className="xl:col-span-4">
               <Card className="bg-white border-slate-200/60 shadow-lg h-full">
                 <CardHeader className="pb-4">
                   <div className="flex items-center justify-between">
@@ -851,7 +837,7 @@ export default function ResearchAnalysisDashboard() {
             </motion.section>
 
             {/* Recent Research Files */}
-            <motion.section variants={itemVariants} className="xl:col-span-6">
+            <motion.section variants={itemVariants} className="xl:col-span-4">
               <Card className="bg-white border-slate-200/60 shadow-lg h-full">
                 <CardHeader className="pb-4">
                   <div className="flex items-center justify-between">
@@ -910,6 +896,57 @@ export default function ResearchAnalysisDashboard() {
                         </Button>
                       </motion.div>
                     )}
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.section>
+
+            {/* Chat History */}
+            <motion.section variants={itemVariants} className="xl:col-span-4">
+              <Card className="bg-white border-slate-200/60 shadow-lg h-full">
+                <CardHeader className="pb-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-slate-900 text-xl font-bold mb-1">Chat History</CardTitle>
+                      <p className="text-slate-600">Recent AI research conversations</p>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <div className="px-6 pb-6 space-y-1">
+                    {/* Mock chat history - replace with real data */}
+                    {[
+                      { id: 1, question: "What are the key differences between BERT and GPT?", timestamp: "2 hours ago", status: "completed" },
+                      { id: 2, question: "Summarize attention mechanisms in transformers", timestamp: "1 day ago", status: "completed" },
+                      { id: 3, question: "Compare diffusion models to GANs", timestamp: "2 days ago", status: "completed" }
+                    ].map((chat) => (
+                      <motion.div
+                        key={chat.id}
+                        variants={itemVariants}
+                        className="flex items-start space-x-3 p-3 rounded-lg hover:bg-slate-50 transition-colors duration-200 cursor-pointer"
+                      >
+                        <div className="p-2 rounded-full bg-purple-100">
+                          <MessageSquare className="h-4 w-4 text-purple-600" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-900 line-clamp-2">
+                            {chat.question}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            {chat.timestamp}
+                          </p>
+                        </div>
+                        <div className="flex items-center">
+                          <CheckCircle className="h-4 w-4 text-green-500" />
+                        </div>
+                      </motion.div>
+                    ))}
+                    <motion.div variants={itemVariants} className="pt-4">
+                      <Button variant="ghost" className="w-full justify-center text-slate-600 hover:text-slate-900">
+                        View All Conversations
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    </motion.div>
                   </div>
                 </CardContent>
               </Card>

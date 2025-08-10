@@ -1,0 +1,22 @@
+{
+  "name": "engunity-ai",
+  "version": "1.0.0",
+  "description": "AI-powered SaaS platform for research, code generation & data analysis",
+  "scripts": {
+    "dev": "./start-all-services.sh && cd frontend && npm run dev:frontend-only",
+    "start:backend": "./start-all-services.sh",
+    "start:frontend": "cd frontend && npm run dev:frontend-only",
+    "install": "cd frontend && npm install",
+    "build": "cd frontend && npm run build"
+  },
+  "keywords": [
+    "ai",
+    "saas",
+    "nextjs",
+    "python",
+    "rag",
+    "research"
+  ],
+  "author": "Engunity AI Team",
+  "license": "MIT"
+}

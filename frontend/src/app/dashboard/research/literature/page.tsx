@@ -710,18 +710,20 @@ export default function LiteratureAnalysis() {
           console.log('User authenticated:', session.user.email)
           setIsAuthenticated(true)
           const userData: UserData = {
-            id: session.user.id,
+            id: session.user.id || 'demo-user',
             name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-            email: session.user.email || '',
+            email: session.user.email || 'user@example.com',
             avatar: session.user.user_metadata?.avatar_url,
             initials: (session.user.user_metadata?.full_name || session.user.email || 'U').split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
           }
           setUser(userData)
           
           // Try to load real data in background
-          loadUserData(session.user.id).catch(err => {
-            console.log('Background data loading failed:', err)
-          })
+          if (session.user.id) {
+            loadUserData(session.user.id).catch(err => {
+              console.log('Background data loading failed:', err)
+            })
+          }
         } else {
           console.log('Using demo mode for literature analysis')
           setIsAuthenticated(false)
@@ -739,14 +741,16 @@ export default function LiteratureAnalysis() {
       if (event === 'SIGNED_IN' && session?.user) {
         setIsAuthenticated(true)
         const userData: UserData = {
-          id: session.user.id,
+          id: session.user.id || 'demo-user',
           name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-          email: session.user.email || '',
+          email: session.user.email || 'user@example.com',
           avatar: session.user.user_metadata?.avatar_url,
           initials: (session.user.user_metadata?.full_name || session.user.email || 'U').split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
         }
         setUser(userData)
-        loadUserData(session.user.id).catch(console.log)
+        if (session.user.id) {
+          loadUserData(session.user.id).catch(console.log)
+        }
       } else if (event === 'SIGNED_OUT') {
         setIsAuthenticated(false)
         setUser({
