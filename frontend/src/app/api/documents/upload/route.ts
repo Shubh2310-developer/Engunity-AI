@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getDatabase } from '@/lib/database/mongodb';
+import { ObjectId } from 'mongodb';
 
 // Initialize Supabase client for server-side operations
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -58,34 +60,46 @@ async function uploadDocumentServerSide(file: File, userId: string, user: any) {
     const publicUrl = urlData.publicUrl;
     console.log('Server: Document public URL:', publicUrl);
     
-    // Create document record in Supabase database using admin client
+    // Create document record in MongoDB Atlas
     const documentData = {
       user_id: userId,
-      name: file.name,
-      type: getDocumentType(file.type),
-      size: formatFileSize(file.size),
-      category: 'general',
-      status: 'processed' as const,
-      uploaded_at: new Date().toISOString(),
-      processed_at: new Date().toISOString(),
+      file_name: file.name,
+      original_filename: file.name,
+      file_type: file.type,
+      file_size: file.size,
+      file_path: storagePath,
       storage_url: publicUrl,
-      metadata: {
-        pages: 0,
-        word_count: 0,
-        language: 'en'
-      },
-      tags: []
+      processing_status: 'uploaded',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      extracted_text: null,
+      summary: null,
+      citations: [],
+      topics: [],
+      keywords: [],
+      processing_time: null,
+      confidence_score: null,
+      language: 'en',
+      page_count: null,
+      word_count: null,
+      category: null,
+      domain: null,
+      authors: [],
+      publication_date: null,
+      journal: null,
+      doi: null
     };
     
-    // Insert document into database using admin client (bypasses RLS)
-    const { data: dbData, error: dbError } = await supabaseAdmin
-      .from('documents')
-      .insert(documentData)
-      .select()
-      .single();
+    // Insert document into MongoDB Atlas
+    const db = await getDatabase();
+    const documentsCollection = db.collection('documents');
     
-    if (dbError) {
-      console.error('Server: Database insert error:', dbError);
+    let insertResult;
+    try {
+      insertResult = await documentsCollection.insertOne(documentData);
+      console.log('Server: Document record created successfully in MongoDB:', insertResult.insertedId);
+    } catch (dbError: any) {
+      console.error('Server: MongoDB insert error:', dbError);
       
       // Try to clean up uploaded file
       try {
@@ -97,6 +111,19 @@ async function uploadDocumentServerSide(file: File, userId: string, user: any) {
       
       throw new Error(`Database error: ${dbError.message}`);
     }
+    
+    const dbData = {
+      id: insertResult.insertedId.toString(),
+      user_id: documentData.user_id,
+      name: documentData.file_name,
+      type: getDocumentType(file.type),
+      size: formatFileSize(file.size),
+      category: 'general',
+      status: 'uploaded' as const,
+      uploaded_at: documentData.created_at,
+      processed_at: null,
+      storage_url: publicUrl
+    };
     
     console.log('Server: Document record created successfully:', dbData.id);
     

@@ -29,6 +29,7 @@ import {
   Bell,
   Activity
 } from 'lucide-react'
+import { PDFUploadButton } from '@/components/research/PDFUploadButton'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -666,53 +667,109 @@ export default function SummarizeDocuments() {
     const newUploadingFiles = files.map(file => file.name)
     setUploadingFiles(prev => [...prev, ...newUploadingFiles])
 
-    // Simulate file upload and processing
+    // Upload files to shared document system
     for (const file of files) {
-      const newDoc: DocumentSummary = {
-        id: Date.now() + Math.random(),
-        fileName: file.name,
-        title: file.name.replace('.pdf', ''),
-        uploadDate: new Date().toISOString(),
-        status: 'uploading' as const,
-        processingTime: null,
-        abstract: null,
-        keyPoints: [],
-        topics: [],
-        confidence: { abstract: 0, keyPoints: 0, topics: 0 },
-        wordCount: 0,
-        pageCount: 0
-      }
+      try {
+        const result = await uploadDocument(file)
+        
+        const newDoc: DocumentSummary = {
+          id: Date.now() + Math.random(),
+          fileName: file.name,
+          title: file.name.replace('.pdf', ''),
+          uploadDate: new Date().toISOString(),
+          status: 'processing' as const,
+          processingTime: null,
+          abstract: null,
+          keyPoints: [],
+          topics: [],
+          confidence: { abstract: 0, keyPoints: 0, topics: 0 },
+          wordCount: 0,
+          pageCount: 0
+        }
 
-      setDocuments(prev => [newDoc, ...prev])
+        setDocuments(prev => [newDoc, ...prev])
 
-      // Simulate upload completion and start processing
-      setTimeout(() => {
-        setDocuments(prev => prev.map(doc => 
-          doc.id === newDoc.id ? { ...doc, status: 'processing' as const } : doc
-        ))
-      }, 1000)
-
-      // Simulate processing completion
-      setTimeout(() => {
-        setDocuments(prev => prev.map(doc => 
-          doc.id === newDoc.id ? {
-            ...doc,
-            status: 'completed' as const,
-            processingTime: '3.2s',
-            abstract: `AI-generated abstract for ${file.name}. This document discusses important concepts and methodologies relevant to the research field.`,
-            keyPoints: [
-              'First key insight extracted from the document',
-              'Second important finding or methodology',
-              'Third significant contribution or result'
-            ],
-            topics: ['AI', 'Research', 'Analysis'],
-            confidence: { abstract: 87, keyPoints: 92, topics: 84 },
-            wordCount: Math.floor(Math.random() * 10000) + 5000,
-            pageCount: Math.floor(Math.random() * 20) + 10
-          } : doc
-        ))
+        // Poll for document processing completion
+        const pollForCompletion = async (documentId: string) => {
+          const maxAttempts = 30
+          let attempts = 0
+          
+          const poll = async () => {
+            try {
+              const { data: { session } } = await supabase.auth.getSession()
+              if (!session) return
+              
+              const response = await fetch(`/api/research/documents/${documentId}`, {
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Content-Type': 'application/json'
+                }
+              })
+              
+              if (response.ok) {
+                const docData = await response.json()
+                
+                if (docData.status === 'processed' && docData.summary) {
+                  setDocuments(prev => prev.map(doc => 
+                    doc.fileName === file.name ? {
+                      ...doc,
+                      status: 'completed' as const,
+                      abstract: docData.summary.abstract || docData.summary,
+                      keyPoints: docData.summary.key_points || [],
+                      topics: docData.topics || [],
+                      confidence: docData.summary.confidence_scores || { abstract: 85, keyPoints: 90, topics: 80 },
+                      wordCount: docData.word_count || 0,
+                      pageCount: docData.page_count || 0,
+                      processingTime: docData.processing_time ? `${docData.processing_time}ms` : '2.5s'
+                    } : doc
+                  ))
+                  setUploadingFiles(prev => prev.filter(name => name !== file.name))
+                } else if (docData.status === 'failed') {
+                  setDocuments(prev => prev.map(doc => 
+                    doc.fileName === file.name ? { ...doc, status: 'error' as const } : doc
+                  ))
+                  setUploadingFiles(prev => prev.filter(name => name !== file.name))
+                } else if (attempts < maxAttempts) {
+                  // Continue polling
+                  attempts++
+                  setTimeout(poll, 2000)
+                }
+              }
+            } catch (error) {
+              console.error('Error polling document status:', error)
+            }
+          }
+          
+          // Start polling after 2 seconds
+          setTimeout(poll, 2000)
+        }
+        
+        if (result.document_id) {
+          pollForCompletion(result.document_id)
+        }
+        
+      } catch (error) {
+        console.error('Upload failed:', error)
         setUploadingFiles(prev => prev.filter(name => name !== file.name))
-      }, 8000)
+      }
+    }
+  }
+
+  // Shared uploadDocument function
+  const uploadDocument = async (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    const response = await fetch('/api/documents/process-ai', {
+      method: 'POST',
+      body: formData,
+    })
+    
+    if (response.ok) {
+      const result = await response.json()
+      return result
+    } else {
+      throw new Error('Upload failed')
     }
   }
 
@@ -939,16 +996,37 @@ export default function SummarizeDocuments() {
         </motion.div>
         {/* Header Section */}
         <motion.div variants={itemVariants} className="mb-8">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl">
-              <Sparkles className="h-6 w-6 text-white" />
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl">
+                <Sparkles className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Summarize Documents</h1>
+                <p className="text-lg text-slate-600 dark:text-slate-400">
+                  Use AI to extract key insights, abstracts, and structured summaries.
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Summarize Documents</h1>
-              <p className="text-lg text-slate-600 dark:text-slate-400">
-                Use AI to extract key insights, abstracts, and structured summaries.
-              </p>
-            </div>
+            
+            {/* PDF Upload Button */}
+            <PDFUploadButton
+              variant="button"
+              className="bg-gradient-to-r from-orange-600 to-pink-600 hover:from-orange-700 hover:to-pink-700 text-white shadow-lg"
+              onUploadComplete={(results) => {
+                console.log('Upload completed:', results)
+                // Refresh summary data after upload  
+                if (user?.id) {
+                  loadUserDocuments(user.id)
+                }
+              }}
+              onUploadError={(error) => {
+                console.error('Upload error:', error)
+                alert(`Upload error: ${error}`)
+              }}
+            >
+              Upload for Summary
+            </PDFUploadButton>
           </div>
 
           {/* Stats */}
@@ -996,22 +1074,25 @@ export default function SummarizeDocuments() {
 
         {/* Upload Section */}
         <motion.div variants={itemVariants} className="mb-8">
-          <UploadZone onFileUpload={handleFileUpload} />
-          
-          {uploadingFiles.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-4"
-            >
-              <Alert className="border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20">
-                <Upload className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                <AlertDescription className="text-blue-800 dark:text-blue-300">
-                  Uploading {uploadingFiles.length} file{uploadingFiles.length !== 1 ? 's' : ''}...
-                </AlertDescription>
-              </Alert>
-            </motion.div>
-          )}
+          <PDFUploadButton
+            variant="zone"
+            onUploadStart={(files) => {
+              console.log('Upload started:', files)
+            }}
+            onUploadComplete={(results) => {
+              console.log('Upload completed:', results)
+              // Refresh documents after upload
+              if (user?.id) {
+                loadUserDocuments(user.id)
+              }
+            }}
+            onUploadError={(error) => {
+              console.error('Upload error:', error)
+              alert(`Upload error: ${error}`)
+            }}
+          >
+            Upload Research Documents for AI Summarization
+          </PDFUploadButton>
         </motion.div>
 
         {/* Documents Grid */}

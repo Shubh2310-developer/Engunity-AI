@@ -18,5 +18,9 @@
     "research"
   ],
   "author": "Engunity AI Team",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "form-data": "^4.0.4",
+    "node-fetch": "^3.3.2"
+  }
 }

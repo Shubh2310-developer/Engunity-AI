@@ -29,6 +29,7 @@ import {
   Bell,
   Activity
 } from 'lucide-react'
+import { PDFUploadButton } from '@/components/research/PDFUploadButton'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -799,17 +800,17 @@ export default function LiteratureAnalysis() {
         const processedDocs: Document[] = docsData.map((doc: any, index: number) => ({
           id: index + 1,
           title: doc.name.replace('.pdf', ''),
-          authors: [`${doc.name.split(' ')[0]}, A.`], // Simplified author extraction
-          year: new Date(doc.uploadDate).getFullYear(),
-          venue: 'Unknown',
-          type: 'conference',
-          field: 'Research',
-          tags: doc.keywords || ['Research'],
-          abstract: doc.summary || 'Abstract not available',
-          methodology: 'Methodology analysis pending',
-          keyFindings: 'Key findings analysis pending',
-          researchQuestion: 'Research question analysis pending',
-          citationCount: Math.floor(Math.random() * 1000),
+          authors: doc.authors || [`${doc.name.split(' ')[0]}, A.`], // Use extracted authors or fallback
+          year: doc.publicationDate ? new Date(doc.publicationDate).getFullYear() : new Date(doc.uploadDate).getFullYear(),
+          venue: doc.journal || doc.venue || 'Unknown',
+          type: doc.type || (doc.journal ? 'journal' : 'conference'),
+          field: doc.domain || doc.category || 'Research',
+          tags: doc.keywords || doc.topics || ['Research'],
+          abstract: doc.summary?.abstract || doc.summary || 'Abstract not available',
+          methodology: doc.literature_analysis?.methodology || 'Methodology analysis pending',
+          keyFindings: doc.literature_analysis?.findings?.join('. ') || 'Key findings analysis pending',
+          researchQuestion: doc.literature_analysis?.research_question || 'Research question analysis pending',
+          citationCount: doc.citationCount || Math.floor(Math.random() * 1000),
           uploadDate: doc.uploadDate,
           clusterId: Math.floor(Math.random() * 3) + 1,
           similarity: Math.random()
@@ -1009,16 +1010,37 @@ export default function LiteratureAnalysis() {
         </motion.div>
         {/* Header Section */}
         <motion.div variants={itemVariants} className="mb-8">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl">
-              <Library className="h-6 w-6 text-white" />
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl">
+                <Library className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Literature Analysis</h1>
+                <p className="text-lg text-slate-600 dark:text-slate-400">
+                  Cluster research documents into topics, methods, and findings.
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Literature Analysis</h1>
-              <p className="text-lg text-slate-600 dark:text-slate-400">
-                Cluster research documents into topics, methods, and findings.
-              </p>
-            </div>
+            
+            {/* PDF Upload Button */}
+            <PDFUploadButton
+              variant="button"
+              className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-lg"
+              onUploadComplete={(results) => {
+                console.log('Upload completed:', results)
+                // Refresh literature data after upload
+                if (user?.id) {
+                  loadUserData(user.id)
+                }
+              }}
+              onUploadError={(error) => {
+                console.error('Upload error:', error)
+                alert(`Upload error: ${error}`)
+              }}
+            >
+              Upload for Analysis
+            </PDFUploadButton>
           </div>
 
           {/* Stats Overview */}

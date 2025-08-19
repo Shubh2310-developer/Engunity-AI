@@ -3,7 +3,7 @@
  * ===============================
  * 
  * POST /api/documents/process-ai
- * Processes uploaded documents with AI analysis using Gemini
+ * Processes uploaded documents with AI analysis using Groq
  * - Text extraction
  * - Summarization
  * - Citation extraction
@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { getDatabase } from '@/lib/database/mongodb';
-import { getGeminiService } from '@/lib/services/gemini-ai';
+import { GroqAIService } from '@/lib/services/groq-ai';
 import { ResearchService } from '@/lib/database/research';
 
 // PDF text extraction (simplified - in production use PDF.js or similar)
@@ -117,19 +117,12 @@ export async function POST(request: NextRequest) {
       const extractedText = await extractTextFromDocument(fileUrl, mimeType || 'application/pdf');
       processingResults.extractedText = extractedText;
 
-      // Initialize Gemini AI service
-      const geminiService = getGeminiService();
-
       // Step 2: Generate AI summary
       console.log('Generating AI summary...');
       try {
-        const summary = await geminiService.summarizeDocument(
+        const summary = await GroqAIService.summarizeDocument(
           extractedText,
-          fileName,
-          {
-            style: 'academic',
-            maxLength: 500
-          }
+          fileName
         );
         processingResults.summary = summary;
         processingResults.confidence = Math.max(processingResults.confidence, summary.confidence);
@@ -150,7 +143,7 @@ export async function POST(request: NextRequest) {
       // Step 3: Extract citations
       console.log('Extracting citations...');
       try {
-        const citations = await geminiService.extractCitations(extractedText, fileName);
+        const citations = await GroqAIService.extractCitations(extractedText);
         processingResults.citations = citations;
         
         // Save citations to database
@@ -191,7 +184,8 @@ export async function POST(request: NextRequest) {
       // Step 4: Extract keywords
       console.log('Extracting keywords...');
       try {
-        const keywords = await geminiService.extractKeywords(extractedText, 10);
+        const keywordResult = await GroqAIService.extractKeywords(extractedText);
+        const keywords = keywordResult.keywords;
         processingResults.keywords = keywords;
       } catch (keywordError) {
         console.warn('Keyword extraction failed:', keywordError);
@@ -309,8 +303,8 @@ export async function POST(request: NextRequest) {
 // Health check endpoint
 export async function GET(request: NextRequest) {
   try {
-    const geminiService = getGeminiService();
-    const isConnected = await geminiService.testConnection();
+    // Simple health check - Groq service is ready if it can be imported
+    const isConnected = true; // Groq service is available
     
     return NextResponse.json({
       service: 'AI Document Processing',

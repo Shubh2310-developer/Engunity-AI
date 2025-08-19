@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { ChatService } from '@/lib/database/mongodb';
 
 // Configuration
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';

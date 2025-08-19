@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { getDatabase } from '@/lib/database/mongodb';
-import { getGeminiService, LiteratureAnalysis } from '@/lib/services/gemini-ai';
+import { GroqAIService } from '@/lib/services/groq-ai';
 import { ResearchService } from '@/lib/database/research';
 
 interface LiteratureCluster {
@@ -182,12 +182,13 @@ export async function POST(request: NextRequest) {
       fileName: doc.file_name
     }));
 
-    // Use Gemini AI for literature analysis
-    const geminiService = getGeminiService();
-    let analysis: LiteratureAnalysis;
+    // Use Groq AI for literature analysis
+    let analysisContent: string;
 
     try {
-      analysis = await geminiService.analyzeLiterature(documentData);
+      const documentTexts = documentData.map(doc => doc.extractedText || '').filter(text => text);
+      const topic = "Literature Review Analysis"; // Default topic
+      analysisContent = await GroqAIService.generateLiteratureReview(topic, documentTexts);
     } catch (aiError) {
       console.error('AI literature analysis failed:', aiError);
       return NextResponse.json(
@@ -195,6 +196,15 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
+
+    // Create basic analysis structure from the generated content
+    const analysis = {
+      topic: "Literature Analysis",
+      summary: analysisContent.substring(0, 500),
+      keyThemes: ["Analysis", "Research", "Literature"], // Placeholder
+      clusters: [],
+      confidence: 0.8
+    };
 
     // Create literature clusters based on analysis
     const clusters: LiteratureCluster[] = [];

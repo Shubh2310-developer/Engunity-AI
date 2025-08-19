@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { getDatabase } from '@/lib/database/mongodb';
-import { getGeminiService, DocumentSummary } from '@/lib/services/gemini-ai';
+import { GroqAIService, DocumentSummary } from '@/lib/services/groq-ai';
 import { ResearchService } from '@/lib/database/research';
 
 interface SummarizeRequest {
@@ -82,8 +82,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Initialize Gemini AI service
-    const geminiService = getGeminiService();
+    // Process documents with Groq AI service
     const summaries: (DocumentSummary & { documentId: string; fileName: string })[] = [];
     const errors: Array<{ documentId: string; fileName: string; error: string }> = [];
 
@@ -102,14 +101,9 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        const summary = await geminiService.summarizeDocument(
+        const summary = await GroqAIService.summarizeDocument(
           text,
-          doc.file_name,
-          {
-            style,
-            focus,
-            maxLength
-          }
+          doc.file_name
         );
 
         summaries.push({
@@ -166,14 +160,9 @@ export async function POST(request: NextRequest) {
           .map(s => `Document: ${s.fileName}\nSummary: ${s.abstract}\nKey Findings: ${s.keyFindings.join(', ')}`)
           .join('\n\n---\n\n');
 
-        const combined = await geminiService.summarizeDocument(
+        const combined = await GroqAIService.summarizeDocument(
           combinedText,
-          `Combined Summary of ${summaries.length} Documents`,
-          {
-            style,
-            focus: ['synthesis', 'connections', 'overall findings'],
-            maxLength: maxLength * 2
-          }
+          `Combined Summary of ${summaries.length} Documents`
         );
 
         combinedSummary = combined;

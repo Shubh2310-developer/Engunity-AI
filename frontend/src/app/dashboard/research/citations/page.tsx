@@ -36,6 +36,7 @@ import {
   Clock,
   Zap
 } from 'lucide-react'
+import { PDFUploadButton } from '@/components/research/PDFUploadButton'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -220,6 +221,18 @@ const CitationCard = ({
       case 'conference': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
       case 'journal': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
       case 'preprint': return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'
+      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400'
+    }
+  }
+
+  const getClassificationColor = (classification: string) => {
+    switch (classification.toLowerCase()) {
+      case 'highly relevant': return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
+      case 'relevant': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+      case 'partially relevant': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
+      case 'not relevant': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+      case 'foundational': return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
+      case 'methodological': return 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400'
       default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400'
     }
   }
@@ -708,6 +721,39 @@ export default function CitationsWorkspace() {
 
   const selectedDoc = documents.find(doc => doc.documentId === selectedDocument)
 
+  // Function to load citations for selected document
+  const loadDocumentCitations = async (documentId: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      
+      const response = await fetch(`/api/research/documents/${documentId}/citations`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (response.ok) {
+        const citationData = await response.json()
+        setCitations(citationData.citations || [])
+      } else {
+        console.error('Failed to fetch document citations')
+      }
+    } catch (error) {
+      console.error('Error loading document citations:', error)
+    }
+  }
+
+  // Load citations when document selection changes
+  useEffect(() => {
+    if (selectedDocument && selectedDocument !== '') {
+      loadDocumentCitations(selectedDocument)
+    } else {
+      setCitations(mockCitations) // Default to mock data
+    }
+  }, [selectedDocument])
+
   // Simplified page loading - always show content immediately
   useEffect(() => {
     const loadPageData = async () => {
@@ -896,16 +942,37 @@ export default function CitationsWorkspace() {
         </motion.div>
         {/* Header Section */}
         <motion.div variants={itemVariants} className="mb-8">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl">
-              <Quote className="h-6 w-6 text-white" />
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl">
+                <Quote className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Citations Workspace</h1>
+                <p className="text-lg text-slate-600 dark:text-slate-400">
+                  Extract, view, and export references from your research papers.
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">Citations Workspace</h1>
-              <p className="text-lg text-slate-600 dark:text-slate-400">
-                Extract, view, and export references from your research papers.
-              </p>
-            </div>
+            
+            {/* PDF Upload Button */}
+            <PDFUploadButton
+              variant="button"
+              className="bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-700 hover:to-blue-700 text-white shadow-lg"
+              onUploadComplete={(results) => {
+                console.log('Upload completed:', results)
+                // Refresh citations data after upload
+                if (user?.id) {
+                  loadUserDocuments(user.id)
+                }
+              }}
+              onUploadError={(error) => {
+                console.error('Upload error:', error)
+                alert(`Upload error: ${error}`)
+              }}
+            >
+              Upload for Citations
+            </PDFUploadButton>
           </div>
         </motion.div>
 

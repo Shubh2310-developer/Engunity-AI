@@ -829,7 +829,7 @@ export default function ChatCodePage() {
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyDown={handleKeyPress}
                   placeholder="Ask me anything about programming, engineering, or request code help..."
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none max-h-32"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none max-h-32 text-slate-900 placeholder-slate-500 bg-white"
                   rows={1}
                   disabled={isChatLoading}
                 />

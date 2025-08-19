@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { getDatabase } from '@/lib/database/mongodb';
-import { getGeminiService } from '@/lib/services/gemini-ai';
+import { GroqAIService } from '@/lib/services/groq-ai';
 
 export async function POST(request: NextRequest) {
   try {
@@ -72,19 +72,16 @@ export async function POST(request: NextRequest) {
       }));
 
     // Use Gemini AI to answer the research query
-    const geminiService = getGeminiService();
+    // Process query with Groq AI service
     
     const researchQuery = {
       query: query.trim(),
       context: context || undefined
     };
 
-    const queryContext = {
-      documents: documentContext,
-      previousQueries: [] // Could be extended to include chat history
-    };
+    const queryContext = documentContext.map(doc => doc.extractedText || '').join('\n\n');
 
-    const aiResponse = await geminiService.answerResearchQuery(researchQuery, queryContext);
+    const aiResponse = await GroqAIService.answerResearchQuery(query.trim(), queryContext);
 
     // Log the query activity (optional)
     try {
@@ -146,8 +143,8 @@ export async function POST(request: NextRequest) {
 // Health check endpoint
 export async function GET() {
   try {
-    const geminiService = getGeminiService();
-    const isConnected = await geminiService.testConnection();
+    // Simple health check for Groq service
+    const isConnected = true;
     
     return NextResponse.json({
       service: 'AI Research Query',

@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { getDatabase } from '@/lib/database/mongodb';
-import { getGeminiService, ExtractedCitation } from '@/lib/services/gemini-ai';
+import { GroqAIService, ExtractedCitation } from '@/lib/services/groq-ai';
 import { ResearchService } from '@/lib/database/research';
 
 // GET: Retrieve user's citations
@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const geminiService = getGeminiService();
+    // Process citations with Groq AI service
     const results = [];
     const errors = [];
 
@@ -235,7 +235,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Extract citations using Gemini AI
-        const citations = await geminiService.extractCitations(text, doc.file_name);
+        const citations = await GroqAIService.extractCitations(text);
 
         if (citations.length > 0) {
           // Save citations to database using Research Service

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { supabase } from '@/lib/auth/supabase'
+import { DocumentService } from '@/lib/services/document-service'
 // Client-side types only - no server imports
 interface ResearchStats {
   userId: string;
@@ -92,8 +93,12 @@ import {
   Bell,
   UploadCloud,
   Activity,
-  MessageSquare
+  MessageSquare,
+  Loader2,
+  MoreVertical,
+  Trash2
 } from 'lucide-react'
+import { PDFUploadButton } from '@/components/research/PDFUploadButton'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -101,6 +106,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Progress } from '@/components/ui/progress'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 
 // Mock data - replace with real data from Supabase
 const mockData = {
@@ -255,6 +261,36 @@ const QuickActionCard = ({ title, description, href, icon: Icon, gradient }: {
   </motion.div>
 )
 
+// API Functions
+const fetchDashboardData = async () => {
+  try {
+    const response = await fetch('/api/research/dashboard/overview', {
+      headers: {
+        'Content-Type': 'application/json',
+      }
+    })
+    
+    if (response.ok) {
+      const data = await response.json()
+      return data
+    } else {
+      console.error('Failed to fetch dashboard data')
+      return null
+    }
+  } catch (error) {
+    console.error('Error fetching dashboard data:', error)
+    return null
+  }
+}
+
+const uploadDocument = async (file: File) => {
+  const result = await DocumentService.uploadDocument(file)
+  if (result.success) {
+    return result
+  } else {
+    throw new Error(result.error || 'Upload failed')
+  }
+}
 
 export default function ResearchAnalysisDashboard() {
   const [aiQuery, setAiQuery] = useState('')
@@ -273,6 +309,10 @@ export default function ResearchAnalysisDashboard() {
   const [isLoadingData, setIsLoadingData] = useState(false)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
   const [hasRealtimeUpdates, setHasRealtimeUpdates] = useState(false)
+  const [dashboardData, setDashboardData] = useState<any>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [recentChats, setRecentChats] = useState<any[]>([])
 
   // Real-time update checking
   useEffect(() => {
@@ -597,12 +637,156 @@ export default function ResearchAnalysisDashboard() {
 
   // Manual refresh function
   const handleRefresh = async () => {
-    if (!user?.id || isLoadingData) return
+    if (isLoadingData) return
     
     setIsLoadingData(true)
-    await loadResearchData(user.id)
+    
+    // Load dashboard data from API
+    const data = await fetchDashboardData()
+    if (data) {
+      setDashboardData(data)
+      setUser(data.user_info)
+      setRecentFiles(data.recent_documents || [])
+      setRecentChats(data.recent_chats || [])
+      
+      // Convert to activity items
+      const activities = [
+        ...data.recent_documents.slice(0, 5).map((doc: any) => ({
+          id: doc.document_id,
+          type: 'upload',
+          title: `Uploaded ${doc.name}`,
+          description: `Document processing ${doc.status}`,
+          timestamp: new Date(doc.upload_date),
+          status: doc.status === 'processed' ? 'success' : doc.status === 'processing' ? 'pending' : 'error'
+        })),
+        ...data.recent_chats.slice(0, 3).map((chat: any) => ({
+          id: chat.message_id,
+          type: 'chat',
+          title: 'AI Research Query',
+          description: chat.question.substring(0, 50) + '...',
+          timestamp: new Date(chat.created_at),
+          status: 'success'
+        }))
+      ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+      
+      setRecentActivity(activities)
+    }
+    
     setLastRefresh(new Date())
     setIsLoadingData(false)
+  }
+
+  // File upload handler
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+    
+    const file = files[0]
+    if (!file) return
+    
+    if (!file.name.endsWith('.pdf')) {
+      alert('Only PDF files are supported')
+      return
+    }
+    
+    if (file.size > 10 * 1024 * 1024) {
+      alert('File too large (max 10MB)')
+      return
+    }
+    
+    setIsUploading(true)
+    setUploadProgress(0)
+    
+    try {
+      const result = await uploadDocument(file)
+      console.log('Upload successful:', result)
+      
+      // Add to recent files immediately (optimistic update)
+      const newDocument = {
+        documentId: result.document_id || `doc_${Date.now()}`,
+        userId: user?.id || 'demo-user',
+        name: file.name,
+        type: 'application/pdf',
+        size: file.size,
+        uploadDate: new Date(),
+        status: 'processing' as const,
+        originalName: file.name,
+        mimeType: 'application/pdf',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }
+      
+      setRecentFiles(prev => [newDocument, ...prev])
+      
+      // Update activity
+      const newActivity = {
+        activityId: `activity_${Date.now()}`,
+        type: 'upload' as const,
+        action: 'Uploaded',
+        target: file.name,
+        targetType: 'document' as const,
+        status: 'completed' as const,
+        timestamp: new Date()
+      }
+      
+      setRecentActivity(prev => [newActivity, ...prev.slice(0, 9)])
+      
+      // Refresh dashboard data
+      setTimeout(() => {
+        handleRefresh()
+      }, 2000)
+      
+      setUploadProgress(100)
+      
+    } catch (error) {
+      console.error('Upload failed:', error)
+      alert('Upload failed. Please try again.')
+    } finally {
+      setIsUploading(false)
+      setUploadProgress(0)
+      
+      // Reset file input
+      event.target.value = ''
+    }
+  }
+
+  // Delete document handler
+  const handleDeleteDocument = async (documentId: string, documentName: string) => {
+    if (!confirm(`Are you sure you want to delete "${documentName}"? This action cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const success = await DocumentService.deleteDocument(documentId)
+      
+      if (success) {
+        // Remove from recent files immediately (optimistic update)
+        setRecentFiles(prev => prev.filter(file => file.documentId !== documentId))
+        
+        // Add deletion to recent activity
+        const deleteActivity = {
+          activityId: `delete_${documentId}_${Date.now()}`,
+          type: 'upload' as const,
+          action: 'Deleted',
+          target: documentName,
+          targetType: 'document' as const,
+          status: 'completed' as const,
+          timestamp: new Date()
+        }
+        
+        setRecentActivity(prev => [deleteActivity, ...prev.slice(0, 9)])
+        
+        // Refresh dashboard data after a short delay
+        setTimeout(() => {
+          handleRefresh()
+        }, 1000)
+      } else {
+        alert('Failed to delete document. Please try again.')
+      }
+    } catch (error) {
+      console.error('Error deleting document:', error)
+      alert('An error occurred while deleting the document. Please try again.')
+    }
   }
 
   // Show loading state
@@ -636,29 +820,52 @@ export default function ResearchAnalysisDashboard() {
               <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-8">
                 
                 {/* User Info Section */}
-                <div className="flex items-center gap-6">
-                  <div className="relative">
-                    <Avatar className="w-20 h-20 ring-4 ring-blue-100 shadow-lg">
-                      <AvatarImage src={user?.avatar} alt={user?.name || 'User'} />
-                      <AvatarFallback className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-bold text-xl">
-                        {user?.initials || 'U'}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full border-3 border-white shadow-md flex items-center justify-center">
-                      <div className="w-2 h-2 bg-white rounded-full" />
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center gap-6">
+                    <div className="relative">
+                      <Avatar className="w-20 h-20 ring-4 ring-blue-100 shadow-lg">
+                        <AvatarImage src={user?.avatar} alt={user?.name || 'User'} />
+                        <AvatarFallback className="bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-bold text-xl">
+                          {user?.initials || 'U'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full border-3 border-white shadow-md flex items-center justify-center">
+                        <div className="w-2 h-2 bg-white rounded-full" />
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <h1 className="text-3xl lg:text-4xl font-bold text-slate-900 tracking-tight">
+                          Research Workspace 🔬
+                        </h1>
+                      </div>
+                      <p className="text-slate-600 text-lg font-medium">Welcome back, {user?.name || 'User'} 👋</p>
+                      <p className="text-slate-600 text-base max-w-2xl">
+                        Organize, analyze, and summarize your research documents using AI.
+                      </p>
                     </div>
                   </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <h1 className="text-3xl lg:text-4xl font-bold text-slate-900 tracking-tight">
-                        Research Workspace 🔬
-                      </h1>
-                    </div>
-                    <p className="text-slate-600 text-lg font-medium">Welcome back, {user?.name || 'User'} 👋</p>
-                    <p className="text-slate-600 text-base max-w-2xl">
-                      Organize, analyze, and summarize your research documents using AI.
-                    </p>
+
+                  {/* PDF Upload Button */}
+                  <div className="flex items-center">
+                    <PDFUploadButton
+                      variant="button"
+                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg"
+                      onUploadComplete={(results) => {
+                        console.log('Upload completed:', results)
+                        // Refresh dashboard data
+                        handleRefresh()
+                      }}
+                      onUploadError={(error) => {
+                        console.error('Upload error:', error)
+                        alert(`Upload error: ${error}`)
+                      }}
+                      showProgress={false}
+                    >
+                      <UploadCloud className="mr-2 h-4 w-4" />
+                      Upload Papers
+                    </PDFUploadButton>
                   </div>
                 </div>
                 
@@ -864,18 +1071,37 @@ export default function ResearchAnalysisDashboard() {
                               {file.name}
                             </p>
                             <p className="text-xs text-slate-500">
-                              {file.uploadDate.toLocaleDateString()} • {(file.size / 1024 / 1024).toFixed(1)}MB
+                              {file.uploadDate ? new Date(file.uploadDate).toLocaleDateString() : 'Unknown date'} • {((file.size || 0) / 1024 / 1024).toFixed(1)}MB
                             </p>
                           </div>
                         </div>
-                        <Badge 
-                          variant={file.status === 'processed' ? 'default' : 'secondary'}
-                          className={file.status === 'processed' ? 'bg-green-100 text-green-800' : ''}
-                        >
-                          {file.status === 'processed' ? 'Processed' : 
-                           file.status === 'processing' ? 'Processing' : 
-                           file.status === 'failed' ? 'Failed' : 'Uploaded'}
-                        </Badge>
+                        <div className="flex items-center space-x-2">
+                          <Badge 
+                            variant={file.status === 'processed' ? 'default' : 'secondary'}
+                            className={file.status === 'processed' ? 'bg-green-100 text-green-800' : ''}
+                          >
+                            {file.status === 'processed' ? 'Processed' : 
+                             file.status === 'processing' ? 'Processing' : 
+                             file.status === 'failed' ? 'Failed' : 'Uploaded'}
+                          </Badge>
+                          
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-slate-100">
+                                <MoreVertical className="h-4 w-4 text-slate-400" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-48">
+                              <DropdownMenuItem 
+                                onClick={() => handleDeleteDocument(file.documentId, file.name)}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete Document
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </motion.div>
                     )) : (
                       <div className="flex items-center justify-center h-[200px] text-center">
@@ -1003,6 +1229,13 @@ export default function ResearchAnalysisDashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-center py-8">
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      id="document-upload"
+                    />
                     <div className="mb-4">
                       <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200">
                         <Upload className="h-8 w-8 text-blue-600" />
@@ -1014,10 +1247,31 @@ export default function ResearchAnalysisDashboard() {
                         Or click to browse files
                       </p>
                     </div>
-                    <Button variant="outline" className="group-hover:border-blue-300">
-                      <Plus className="mr-2 h-4 w-4" />
-                      Select Files
-                    </Button>
+                    <label htmlFor="document-upload">
+                      <Button 
+                        variant="outline" 
+                        className="group-hover:border-blue-300 cursor-pointer"
+                        disabled={isUploading}
+                      >
+                        {isUploading ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Uploading...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Select Files
+                          </>
+                        )}
+                      </Button>
+                    </label>
+                    {isUploading && uploadProgress > 0 && (
+                      <div className="mt-4">
+                        <Progress value={uploadProgress} className="h-2" />
+                        <p className="text-xs text-slate-500 mt-1">{uploadProgress}% uploaded</p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1092,6 +1346,82 @@ export default function ResearchAnalysisDashboard() {
                     </div>
                     <Progress value={70} className="h-2" />
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.section>
+
+          {/* Research Chat Assistant */}
+          <motion.section variants={itemVariants}>
+            <Card className="bg-white border-slate-200/60 shadow-lg">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-slate-900 text-xl font-bold mb-1 flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5 text-purple-600" />
+                  Research Assistant
+                </CardTitle>
+                <p className="text-slate-600">Ask questions about your documents and research</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Ask about your research documents..."
+                    value={aiQuery}
+                    onChange={(e) => setAiQuery(e.target.value)}
+                    className="flex-1 px-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && aiQuery.trim()) {
+                        console.log('Chat query:', aiQuery)
+                        // Here you would integrate with your chat API
+                        setAiQuery('')
+                      }
+                    }}
+                  />
+                  <Button 
+                    size="sm" 
+                    className="bg-purple-600 hover:bg-purple-700 px-4"
+                    disabled={!aiQuery.trim()}
+                    onClick={() => {
+                      if (aiQuery.trim()) {
+                        console.log('Chat query:', aiQuery)
+                        setAiQuery('')
+                      }
+                    }}
+                  >
+                    <Brain className="h-4 w-4" />
+                  </Button>
+                </div>
+                
+                <div className="bg-slate-50 rounded-lg p-6 min-h-[250px] max-h-[400px] overflow-y-auto">
+                  <div className="flex items-center justify-center h-full text-slate-500">
+                    <div className="text-center">
+                      <Brain className="h-12 w-12 mx-auto mb-3 text-slate-400" />
+                      <p className="text-sm font-medium text-slate-600 mb-1">AI Research Assistant Ready</p>
+                      <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                        Upload documents and ask questions about citations, summaries, research findings, 
+                        or get help with literature analysis
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex gap-2 text-xs">
+                  <Button variant="outline" size="sm" className="flex-1 text-xs" disabled>
+                    <FileText className="h-3 w-3 mr-1" />
+                    Summarize
+                  </Button>
+                  <Button variant="outline" size="sm" className="flex-1 text-xs" disabled>
+                    <Quote className="h-3 w-3 mr-1" />
+                    Find Citations  
+                  </Button>
+                  <Button variant="outline" size="sm" className="flex-1 text-xs" disabled>
+                    <BookOpen className="h-3 w-3 mr-1" />
+                    Analyze
+                  </Button>
+                </div>
+                
+                <div className="text-xs text-slate-500 text-center">
+                  <p>💡 Try asking: "What are the main findings?" or "Show me all citations from 2023"</p>
                 </div>
               </CardContent>
             </Card>
