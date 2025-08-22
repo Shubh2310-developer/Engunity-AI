@@ -18,7 +18,7 @@ from datetime import datetime
 import aiohttp
 
 from .supabase_service import DocumentContent, get_supabase_service
-from ..vector_store.cs_faiss_manager import CSFAISSManager, DocumentChunk, IndexType
+from vector_store.cs_faiss_manager import CSFAISSManager, DocumentChunk, IndexType
 from .rag.cs_retriever import CSRetriever, create_cs_retriever
 
 logger = logging.getLogger(__name__)

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+cd "$(dirname "$0")"
+
 echo "🚀 Starting All Engunity AI Services"
 echo "===================================="
 
@@ -19,6 +21,7 @@ cleanup_existing() {
     echo "🧹 Cleaning up existing processes..."
     
     # Kill existing backend processes
+    pkill -f "run_server.py" 2>/dev/null || true
     pkill -f "enhanced_fake_rag_server.py" 2>/dev/null || true
     pkill -f "agentic_rag_server.py" 2>/dev/null || true
     pkill -f "fake_rag_server.py" 2>/dev/null || true
@@ -34,14 +37,29 @@ cleanup_existing
 
 echo ""
 echo "📦 Checking backend dependencies..."
+# All python commands should be run from the backend directory.
 cd backend
+
 # Skip pip install for faster startup - assume dependencies are already installed
 echo "✅ Using existing dependencies (run 'pip install -r requirements_rag.txt' if needed)"
 
 echo ""
+echo "🚀 Starting Main Backend Server (Port 8000)..."
+if ! check_port 8000; then
+    nohup /home/ghost/anaconda3/envs/enginuity-ai/bin/python run_server.py > main_backend.log 2>&1 &
+    MAIN_BACKEND_PID=$!
+    echo "📝 Main Backend PID: $MAIN_BACKEND_PID"
+else
+    echo "✅ Main Backend Server already running on port 8000"
+fi
+
+# Wait for main backend to start
+sleep 3
+
+echo ""
 echo "🔥 Starting Enhanced Fake RAG Server (Port 8002)..."
 if ! check_port 8002; then
-    nohup python enhanced_fake_rag_server.py > enhanced_fake_rag_server.log 2>&1 &
+    nohup /home/ghost/anaconda3/envs/enginuity-ai/bin/python enhanced_fake_rag_server.py > enhanced_fake_rag_server.log 2>&1 &
     ENHANCED_RAG_PID=$!
     echo "📝 Enhanced RAG PID: $ENHANCED_RAG_PID"
 else
@@ -55,7 +73,7 @@ echo ""
 echo "🤖 Starting Agentic RAG Server (Port 8001)..."
 if ! check_port 8001; then
     if [ -f "agentic_rag_server.py" ]; then
-        nohup python agentic_rag_server.py > agentic_rag_server.log 2>&1 &
+        nohup /home/ghost/anaconda3/envs/enginuity-ai/bin/python agentic_rag_server.py > agentic_rag_server.log 2>&1 &
         AGENTIC_RAG_PID=$!
         echo "📝 Agentic RAG PID: $AGENTIC_RAG_PID"
         sleep 3
@@ -89,11 +107,19 @@ else
     echo "✅ MongoDB already running"
 fi
 
-# Go back to root directory
+# Go back to root directory before testing
 cd ..
 
 echo ""
 echo "🧪 Testing backend services..."
+
+# Test Main Backend
+echo -n "Testing Main Backend (8000)... "
+if curl -s http://localhost:8000/api/health > /dev/null; then
+    echo "✅"
+else
+    echo "❌"
+fi
 
 # Test Enhanced RAG
 echo -n "Testing Enhanced RAG (8002)... "
@@ -121,17 +147,19 @@ fi
 
 echo ""
 echo "🎯 All Backend Services Status:"
+echo "   - Main Backend: http://localhost:8000 (File uploads, etc.)"
 echo "   - Enhanced Fake RAG: http://localhost:8002 (CS-specific queries)"
 echo "   - Agentic RAG: http://localhost:8001 (General queries)"
 echo "   - Citation Classifier: http://localhost:8003 (AI citation classification)"
 echo "   - MongoDB: Running"
 echo ""
 echo "📊 Service Logs:"
+echo "   - Main Backend: backend/main_backend.log"
 echo "   - Enhanced RAG: backend/enhanced_fake_rag_server.log"
 echo "   - Agentic RAG: backend/agentic_rag_server.log"
 echo "   - Citation Classifier: backend/citation_classification_server.log"
 echo ""
-echo "🛑 To stop all services: pkill -f 'server.py'"
+echo "🛑 To stop all services: pkill -f 'server.py' || pkill -f 'run_server.py'"
 echo ""
 echo "✅ Backend services are ready!"
 echo "🚀 You can now start the frontend with 'npm run dev'"
