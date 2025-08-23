@@ -23,6 +23,7 @@ from fastapi.responses import JSONResponse
 from api.v1.chat import router as chat_router
 from api.v1.documents import router as documents_router
 from api.v1.auth import router as auth_router
+from api.v1.analysis import router as analysis_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -79,6 +80,17 @@ async def health_check():
         "models": "local"
     }
 
+@app.get("/api/health")
+async def api_health_check():
+    """API Health check endpoint"""
+    return {
+        "status": "healthy",
+        "service": "engunity-ai-backend",
+        "version": "1.0.0",
+        "rag_system": "cs-enhanced",
+        "models": "local"
+    }
+
 # Root endpoint
 @app.get("/")
 async def root():
@@ -94,6 +106,7 @@ async def root():
 app.include_router(chat_router, prefix="/api/v1", tags=["chat"])
 app.include_router(documents_router, prefix="/api/v1", tags=["documents"])
 app.include_router(auth_router, prefix="/api/v1", tags=["auth"])
+app.include_router(analysis_router, prefix="/api", tags=["analysis"])
 
 # Error handlers
 @app.exception_handler(HTTPException)

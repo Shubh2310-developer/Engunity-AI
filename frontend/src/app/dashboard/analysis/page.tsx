@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { createClient } from '@supabase/supabase-js';
 import {
   ChevronDown, BarChart3, LineChart, Activity, Database, Play, Upload, FileText, Save,
   Zap, Sparkles, Download, Share, Moon, Sun,
@@ -13,8 +12,8 @@ import {
   CheckCircle, XCircle
 } from 'lucide-react';
 import { 
-  LineChart as RechartsLine, BarChart as RechartsBar, XAxis, YAxis, CartesianGrid, 
-  Tooltip, ResponsiveContainer, Line, Bar, ScatterChart, Scatter, Cell, 
+  LineChart as RechartsLine, BarChart as RechartsBar, AreaChart as RechartsArea, XAxis, YAxis, CartesianGrid, 
+  Tooltip, ResponsiveContainer, Line, Bar, Area, ScatterChart, Scatter, Cell, 
   PieChart as RechartsPie, Pie
 } from 'recharts';
 
@@ -48,6 +47,15 @@ interface DataPreview {
   totalRows: number;
   page: number;
   pageSize: number;
+  pagination?: {
+    page: number;
+    pageSize: number;
+    totalRows: number;
+    totalPages: number;
+    total: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
 }
 
 interface TransformationRule {
@@ -70,16 +78,19 @@ interface CleaningLog {
 interface CorrelationData {
   matrix: number[][];
   columns: string[];
+  strongCorrelations?: any[];
+  correlations?: any[];
 }
 
 interface ChartConfig {
   id: string;
-  type: 'bar' | 'line' | 'pie' | 'scatter' | 'area';
+  type: 'bar' | 'line' | 'pie' | 'scatter' | 'area' | 'donut' | 'column' | 'heatmap';
   title: string;
   xAxis: string;
   yAxis: string;
   color?: string;
   filters?: Record<string, any>;
+  data?: any[];
 }
 
 interface QueryHistory {
@@ -187,8 +198,8 @@ const API_CONFIG = {
   USE_MOCK: false
 };
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zsevvvaakunsspxpplbh.supabase.co';
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+// const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zsevvvaakunsspxpplbh.supabase.co';
+// const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 // const supabase = createClient(supabaseUrl, supabaseKey); // Uncomment when needed
 
 // Constants
@@ -203,7 +214,11 @@ const chartTypes = [
   { id: 'bar', name: 'Bar Chart', icon: BarChart },
   { id: 'line', name: 'Line Chart', icon: LineChart },
   { id: 'pie', name: 'Pie Chart', icon: PieChart },
-  { id: 'scatter', name: 'Scatter Plot', icon: Target }
+  { id: 'scatter', name: 'Scatter Plot', icon: Target },
+  { id: 'area', name: 'Area Chart', icon: TrendingUp },
+  { id: 'donut', name: 'Donut Chart', icon: PieChart },
+  { id: 'column', name: 'Column Chart', icon: BarChart },
+  { id: 'heatmap', name: 'Heatmap', icon: Sliders }
 ];
 
 // Loading Skeleton Components
@@ -260,11 +275,11 @@ class ErrorBoundary extends React.Component<
     this.state = { hasError: false };
   }
 
-  static override getDerivedStateFromError(error: Error) {
+  static getDerivedStateFromError(error: Error) {
     return { hasError: true, error };
   }
 
-  render() {
+  override render() {
     if (this.state.hasError) {
       return (
         <div className="p-6 bg-red-50 border border-red-200 rounded-xl">
@@ -320,6 +335,14 @@ const DataAnalysisWorkspace = () => {
   const [customCharts, setCustomCharts] = useState<ChartConfig[]>([]);
   const [chartBuilder, setChartBuilder] = useState({ isOpen: false, config: null as ChartConfig | null });
   
+  // Chart builder form state
+  const [chartForm, setChartForm] = useState({
+    title: '',
+    type: 'bar' as 'bar' | 'line' | 'pie' | 'scatter' | 'area' | 'donut' | 'column' | 'heatmap',
+    xAxis: '',
+    yAxis: ''
+  });
+  
   // Queries
   const [sqlQuery, setSqlQuery] = useState('SELECT * FROM dataset LIMIT 10;');
   const [nlqQuery, setNlqQuery] = useState('');
@@ -368,6 +391,37 @@ const DataAnalysisWorkspace = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Load demo data on component mount if no files are uploaded
+  useEffect(() => {
+    if (uploadedFiles.length === 0) {
+      const demoFiles = [
+        {
+          fileId: 'demo-linear-regression',
+          name: 'Linear Regression - Demo.csv',
+          rows: 20,
+          columns: 2,
+          size: '0.15 KB'
+        },
+        {
+          fileId: 'sales-sample-2023',
+          name: 'Sales Data - 2023.csv',
+          rows: 12,
+          columns: 4,
+          size: '0.26 KB'
+        },
+        {
+          fileId: 'employee-data-sample',
+          name: 'Employee Data Sample.csv',
+          rows: 5,
+          columns: 5,
+          size: '0.17 KB'
+        }
+      ] as UploadedFile[];
+      setUploadedFiles(demoFiles);
+      setCurrentFileId('demo-linear-regression');
+    }
   }, []);
 
   useEffect(() => {
@@ -475,8 +529,21 @@ const DataAnalysisWorkspace = () => {
       );
 
       if (response.ok) {
-        const data = await response.json();
-        setDataPreview(data);
+        const apiData = await response.json();
+        // Transform API response to match expected frontend structure
+        const transformedData = {
+          data: apiData.data || [],
+          pagination: apiData.pagination || {},
+          columns: apiData.data && apiData.data.length > 0 ? Object.keys(apiData.data[0]).filter(key => key !== '_index') : [],
+          rows: apiData.data ? apiData.data.map((row: any) => {
+            const { _index, ...rowData } = row;
+            return Object.values(rowData);
+          }) : [],
+          page: apiData.pagination?.page || 1,
+          pageSize: apiData.pagination?.pageSize || pageSize,
+          totalRows: apiData.pagination?.total || 0
+        };
+        setDataPreview(transformedData);
       }
     } catch (error) {
       console.error('Error fetching data preview:', error);
@@ -492,7 +559,27 @@ const DataAnalysisWorkspace = () => {
 
       if (response.ok) {
         const data = await response.json();
-        setColumnMetadata(data.columns || []);
+        // Transform object to array and map properties
+        if (data.columns && typeof data.columns === 'object') {
+          const columnsArray = Object.values(data.columns).map((col: any) => ({
+            name: col.name,
+            type: (col.dtype === 'object' ? 'categorical' : 'numeric') as 'numeric' | 'categorical' | 'datetime' | 'boolean' | 'text',
+            uniqueCount: col.uniqueCount || 0,
+            nullCount: col.nullCount || 0,
+            nullPercentage: col.nullPercent || 0,
+            samples: col.sampleValues || [],
+            mean: col.mean,
+            min: col.min,
+            max: col.max,
+            std: col.std,
+            median: col.median,
+            mostFrequent: col.topValues && col.topValues[0] ? col.topValues[0].value : null,
+            topValues: col.topValues || []
+          }));
+          setColumnMetadata(columnsArray);
+        } else {
+          setColumnMetadata([]);
+        }
       }
     } catch (error) {
       console.error('Error fetching column metadata:', error);
@@ -647,21 +734,77 @@ const DataAnalysisWorkspace = () => {
       );
 
       if (response.ok) {
-        const data = await response.json();
-        setCorrelationData(data);
+        const apiData = await response.json();
+        
+        // Transform API response to frontend structure
+        if (apiData.columnNames && apiData.correlations) {
+          const columns = apiData.columnNames;
+          const correlationsArray = apiData.correlations;
+          
+          // Create matrix from correlations array
+          const matrix: number[][] = [];
+          for (let i = 0; i < columns.length; i++) {
+            matrix[i] = [];
+            for (let j = 0; j < columns.length; j++) {
+              const correlation = correlationsArray.find(
+                (corr: any) => corr.x === columns[i] && corr.y === columns[j]
+              );
+              matrix[i]![j] = correlation?.correlation || 0;
+            }
+          }
+          
+          const transformedData = {
+            columns,
+            matrix,
+            strongCorrelations: apiData.strongCorrelations || [],
+            correlations: correlationsArray
+          };
+          
+          setCorrelationData(transformedData);
+        } else {
+          // Fallback for empty correlation data
+          setCorrelationData({
+            columns: [],
+            matrix: [],
+            strongCorrelations: [],
+            correlations: []
+          });
+        }
       }
     } catch (error) {
       console.error('Error fetching correlation data:', error);
     }
   };
 
-  const createCustomChart = (config: ChartConfig) => {
-    const newChart: ChartConfig = {
-      ...config,
-      id: `chart_${Date.now()}`
-    };
-    setCustomCharts(prev => [...prev, newChart]);
-    setChartBuilder({ isOpen: false, config: null });
+  const createCustomChart = async (config: ChartConfig) => {
+    try {
+      const response = await fetch(`${API_CONFIG.BASE_URL}/custom-chart`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileId: currentFileId,
+          type: config.type,
+          xAxis: config.xAxis,
+          yAxis: config.yAxis,
+          title: config.title
+        })
+      });
+
+      if (response.ok) {
+        const chartData = await response.json();
+        const newChart: ChartConfig = {
+          ...config,
+          id: `chart_${Date.now()}`,
+          data: chartData.data
+        };
+        setCustomCharts(prev => [...prev, newChart]);
+        setChartBuilder({ isOpen: false, config: null });
+      } else {
+        console.error('Failed to create custom chart');
+      }
+    } catch (error) {
+      console.error('Error creating custom chart:', error);
+    }
   };
 
   // Query Functions
@@ -875,7 +1018,7 @@ const DataAnalysisWorkspace = () => {
             </div>
           </div>
           <div className="divide-y divide-slate-200">
-            {uploadedFiles.map((file) => (
+            {uploadedFiles?.map((file) => (
               <div key={file.fileId} className={`p-4 flex items-center justify-between hover:bg-slate-50 transition-colors ${currentFileId === file.fileId ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}>
                 <div className="flex items-center gap-3">
                   <FileText className="w-5 h-5 text-slate-500" />
@@ -912,7 +1055,7 @@ const DataAnalysisWorkspace = () => {
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-slate-800">Data Preview</h3>
                 <div className="flex items-center gap-2 text-sm text-slate-600">
-                  <span>Showing {Math.min(dataPreview.pageSize, dataPreview.totalRows)} of {dataPreview.totalRows.toLocaleString()} rows</span>
+                  <span>Showing {Math.min(dataPreview.pagination?.pageSize || 0, dataPreview.pagination?.total || 0)} of {(dataPreview.pagination?.total || 0).toLocaleString()} rows</span>
                 </div>
               </div>
             </div>
@@ -920,7 +1063,7 @@ const DataAnalysisWorkspace = () => {
               <table className="w-full">
                 <thead className="bg-slate-50 sticky top-0">
                   <tr>
-                    {dataPreview.columns.map((column, index) => (
+                    {dataPreview?.columns?.map((column, index) => (
                       <th key={index} className="px-4 py-3 text-left text-sm font-semibold text-slate-700 border-b border-slate-200">
                         {column}
                       </th>
@@ -928,9 +1071,9 @@ const DataAnalysisWorkspace = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {dataPreview.rows.map((row, rowIndex) => (
+                  {dataPreview?.rows?.map((row, rowIndex) => (
                     <tr key={rowIndex} className="hover:bg-slate-50">
-                      {row.map((cell, cellIndex) => (
+                      {row?.map((cell, cellIndex) => (
                         <td key={cellIndex} className="px-4 py-3 text-sm text-slate-600">
                           {cell === null || cell === undefined ? 
                             <span className="text-slate-400 italic">null</span> : 
@@ -945,17 +1088,17 @@ const DataAnalysisWorkspace = () => {
             </div>
             <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between">
               <button
-                onClick={() => fetchDataPreview(currentFileId!, Math.max(1, dataPreview.page - 1))}
-                disabled={dataPreview.page <= 1}
+                onClick={() => fetchDataPreview(currentFileId!, Math.max(1, (dataPreview.pagination?.page || 1) - 1))}
+                disabled={(dataPreview.pagination?.page || 1) <= 1}
                 className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <ChevronLeft className="w-4 h-4" />
                 Previous
               </button>
-              <span className="text-sm text-slate-600">Page {dataPreview.page}</span>
+              <span className="text-sm text-slate-600">Page {dataPreview.pagination?.page || 1}</span>
               <button
-                onClick={() => fetchDataPreview(currentFileId!, dataPreview.page + 1)}
-                disabled={dataPreview.page * dataPreview.pageSize >= dataPreview.totalRows}
+                onClick={() => fetchDataPreview(currentFileId!, (dataPreview.pagination?.page || 1) + 1)}
+                disabled={!dataPreview.pagination?.hasNext}
                 className="flex items-center gap-2 px-3 py-1.5 text-sm bg-white border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Next
@@ -966,13 +1109,13 @@ const DataAnalysisWorkspace = () => {
         )}
 
         {/* Column Metadata */}
-        {columnMetadata.length > 0 && (
+        {Array.isArray(columnMetadata) && columnMetadata.length > 0 && (
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
             <div className="p-4 border-b border-slate-200 bg-slate-50">
               <h3 className="font-semibold text-slate-800">Column Metadata</h3>
             </div>
             <div className="divide-y divide-slate-200">
-              {columnMetadata.map((column, index) => (
+              {Array.isArray(columnMetadata) ? columnMetadata.map((column, index) => (
                 <div key={index} className="p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div>
@@ -991,11 +1134,11 @@ const DataAnalysisWorkspace = () => {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                     <div>
                       <span className="text-slate-500">Unique:</span>
-                      <span className="ml-2 font-medium">{column.uniqueCount.toLocaleString()}</span>
+                      <span className="ml-2 font-medium">{(column.uniqueCount || 0).toLocaleString()}</span>
                     </div>
                     <div>
                       <span className="text-slate-500">Nulls:</span>
-                      <span className="ml-2 font-medium">{column.nullPercentage.toFixed(1)}%</span>
+                      <span className="ml-2 font-medium">{(column.nullPercentage || 0).toFixed(1)}%</span>
                     </div>
                     {column.type === 'numeric' && (
                       <>
@@ -1005,7 +1148,11 @@ const DataAnalysisWorkspace = () => {
                         </div>
                         <div>
                           <span className="text-slate-500">Range:</span>
-                          <span className="ml-2 font-medium">{column.min} - {column.max}</span>
+                          <span className="ml-2 font-medium">
+                            {column.min !== undefined && column.max !== undefined 
+                              ? `${column.min} - ${column.max}` 
+                              : 'N/A'}
+                          </span>
                         </div>
                       </>
                     )}
@@ -1020,7 +1167,7 @@ const DataAnalysisWorkspace = () => {
                     <div className="mt-3 pt-3 border-t border-slate-200">
                       <span className="text-slate-500 text-sm">Samples:</span>
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {column.samples.slice(0, 5).map((sample, sampleIndex) => (
+                        {column.samples?.slice(0, 5).map((sample, sampleIndex) => (
                           <span key={sampleIndex} className="px-2 py-1 bg-slate-100 rounded text-xs">
                             {sample === null || sample === undefined ? 'null' : String(sample)}
                           </span>
@@ -1029,7 +1176,7 @@ const DataAnalysisWorkspace = () => {
                     </div>
                   )}
                 </div>
-              ))}
+              )) : null}
             </div>
           </div>
         )}
@@ -1051,7 +1198,7 @@ const DataAnalysisWorkspace = () => {
               </div>
             </div>
             <div className="divide-y divide-slate-200 max-h-64 overflow-y-auto">
-              {datasetVersions.map((version) => (
+              {datasetVersions?.map((version) => (
                 <div key={version.id} className="p-4">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-medium text-slate-800">{version.name}</h4>
@@ -1060,7 +1207,7 @@ const DataAnalysisWorkspace = () => {
                     </span>
                   </div>
                   <div className="space-y-1">
-                    {version.changes.map((change, changeIndex) => (
+                    {version.changes?.map((change, changeIndex) => (
                       <p key={changeIndex} className="text-sm text-slate-600">• {change}</p>
                     ))}
                   </div>
@@ -1133,7 +1280,7 @@ const DataAnalysisWorkspace = () => {
           
           {transformationRules.length > 0 ? (
             <div className="space-y-3">
-              {transformationRules.map((rule) => (
+              {transformationRules?.map((rule) => (
                 <div key={rule.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
@@ -1168,11 +1315,11 @@ const DataAnalysisWorkspace = () => {
         </div>
 
         {/* Data Type Editor */}
-        {columnMetadata.length > 0 && (
+        {Array.isArray(columnMetadata) && columnMetadata.length > 0 && (
           <div className="bg-white rounded-xl border border-slate-200 p-6">
             <h3 className="text-lg font-semibold text-slate-800 mb-4">Data Type Inference</h3>
             <div className="space-y-3">
-              {columnMetadata.map((column, index) => (
+              {Array.isArray(columnMetadata) ? columnMetadata.map((column, index) => (
                 <div key={index} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
                   <div className="flex items-center gap-3">
                     <span className="font-medium text-slate-800">{column.name}</span>
@@ -1196,7 +1343,7 @@ const DataAnalysisWorkspace = () => {
                     <option value="text">Text</option>
                   </select>
                 </div>
-              ))}
+              )) : null}
             </div>
           </div>
         )}
@@ -1208,7 +1355,7 @@ const DataAnalysisWorkspace = () => {
               <h3 className="font-semibold text-slate-800">Cleaning Logs</h3>
             </div>
             <div className="divide-y divide-slate-200 max-h-64 overflow-y-auto">
-              {cleaningLogs.map((log) => (
+              {cleaningLogs?.map((log) => (
                 <div key={log.id} className="p-4">
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-3">
@@ -1241,13 +1388,13 @@ const DataAnalysisWorkspace = () => {
   );
 
   const renderCorrelationHeatmap = () => {
-    if (!correlationData) {
+    if (!correlationData || !correlationData.columns || correlationData.columns.length === 0) {
       return (
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <h3 className="text-lg font-semibold text-slate-800 mb-4">Correlation Heatmap</h3>
           <div className="text-center py-8 text-slate-500">
             <TrendingUp className="w-8 h-8 mx-auto mb-2 opacity-50" />
-            <p>Correlation data not available</p>
+            <p>Correlation data not available or no numerical columns found</p>
           </div>
         </div>
       );
@@ -1258,21 +1405,21 @@ const DataAnalysisWorkspace = () => {
         <h3 className="text-lg font-semibold text-slate-800 mb-4">Correlation Heatmap</h3>
         <div className="overflow-auto">
           <div className="min-w-max">
-            <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${correlationData.columns.length + 1}, minmax(80px, 1fr))` }}>
+            <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${(correlationData?.columns?.length || 0) + 1}, minmax(80px, 1fr))` }}>
               <div></div>
-              {correlationData.columns.map((col) => (
+              {correlationData?.columns?.map((col) => (
                 <div key={col} className="p-2 text-xs font-medium text-slate-600 text-center">
                   {col.length > 10 ? col.substring(0, 10) + '...' : col}
                 </div>
               ))}
-              {correlationData.matrix.map((row, rowIndex) => (
+              {(correlationData.matrix || []).map((row, rowIndex) => (
                 <React.Fragment key={rowIndex}>
                   <div className="p-2 text-xs font-medium text-slate-600">
                     {correlationData.columns[rowIndex] && correlationData.columns[rowIndex].length > 10 ? 
                       correlationData.columns[rowIndex].substring(0, 10) + '...' : 
                       correlationData.columns[rowIndex] || ''}
                   </div>
-                  {row.map((cell, colIndex) => {
+                  {row?.map((cell, colIndex) => {
                     const intensity = Math.abs(cell);
                     const isPositive = cell >= 0;
                     const bgColor = isPositive ? 
@@ -1299,12 +1446,285 @@ const DataAnalysisWorkspace = () => {
     );
   };
 
+  const renderCustomChart = (chart: ChartConfig) => {
+    if (!chart.data || chart.data.length === 0) {
+      return (
+        <div className="h-full bg-slate-100 rounded flex items-center justify-center text-slate-500 text-sm">
+          No data available
+        </div>
+      );
+    }
+
+    const commonProps = {
+      width: "100%",
+      height: 160,
+      data: chart.data,
+      margin: { top: 5, right: 5, left: 5, bottom: 5 }
+    };
+
+    switch (chart.type) {
+      case 'bar':
+      case 'column':
+        return (
+          <ResponsiveContainer {...commonProps}>
+            <RechartsBar data={chart.data}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis 
+                dataKey="name" 
+                tick={{ fontSize: 10, fill: '#64748b' }}
+                interval={0}
+                angle={-45}
+                textAnchor="end"
+                height={40}
+                stroke="#94a3b8"
+              />
+              <YAxis tick={{ fontSize: 10, fill: '#64748b' }} stroke="#94a3b8" />
+              <Tooltip 
+                contentStyle={{ 
+                  backgroundColor: '#1e293b', 
+                  border: 'none', 
+                  borderRadius: '8px', 
+                  color: 'white',
+                  fontSize: '12px'
+                }}
+              />
+              <Bar 
+                dataKey="value" 
+                fill="#3b82f6" 
+                radius={[2, 2, 0, 0]}
+                stroke="#2563eb"
+                strokeWidth={1}
+              />
+            </RechartsBar>
+          </ResponsiveContainer>
+        );
+
+      case 'line':
+        return (
+          <ResponsiveContainer {...commonProps}>
+            <RechartsLine data={chart.data}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis 
+                dataKey="x" 
+                tick={{ fontSize: 10, fill: '#64748b' }} 
+                stroke="#94a3b8"
+              />
+              <YAxis 
+                tick={{ fontSize: 10, fill: '#64748b' }} 
+                stroke="#94a3b8"
+              />
+              <Tooltip 
+                contentStyle={{ 
+                  backgroundColor: '#1e293b', 
+                  border: 'none', 
+                  borderRadius: '8px', 
+                  color: 'white',
+                  fontSize: '12px'
+                }}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="y" 
+                stroke="#10b981" 
+                strokeWidth={3} 
+                dot={{ r: 4, fill: '#10b981', stroke: '#065f46', strokeWidth: 2 }}
+                activeDot={{ r: 6, fill: '#34d399' }}
+              />
+            </RechartsLine>
+          </ResponsiveContainer>
+        );
+
+      case 'pie':
+        const professionalColors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#84cc16', '#f97316'];
+        return (
+          <ResponsiveContainer {...commonProps}>
+            <RechartsPie>
+              <Pie
+                data={chart.data}
+                cx="50%"
+                cy="50%"
+                outerRadius={60}
+                dataKey="value"
+                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                labelLine={false}
+                fontSize={10}
+                stroke="#ffffff"
+                strokeWidth={2}
+              >
+                {chart.data?.map((entry, index) => (
+                  <Cell 
+                    key={`cell-${index}`} 
+                    fill={entry.fill || professionalColors[index % professionalColors.length]} 
+                  />
+                ))}
+              </Pie>
+              <Tooltip 
+                contentStyle={{ 
+                  backgroundColor: '#1e293b', 
+                  border: 'none', 
+                  borderRadius: '8px', 
+                  color: 'white',
+                  fontSize: '12px'
+                }}
+              />
+            </RechartsPie>
+          </ResponsiveContainer>
+        );
+
+      case 'scatter':
+        return (
+          <ResponsiveContainer {...commonProps}>
+            <ScatterChart data={chart.data}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis 
+                dataKey="x" 
+                tick={{ fontSize: 10, fill: '#64748b' }} 
+                stroke="#94a3b8"
+              />
+              <YAxis 
+                dataKey="y" 
+                tick={{ fontSize: 10, fill: '#64748b' }} 
+                stroke="#94a3b8"
+              />
+              <Tooltip 
+                contentStyle={{ 
+                  backgroundColor: '#1e293b', 
+                  border: 'none', 
+                  borderRadius: '8px', 
+                  color: 'white',
+                  fontSize: '12px'
+                }}
+              />
+              <Scatter 
+                dataKey="y" 
+                fill="#8b5cf6" 
+                stroke="#7c3aed"
+                strokeWidth={2}
+                shape="circle"
+                r={4}
+              />
+            </ScatterChart>
+          </ResponsiveContainer>
+        );
+
+      case 'area':
+        return (
+          <ResponsiveContainer {...commonProps}>
+            <RechartsArea data={chart.data}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis 
+                dataKey="x" 
+                tick={{ fontSize: 10, fill: '#64748b' }} 
+                stroke="#94a3b8"
+              />
+              <YAxis 
+                tick={{ fontSize: 10, fill: '#64748b' }} 
+                stroke="#94a3b8"
+              />
+              <Tooltip 
+                contentStyle={{ 
+                  backgroundColor: '#1e293b', 
+                  border: 'none', 
+                  borderRadius: '8px', 
+                  color: 'white',
+                  fontSize: '12px'
+                }}
+              />
+              <Area 
+                type="monotone" 
+                dataKey="y" 
+                stroke="#06b6d4" 
+                strokeWidth={2}
+                fill="#06b6d4"
+                fillOpacity={0.3}
+                dot={{ r: 3, fill: '#06b6d4', stroke: '#0891b2', strokeWidth: 2 }}
+              />
+            </RechartsArea>
+          </ResponsiveContainer>
+        );
+
+      case 'donut':
+        const donutColors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+        return (
+          <ResponsiveContainer {...commonProps}>
+            <RechartsPie>
+              <Pie
+                data={chart.data}
+                cx="50%"
+                cy="50%"
+                innerRadius={25}
+                outerRadius={60}
+                dataKey="value"
+                label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                labelLine={false}
+                fontSize={9}
+                stroke="#ffffff"
+                strokeWidth={2}
+              >
+                {chart.data?.map((entry, index) => (
+                  <Cell 
+                    key={`cell-${index}`} 
+                    fill={entry.fill || donutColors[index % donutColors.length]} 
+                  />
+                ))}
+              </Pie>
+              <Tooltip 
+                contentStyle={{ 
+                  backgroundColor: '#1e293b', 
+                  border: 'none', 
+                  borderRadius: '8px', 
+                  color: 'white',
+                  fontSize: '12px'
+                }}
+              />
+            </RechartsPie>
+          </ResponsiveContainer>
+        );
+
+      case 'heatmap':
+        // Simple heatmap representation using bars with color gradient
+        return (
+          <div className="h-full flex items-center justify-center">
+            <div className="grid grid-cols-5 gap-1 p-2">
+              {chart.data?.slice(0, 25).map((item, index) => (
+                <div
+                  key={index}
+                  className="w-4 h-4 rounded-sm"
+                  style={{
+                    backgroundColor: `rgba(59, 130, 246, ${Math.min(1, (item.value || 0) / Math.max(...(chart.data?.map(d => d.value || 0) || [1])))})`,
+                    border: '1px solid #e2e8f0'
+                  }}
+                  title={`${item.name}: ${item.value}`}
+                />
+              ))}
+            </div>
+          </div>
+        );
+
+      default:
+        return (
+          <div className="h-full bg-slate-100 rounded flex items-center justify-center text-slate-500 text-sm">
+            Unsupported chart type
+          </div>
+        );
+    }
+  };
+
   const renderInteractiveChartBuilder = () => (
     <div className="bg-white rounded-xl border border-slate-200 p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-slate-800">Interactive Chart Builder</h3>
         <button
-          onClick={() => setChartBuilder({ isOpen: true, config: null })}
+          onClick={() => {
+            setChartBuilder({ isOpen: true, config: null });
+            // Reset form when opening
+            setChartForm({
+              title: '',
+              type: 'bar',
+              xAxis: '',
+              yAxis: ''
+            });
+          }}
           className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
         >
           <Plus className="w-4 h-4" />
@@ -1312,9 +1732,9 @@ const DataAnalysisWorkspace = () => {
         </button>
       </div>
       
-      {customCharts.length > 0 ? (
+      {customCharts && customCharts.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {customCharts.map((chart) => (
+          {customCharts?.map((chart) => (
             <div key={chart.id} className="bg-slate-50 rounded-lg border border-slate-200 p-4">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="font-medium text-slate-800">{chart.title}</h4>
@@ -1333,8 +1753,8 @@ const DataAnalysisWorkspace = () => {
               <div className="text-sm text-slate-600 mb-3">
                 {chart.type.toUpperCase()} • X: {chart.xAxis} • Y: {chart.yAxis}
               </div>
-              <div className="h-32 bg-slate-200 rounded flex items-center justify-center text-slate-500">
-                Chart Preview
+              <div className="h-40">
+                {renderCustomChart(chart)}
               </div>
             </div>
           ))}
@@ -1371,6 +1791,8 @@ const DataAnalysisWorkspace = () => {
                   <label className="block text-sm font-medium text-slate-700 mb-2">Chart Title</label>
                   <input
                     type="text"
+                    value={chartForm.title}
+                    onChange={(e) => setChartForm(prev => ({ ...prev, title: e.target.value }))}
                     className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Enter chart title"
                   />
@@ -1378,11 +1800,16 @@ const DataAnalysisWorkspace = () => {
                 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Chart Type</label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-4 gap-2">
                     {chartTypes.map((type) => (
                       <button
                         key={type.id}
-                        className="flex items-center gap-2 p-3 border border-slate-300 rounded-md hover:bg-slate-50 transition-colors"
+                        onClick={() => setChartForm(prev => ({ ...prev, type: type.id as any }))}
+                        className={`flex items-center gap-2 p-3 border rounded-md transition-colors ${
+                          chartForm.type === type.id 
+                            ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                            : 'border-slate-300 hover:bg-slate-50'
+                        }`}
                       >
                         <type.icon className="w-4 h-4" />
                         <span className="text-sm">{type.name}</span>
@@ -1393,21 +1820,29 @@ const DataAnalysisWorkspace = () => {
                 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">X-Axis Column</label>
-                  <select className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                  <select 
+                    value={chartForm.xAxis}
+                    onChange={(e) => setChartForm(prev => ({ ...prev, xAxis: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
                     <option value="">Select column...</option>
-                    {columnMetadata.map((col) => (
+                    {Array.isArray(columnMetadata) ? columnMetadata.map((col) => (
                       <option key={col.name} value={col.name}>{col.name}</option>
-                    ))}
+                    )) : null}
                   </select>
                 </div>
                 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Y-Axis Column</label>
-                  <select className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                  <select 
+                    value={chartForm.yAxis}
+                    onChange={(e) => setChartForm(prev => ({ ...prev, yAxis: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
                     <option value="">Select column...</option>
-                    {columnMetadata.filter(col => col.type === 'numeric').map((col) => (
+                    {Array.isArray(columnMetadata) ? columnMetadata.filter(col => col.type === 'numeric').map((col) => (
                       <option key={col.name} value={col.name}>{col.name}</option>
-                    ))}
+                    )) : null}
                   </select>
                 </div>
                 
@@ -1420,17 +1855,26 @@ const DataAnalysisWorkspace = () => {
                   </button>
                   <button
                     onClick={() => {
-                      // Create chart logic here
-                      const newChart: ChartConfig = {
-                        id: `chart_${Date.now()}`,
-                        type: 'bar',
-                        title: 'New Chart',
-                        xAxis: columnMetadata[0]?.name || '',
-                        yAxis: columnMetadata.find(col => col.type === 'numeric')?.name || ''
-                      };
-                      createCustomChart(newChart);
+                      if (chartForm.title && chartForm.xAxis && chartForm.yAxis) {
+                        const newChart: ChartConfig = {
+                          id: `chart_${Date.now()}`,
+                          type: chartForm.type,
+                          title: chartForm.title,
+                          xAxis: chartForm.xAxis,
+                          yAxis: chartForm.yAxis
+                        };
+                        createCustomChart(newChart);
+                        // Reset form
+                        setChartForm({
+                          title: '',
+                          type: 'bar',
+                          xAxis: '',
+                          yAxis: ''
+                        });
+                      }
                     }}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    disabled={!chartForm.title || !chartForm.xAxis || !chartForm.yAxis}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
                   >
                     Create
                   </button>
@@ -2077,7 +2521,7 @@ const DataAnalysisWorkspace = () => {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {uploadedFiles.map((file) => (
+                  {uploadedFiles?.map((file) => (
                     <div key={file.fileId} className={`rounded-lg p-3 border transition-colors ${
                       currentFileId === file.fileId
                         ? theme.isDark ? 'bg-blue-900/50 border-blue-500' : 'bg-blue-50 border-blue-200'
@@ -2230,7 +2674,7 @@ const DataAnalysisWorkspace = () => {
                         }`}>
                           <p className="text-sm text-slate-500 mb-1">Total Rows</p>
                           <p className={`text-3xl font-bold ${theme.isDark ? 'text-slate-100' : 'text-slate-800'}`}>
-                            {dataSummary.rows.toLocaleString()}
+                            {dataSummary.rows?.toLocaleString() || '0'}
                           </p>
                         </div>
                         <div className={`rounded-xl p-5 border transition-colors ${
@@ -2238,7 +2682,7 @@ const DataAnalysisWorkspace = () => {
                         }`}>
                           <p className="text-sm text-slate-500 mb-1">Columns</p>
                           <p className={`text-3xl font-bold ${theme.isDark ? 'text-slate-100' : 'text-slate-800'}`}>
-                            {dataSummary.columns}
+                            {dataSummary.columns || '0'}
                           </p>
                         </div>
                         <div className={`rounded-xl p-5 border transition-colors ${
@@ -2246,7 +2690,7 @@ const DataAnalysisWorkspace = () => {
                         }`}>
                           <p className="text-sm text-slate-500 mb-1">Missing Values</p>
                           <p className={`text-3xl font-bold ${theme.isDark ? 'text-slate-100' : 'text-slate-800'}`}>
-                            {dataSummary.missingValues}
+                            {dataSummary.missingValues || '0'}
                           </p>
                         </div>
                         <div className={`rounded-xl p-5 border transition-colors ${
@@ -2254,7 +2698,7 @@ const DataAnalysisWorkspace = () => {
                         }`}>
                           <p className="text-sm text-slate-500 mb-1">Data Quality</p>
                           <p className={`text-3xl font-bold ${theme.isDark ? 'text-slate-100' : 'text-slate-800'}`}>
-                            {dataSummary.dataQuality}
+                            {dataSummary.dataQuality || 'N/A'}
                           </p>
                         </div>
                       </div>
@@ -2270,7 +2714,7 @@ const DataAnalysisWorkspace = () => {
                               Numerical Columns
                             </h4>
                             <div className="space-y-2">
-                              {Object.entries(dataSummary.numericalColumns).map(([col, stats]) => (
+                              {Object.entries(dataSummary.numericalColumns || {}).map(([col, stats]) => (
                                 <div key={col} className="flex justify-between text-sm">
                                   <span className="text-slate-600">{col}</span>
                                   <span className={`font-medium ${theme.isDark ? 'text-slate-300' : 'text-slate-800'}`}>
@@ -2285,7 +2729,7 @@ const DataAnalysisWorkspace = () => {
                               Categorical Columns
                             </h4>
                             <div className="space-y-2">
-                              {Object.entries(dataSummary.categoricalColumns).map(([col, stats]) => (
+                              {Object.entries(dataSummary.categoricalColumns || {}).map(([col, stats]) => (
                                 <div key={col} className="flex justify-between text-sm">
                                   <span className="text-slate-600">{col}</span>
                                   <span className={`font-medium ${theme.isDark ? 'text-slate-300' : 'text-slate-800'}`}>
@@ -2332,10 +2776,19 @@ const DataAnalysisWorkspace = () => {
                               Revenue Trend
                             </h3>
                             <ResponsiveContainer width="100%" height={250}>
-                              <RechartsLine data={chartsData.revenueTrend}>
+                              <RechartsLine data={chartsData?.revenueTrend || []}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                <XAxis dataKey="month" stroke="#64748b" fontSize={12} />
-                                <YAxis stroke="#64748b" fontSize={12} />
+                                <XAxis 
+                                  dataKey="month" 
+                                  stroke="#64748b" 
+                                  fontSize={12}
+                                  tick={{ fill: '#64748b' }}
+                                />
+                                <YAxis 
+                                  stroke="#64748b" 
+                                  fontSize={12}
+                                  tick={{ fill: '#64748b' }}
+                                />
                                 <Tooltip 
                                   contentStyle={{ 
                                     backgroundColor: theme.isDark ? '#334155' : '#fff', 
@@ -2344,7 +2797,14 @@ const DataAnalysisWorkspace = () => {
                                     color: theme.isDark ? '#f1f5f9' : '#0f172a'
                                   }} 
                                 />
-                                <Line type="monotone" dataKey="revenue" stroke="#4f46e5" strokeWidth={2} dot={{ r: 4 }} />
+                                <Line 
+                                  type="monotone" 
+                                  dataKey="revenue" 
+                                  stroke="#10b981" 
+                                  strokeWidth={3} 
+                                  dot={{ r: 5, fill: '#10b981', stroke: '#065f46', strokeWidth: 2 }}
+                                  activeDot={{ r: 7, fill: '#34d399', stroke: '#065f46', strokeWidth: 2 }}
+                                />
                               </RechartsLine>
                             </ResponsiveContainer>
                           </div>
@@ -2356,10 +2816,19 @@ const DataAnalysisWorkspace = () => {
                               Sales by Month
                             </h3>
                             <ResponsiveContainer width="100%" height={250}>
-                              <RechartsBar data={chartsData.salesByMonth}>
+                              <RechartsBar data={chartsData?.salesByMonth || []}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                <XAxis dataKey="month" stroke="#64748b" fontSize={12} />
-                                <YAxis stroke="#64748b" fontSize={12} />
+                                <XAxis 
+                                  dataKey="month" 
+                                  stroke="#64748b" 
+                                  fontSize={12}
+                                  tick={{ fill: '#64748b' }}
+                                />
+                                <YAxis 
+                                  stroke="#64748b" 
+                                  fontSize={12}
+                                  tick={{ fill: '#64748b' }}
+                                />
                                 <Tooltip 
                                   contentStyle={{ 
                                     backgroundColor: theme.isDark ? '#334155' : '#fff', 
@@ -2368,7 +2837,13 @@ const DataAnalysisWorkspace = () => {
                                     color: theme.isDark ? '#f1f5f9' : '#0f172a'
                                   }} 
                                 />
-                                <Bar dataKey="sales" fill="#10b981" radius={[4, 4, 0, 0]} />
+                                <Bar 
+                                  dataKey="sales" 
+                                  fill="#3b82f6" 
+                                  radius={[4, 4, 0, 0]}
+                                  stroke="#2563eb"
+                                  strokeWidth={1}
+                                />
                               </RechartsBar>
                             </ResponsiveContainer>
                           </div>
@@ -2382,15 +2857,20 @@ const DataAnalysisWorkspace = () => {
                             <ResponsiveContainer width="100%" height={250}>
                               <RechartsPie>
                                 <Pie 
-                                  data={chartsData.departmentDistribution} 
+                                  data={chartsData?.departmentDistribution || []} 
                                   cx="50%" 
                                   cy="50%" 
                                   innerRadius={50} 
                                   outerRadius={90} 
                                   dataKey="value" 
                                   paddingAngle={2}
+                                  stroke="#ffffff"
+                                  strokeWidth={3}
+                                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                                  labelLine={false}
+                                  fontSize={11}
                                 >
-                                  {chartsData.departmentDistribution.map((entry, index) => (
+                                  {chartsData?.departmentDistribution?.map((entry, index) => (
                                     <Cell key={`cell-${index}`} fill={entry.fill} />
                                   ))}
                                 </Pie>
@@ -2413,10 +2893,22 @@ const DataAnalysisWorkspace = () => {
                               Sales vs Revenue
                             </h3>
                             <ResponsiveContainer width="100%" height={250}>
-                              <ScatterChart data={chartsData.salesVsRevenue}>
+                              <ScatterChart data={chartsData?.salesVsRevenue || []}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                                <XAxis dataKey="sales" stroke="#64748b" fontSize={12} name="Sales" />
-                                <YAxis dataKey="revenue" stroke="#64748b" fontSize={12} name="Revenue" />
+                                <XAxis 
+                                  dataKey="sales" 
+                                  stroke="#64748b" 
+                                  fontSize={12} 
+                                  name="Sales"
+                                  tick={{ fill: '#64748b' }}
+                                />
+                                <YAxis 
+                                  dataKey="revenue" 
+                                  stroke="#64748b" 
+                                  fontSize={12} 
+                                  name="Revenue"
+                                  tick={{ fill: '#64748b' }}
+                                />
                                 <Tooltip 
                                   cursor={{ strokeDasharray: '3 3' }}
                                   contentStyle={{ 
@@ -2426,7 +2918,14 @@ const DataAnalysisWorkspace = () => {
                                     color: theme.isDark ? '#f1f5f9' : '#0f172a'
                                   }} 
                                 />
-                                <Scatter name="Customer Count" dataKey="customers" fill="#f59e0b" />
+                                <Scatter 
+                                  name="Data Points" 
+                                  dataKey="customers" 
+                                  fill="#8b5cf6" 
+                                  stroke="#7c3aed"
+                                  strokeWidth={2}
+                                  r={6}
+                                />
                               </ScatterChart>
                             </ResponsiveContainer>
                           </div>

@@ -854,4 +854,4 @@ async def analyze_document_rag(request: Request):
 if __name__ == "__main__":
     import uvicorn
     logger.info("Starting Agentic RAG Server...")
-    uvicorn.run("agentic_rag_server:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("agentic_rag_server:app", host="0.0.0.0", port=8001, reload=True)

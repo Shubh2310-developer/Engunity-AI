@@ -20,6 +20,11 @@ check_port() {
 cleanup_existing() {
     echo "🧹 Cleaning up existing processes..."
     
+    # Kill processes by port
+    for port in 8000 8001 8002 8003; do
+        lsof -ti:$port | xargs -r kill -9 2>/dev/null || true
+    done
+    
     # Kill existing backend processes
     pkill -f "run_server.py" 2>/dev/null || true
     pkill -f "enhanced_fake_rag_server.py" 2>/dev/null || true
@@ -29,7 +34,7 @@ cleanup_existing() {
     pkill -f "citation_classification_server.py" 2>/dev/null || true
     
     # Wait a moment for processes to terminate
-    sleep 2
+    sleep 3
 }
 
 # Clean up any existing processes first
