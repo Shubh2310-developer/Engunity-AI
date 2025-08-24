@@ -4,6 +4,7 @@ Analysis API routes for data processing and analysis
 
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException, Query
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
 from typing import Dict, List, Optional, Any, Union
 import pandas as pd
 import numpy as np
@@ -54,6 +55,37 @@ def get_duckdb_connection(file_id: str):
     if file_id not in duckdb_connections:
         duckdb_connections[file_id] = duckdb.connect(":memory:")
     return duckdb_connections[file_id]
+
+def load_demo_datasets():
+    """Load demo datasets on startup"""
+    try:
+        # Get the absolute path to the backend directory
+        backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
+        demo_files = {
+            'demo-linear-regression': os.path.join(backend_dir, 'demo_data', 'linear_regression_demo.csv'),
+            'sales-sample-2023': os.path.join(backend_dir, 'demo_data', 'sales_data_2023.csv'),
+            'employee-data-sample': os.path.join(backend_dir, 'demo_data', 'employee_data_sample.csv')
+        }
+        
+        for file_id, file_path in demo_files.items():
+            print(f"Trying to load demo file: {file_path}")
+            if os.path.exists(file_path):
+                df = pd.read_csv(file_path)
+                datasets[file_id] = df.copy()
+                
+                # Store in DuckDB for SQL queries
+                conn = get_duckdb_connection(file_id)
+                conn.execute("DROP TABLE IF EXISTS data")
+                conn.execute("CREATE TABLE data AS SELECT * FROM df")
+                
+                print(f"✅ Loaded demo dataset: {file_id} with {len(df)} rows, {len(df.columns)} columns")
+            else:
+                print(f"⚠️ Demo file not found: {file_path}")
+                
+    except Exception as e:
+        print(f"Error loading demo datasets: {e}")
+
+# Demo datasets will be loaded during app startup in main.py
 
 def store_dataset_metadata(file_id: str, metadata: dict):
     """Store dataset metadata in MongoDB"""
@@ -205,6 +237,8 @@ async def get_data_preview(
         
     except Exception as e:
         print(f"Error getting data preview: {e}")
+        print(f"Available datasets: {list(datasets.keys())}")
+        print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Error getting data preview: {str(e)}")
 
 @router.get("/column-metadata")
@@ -498,3 +532,81 @@ async def export_data(
     except Exception as e:
         print(f"Error exporting data: {e}")
         raise HTTPException(status_code=500, detail=f"Error exporting data: {str(e)}")
+
+class ChartConfig(BaseModel):
+    fileId: str
+    type: str = "bar"
+    xAxis: str
+    yAxis: str
+    title: Optional[str] = None
+
+@router.post("/custom-chart")
+async def create_custom_chart(chart_config: ChartConfig):
+    """Create a custom chart with specified configuration"""
+    try:
+        print(f"Received chart config: {chart_config}")
+        file_id = chart_config.fileId
+        if not file_id or file_id not in datasets:
+            print(f"Dataset not found for fileId: {file_id}")
+            print(f"Available datasets: {list(datasets.keys())}")
+            raise HTTPException(status_code=404, detail="Dataset not found")
+        
+        df = datasets[file_id]
+        chart_type = chart_config.type
+        x_axis = chart_config.xAxis
+        y_axis = chart_config.yAxis
+        
+        if not x_axis or not y_axis:
+            raise HTTPException(status_code=400, detail="Both xAxis and yAxis are required")
+        
+        if x_axis not in df.columns or y_axis not in df.columns:
+            raise HTTPException(status_code=400, detail="Specified columns not found in dataset")
+        
+        # Generate chart data based on type
+        chart_data = []
+        
+        if chart_type in ['bar', 'column']:
+            # For categorical x-axis, group and aggregate
+            if df[x_axis].dtype == 'object':
+                grouped = df.groupby(x_axis)[y_axis].sum().reset_index()
+                chart_data = [{"x": str(row[x_axis]), "y": float(row[y_axis])} for _, row in grouped.iterrows()]
+            else:
+                chart_data = [{"x": float(row[x_axis]), "y": float(row[y_axis])} for _, row in df.iterrows()]
+                
+        elif chart_type == 'line':
+            chart_data = [{"x": float(row[x_axis]) if pd.api.types.is_numeric_dtype(df[x_axis]) else str(row[x_axis]), 
+                          "y": float(row[y_axis])} for _, row in df.iterrows()]
+            
+        elif chart_type == 'scatter':
+            chart_data = [{"x": float(row[x_axis]), "y": float(row[y_axis])} for _, row in df.iterrows()]
+            
+        elif chart_type == 'pie':
+            # For pie charts, group by x_axis and sum y_axis
+            if df[x_axis].dtype == 'object':
+                grouped = df.groupby(x_axis)[y_axis].sum().reset_index()
+                chart_data = [{"name": str(row[x_axis]), "value": float(row[y_axis])} for _, row in grouped.iterrows()]
+            else:
+                raise HTTPException(status_code=400, detail="Pie charts require categorical x-axis")
+        
+        return {
+            "success": True,
+            "data": chart_data,
+            "config": {
+                "type": chart_type,
+                "xAxis": x_axis,
+                "yAxis": y_axis,
+                "title": chart_config.title or f"{y_axis} by {x_axis}"
+            }
+        }
+        
+    except Exception as e:
+        print(f"Error creating custom chart: {e}")
+        raise HTTPException(status_code=500, detail=f"Error creating custom chart: {str(e)}")
+
+@router.get("/debug/datasets")
+async def debug_datasets():
+    """Debug endpoint to check loaded datasets"""
+    return {
+        "loaded_datasets": list(datasets.keys()),
+        "dataset_info": {file_id: {"rows": len(df), "columns": list(df.columns)} for file_id, df in datasets.items()}
+    }

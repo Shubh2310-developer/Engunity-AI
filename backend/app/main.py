@@ -39,6 +39,12 @@ async def lifespan(app: FastAPI):
     try:
         # Initialize local models and services here
         logger.info("Local models initialized successfully")
+        
+        # Load demo datasets
+        from api.v1.analysis import load_demo_datasets
+        load_demo_datasets()
+        logger.info("Demo datasets loaded")
+        
         logger.info("CS-Enhanced RAG system ready")
     except Exception as e:
         logger.error(f"Failed to initialize services: {e}")
@@ -126,12 +132,22 @@ async def general_exception_handler(request, exc):
 
 if __name__ == "__main__":
     import uvicorn
+    import argparse
+    import os
     
-    logger.info("Starting Engunity AI Backend server...")
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Engunity AI Backend')
+    parser.add_argument('--port', type=int, default=None, help='Port to run the server on')
+    args = parser.parse_args()
+    
+    # Determine port from args, environment, or default
+    port = args.port or int(os.getenv('PORT', 8000))
+    
+    logger.info(f"Starting Engunity AI Backend server on port {port}...")
     uvicorn.run(
-        "main:app",
+        app,
         host="0.0.0.0",
-        port=8000,
-        reload=True,
+        port=port,
+        reload=False,  # Disable reload for production stability
         log_level="info"
     )

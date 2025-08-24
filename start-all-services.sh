@@ -51,7 +51,7 @@ echo "✅ Using existing dependencies (run 'pip install -r requirements_rag.txt'
 echo ""
 echo "🚀 Starting Main Backend Server (Port 8000)..."
 if ! check_port 8000; then
-    nohup /home/ghost/anaconda3/envs/enginuity-ai/bin/python run_server.py > main_backend.log 2>&1 &
+    nohup /home/ghost/anaconda3/envs/enginuity-ai/bin/python main.py > main_backend.log 2>&1 &
     MAIN_BACKEND_PID=$!
     echo "📝 Main Backend PID: $MAIN_BACKEND_PID"
 else
@@ -152,7 +152,7 @@ fi
 
 echo ""
 echo "🎯 All Backend Services Status:"
-echo "   - Main Backend: http://localhost:8000 (File uploads, etc.)"
+echo "   - Main Backend: http://localhost:8000 (File uploads, data analysis)"
 echo "   - Enhanced Fake RAG: http://localhost:8002 (CS-specific queries)"
 echo "   - Agentic RAG: http://localhost:8001 (General queries)"
 echo "   - Citation Classifier: http://localhost:8003 (AI citation classification)"
