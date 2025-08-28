@@ -1,0 +1,13 @@
+# Additional requirements for Natural Language Query (NLQ) module
+# Add these to your main requirements.txt
+
+# Core dependencies (likely already present)
+fastapi>=0.68.0
+pydantic>=1.8.0
+requests>=2.25.0
+supabase>=1.0.0
+
+# Environment variables required:
+# - SUPABASE_URL: Your Supabase project URL
+# - SUPABASE_KEY: Your Supabase service key (or anon key)
+# - GPT_OSS_API_URL: GPT-OSS-120B API endpoint (default: http://localhost:8001/v1/completions)

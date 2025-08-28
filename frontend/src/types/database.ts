@@ -628,6 +628,87 @@ export interface Dataset extends WithMongoId {
   updated_at: Date;
 }
 
+/** Data analysis sessions collection - stores complete analysis workspace state */
+export interface AnalysisSession extends WithMongoId {
+  /** Session owner */
+  user_id: string;
+  /** Session title/name */
+  title: string;
+  /** Dataset file ID from analysis */
+  dataset_id: string;
+  /** Current dataset file information */
+  file_info: {
+    name: string;
+    size: string;
+    rows: number;
+    columns: number;
+    uploadDate: string;
+  };
+  /** Data summary and quality metrics */
+  data_summary: Nullable<Record<string, any>>;
+  /** Column metadata and statistics */
+  column_metadata: Nullable<Array<Record<string, any>>>;
+  /** Data preview (sample rows) */
+  data_preview: Nullable<{
+    columns: string[];
+    rows: any[][];
+    pagination?: Record<string, any>;
+  }>;
+  /** Generated charts and visualizations */
+  charts_data: Nullable<Record<string, any>>;
+  /** Correlation analysis results */
+  correlation_data: Nullable<Record<string, any>>;
+  /** Query execution history */
+  query_history: Array<{
+    query: string;
+    type: 'SQL' | 'NLQ';
+    timestamp: string;
+    executionTime?: string;
+    results?: any;
+  }>;
+  /** AI-generated insights */
+  ai_insights: Array<{
+    title: string;
+    description: string;
+    type: string;
+    confidence: number;
+    timestamp: string;
+    data?: Record<string, any>;
+  }>;
+  /** Custom user-created charts */
+  custom_charts: Array<{
+    id: string;
+    title: string;
+    type: string;
+    xAxis: string;
+    yAxis: string;
+    data?: Array<Record<string, any>>;
+  }>;
+  /** Data transformations applied */
+  transformations: Array<{
+    type: string;
+    timestamp: string;
+    description: string;
+    parameters: Record<string, any>;
+  }>;
+  /** Session status */
+  status: 'active' | 'saved' | 'archived';
+  /** Whether session is shared publicly */
+  is_public: boolean;
+  /** Project ID if session is part of a project */
+  project_id: Nullable<string>;
+  /** Session tags for organization */
+  tags: string[];
+  /** Last activity timestamp */
+  last_activity_at: Date;
+  /** Session metadata */
+  metadata: Nullable<Record<string, any>>;
+  /** Session creation timestamp */
+  created_at: Date;
+  /** Last update timestamp */
+  updated_at: Date;
+}
+
 /** User notifications collection */
 export interface Notification extends WithMongoId {
   /** User who should receive the notification */
@@ -794,6 +875,7 @@ export type MongoEntity =
   | Project 
   | CodeNotebook 
   | Dataset 
+  | AnalysisSession
   | Notification;
 
 /** Union type of all database entities */
@@ -816,4 +898,5 @@ export type MongoCollection =
   | 'projects' 
   | 'code_notebooks' 
   | 'datasets' 
+  | 'analysis_sessions'
   | 'notifications';
