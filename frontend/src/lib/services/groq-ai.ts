@@ -18,7 +18,7 @@ import Groq from 'groq-sdk';
 // CONFIGURATION
 // ========================================
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.NEXT_PUBLIC_GROQ_API_KEY || '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';
+const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.NEXT_PUBLIC_GROQ_API_KEY;
 
 console.log('Groq API Key check:', {
   server: process.env.GROQ_API_KEY ? 'SET' : 'NOT SET',
