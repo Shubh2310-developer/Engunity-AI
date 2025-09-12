@@ -27,26 +27,6 @@ secrets/
 service-account.json
 firebase-adminsdk*.json
 
-# Specific API key patterns
-**/gsk_*
-**/sk-*
-**/pk_*
-**/*api*key*
-**/*secret*key*
-**/token.txt
-**/auth-token*
-
-# Environment variables with secrets
-**/.env
-**/.env.local
-**/.env.production
-**/.env.development
-**/.env.test
-**/.env.staging
-**/env.js
-**/env.ts
-**/config.local.*
-
 # Database connection files
 database.url
 *.db-url
@@ -99,10 +79,6 @@ frontend/.next/
 frontend/out/
 frontend/dist/
 frontend/build/
-
-# Test files with potential secrets
-**/test-*.js
-**/check-*.js
 
 # Python build output
 backend/dist/
@@ -398,39 +374,6 @@ docker-compose.override.yml
 # Keep essential config templates
 !config/templates/
 !config/examples/
-
-# ================================
-# Security & Sensitive Data
-# ================================
-# Hardcoded credentials patterns
-**/GROQ_API_KEY*
-**/OPENAI_API_KEY*
-**/ANTHROPIC_API_KEY*
-**/SUPABASE_*KEY*
-**/FIREBASE_*KEY*
-**/GOOGLE_*KEY*
-**/MONGODB_*
-**/DATABASE_URL*
-**/JWT_SECRET*
-**/SESSION_SECRET*
-
-# Configuration with sensitive data
-**/secrets.json
-**/credentials.json
-**/private-key*.json
-**/keyfile*.json
-
-# Backup and temporary sensitive files
-*.key.bak
-*.secret.bak
-*.credentials.bak
-sensitive-data/
-confidential/
-
-# IDE and editor specific sensitive files
-.vscode/settings.json
-.idea/workspace.xml
-*.swp.secret
 
 # ================================
 # End of .gitignore
