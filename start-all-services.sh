@@ -51,7 +51,7 @@ echo "✅ Using existing dependencies (run 'pip install -r requirements_rag.txt'
 echo ""
 echo "🚀 Starting Main Backend Server (Port 8000)..."
 if ! check_port 8000; then
-    nohup /home/ghost/anaconda3/envs/enginuity-ai/bin/python main.py > main_backend.log 2>&1 &
+    nohup /home/ghost/anaconda3/envs/engunity/bin/python main.py > main_backend.log 2>&1 &
     MAIN_BACKEND_PID=$!
     echo "📝 Main Backend PID: $MAIN_BACKEND_PID"
 else
@@ -64,7 +64,7 @@ sleep 3
 echo ""
 echo "🔥 Starting Enhanced Fake RAG Server (Port 8002)..."
 if ! check_port 8002; then
-    nohup /home/ghost/anaconda3/envs/enginuity-ai/bin/python enhanced_fake_rag_server.py > enhanced_fake_rag_server.log 2>&1 &
+    nohup /home/ghost/anaconda3/envs/engunity/bin/python servers/enhanced_fake_rag_server.py > enhanced_fake_rag_server.log 2>&1 &
     ENHANCED_RAG_PID=$!
     echo "📝 Enhanced RAG PID: $ENHANCED_RAG_PID"
 else
@@ -78,7 +78,7 @@ echo ""
 echo "🤖 Starting Agentic RAG Server (Port 8001)..."
 if ! check_port 8001; then
     if [ -f "agentic_rag_server.py" ]; then
-        nohup /home/ghost/anaconda3/envs/enginuity-ai/bin/python agentic_rag_server.py > agentic_rag_server.log 2>&1 &
+        nohup /home/ghost/anaconda3/envs/engunity/bin/python agentic_rag_server.py > agentic_rag_server.log 2>&1 &
         AGENTIC_RAG_PID=$!
         echo "📝 Agentic RAG PID: $AGENTIC_RAG_PID"
         sleep 3
@@ -92,13 +92,13 @@ fi
 echo ""
 echo "🧠 Starting Citation Classification Server (Port 8003)..."
 if ! check_port 8003; then
-    if [ -f "citation_classification_server.py" ]; then
-        nohup /home/ghost/anaconda3/envs/enginuity-ai/bin/python citation_classification_server.py > citation_classification_server.log 2>&1 &
+    if [ -f "servers/citation_classification_server.py" ]; then
+        nohup /home/ghost/anaconda3/envs/engunity/bin/python servers/citation_classification_server.py > citation_classification_server.log 2>&1 &
         CITATION_PID=$!
         echo "📝 Citation Classifier PID: $CITATION_PID"
         sleep 4  # Give it more time to load the ML model
     else
-        echo "⚠️  citation_classification_server.py not found - skipping"
+        echo "⚠️  servers/citation_classification_server.py not found - skipping"
     fi
 else
     echo "✅ Citation Classification Server already running on port 8003"

@@ -1,0 +1,54 @@
+# Opal AI Agent Integration Requirements
+# ====================================
+
+# Web Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0
+
+# Async Support
+asyncio-mqtt>=0.16.0
+aiofiles>=23.0.0
+
+# AI/ML Core
+torch>=2.0.0
+transformers>=4.35.0
+sentence-transformers>=2.2.2
+accelerate>=0.24.0
+
+# RAG Components
+langchain>=0.0.350
+langchain-community>=0.0.10
+langchain-huggingface>=0.0.1
+faiss-gpu>=1.7.4
+chromadb>=0.4.0
+
+# Document Processing
+pypdf>=3.17.0
+python-docx>=1.1.0
+openpyxl>=3.1.0
+unstructured[pdf]>=0.11.0
+beautifulsoup4>=4.12.0
+
+# Web Search (for Hybrid Agent)
+selenium>=4.15.0
+requests>=2.31.0
+httpx>=0.25.0
+
+# Optimization
+bitsandbytes>=0.41.0
+optimum>=1.14.0
+auto-gptq>=0.5.0
+
+# Monitoring & Logging
+prometheus-client>=0.19.0
+structlog>=23.2.0
+
+# Development Tools
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.10.0
+isort>=5.12.0
+
+# Optional: GPU Support
+# nvidia-ml-py>=12.535.0  # Uncomment if using NVIDIA GPUs

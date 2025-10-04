@@ -1,0 +1,116 @@
+# Engunity AI Backend - Final Production Requirements
+# Python 3.10 + RTX 4050 Optimized
+# Tested and verified for compatibility
+# ===============================================
+
+# ===== CORE WEB FRAMEWORK =====
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+starlette==0.27.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+python-multipart==0.0.6
+websockets==12.0
+
+# ===== AI/ML CORE (RTX 4050 Optimized) =====
+torch>=2.1.0,<2.5.0              # CUDA 12.x support for RTX 4050
+transformers==4.41.2             # Compatible with latest models
+sentence-transformers==2.7.0     # Stable embedding models
+accelerate==0.24.0               # GPU acceleration
+tokenizers>=0.19,<0.20           # Fast tokenization compatible with transformers
+safetensors==0.4.2               # Safe model storage
+huggingface-hub>=0.23.0,<1.0     # Model hub access
+
+# ===== QUANTIZATION & MEMORY OPTIMIZATION =====
+bitsandbytes==0.43.1             # 4-bit quantization for RTX 4050
+optimum==1.14.0                  # Model optimization
+peft==0.6.0                      # Parameter-efficient fine-tuning
+
+# ===== VECTOR SEARCH & ML =====
+faiss-cpu==1.8.0                 # CPU-based similarity search (safer)
+numpy>=1.24.0,<2.0.0             # Stable numpy for all ML libs
+scikit-learn==1.3.2              # ML algorithms
+scipy==1.11.4                    # Scientific computing
+
+# ===== DOCUMENT PROCESSING =====
+pypdf==4.2.0                     # Modern PDF processing
+pdfplumber==0.10.3               # PDF text extraction
+python-docx==1.1.0               # Word documents
+openpyxl==3.1.2                  # Excel files
+beautifulsoup4==4.12.2           # HTML/XML parsing
+lxml==5.2.2                      # XML processing
+markdown==3.5.2                  # Markdown support
+
+# ===== DATA ANALYSIS =====
+pandas==2.1.4                    # Data manipulation
+matplotlib==3.8.2                # Plotting
+plotly==5.17.0                   # Interactive plots
+
+# ===== NATURAL LANGUAGE PROCESSING =====
+nltk==3.8.1                      # NLP toolkit
+spacy==3.7.4                     # Industrial NLP
+rank-bm25==0.2.2                 # BM25 ranking
+tiktoken==0.5.2                  # OpenAI tokenizer
+sentencepiece==0.1.99            # Sentence tokenization
+
+# ===== DATABASE & STORAGE =====
+pymongo==4.6.0                   # MongoDB driver
+motor==3.3.2                     # Async MongoDB
+sqlalchemy==2.0.23               # SQL ORM
+redis==5.0.1                     # Redis client
+
+# ===== HTTP & ASYNC =====
+requests==2.31.0                 # HTTP requests
+httpx==0.25.2                    # Async HTTP
+aiohttp==3.9.1                   # Async web framework
+aiofiles==23.2.0                 # Async file operations
+groq==0.4.2                      # Groq API client
+
+# ===== AUTHENTICATION & SECURITY =====
+pyjwt==2.8.0                     # JWT tokens
+bcrypt==4.1.2                    # Password hashing
+cryptography==41.0.7             # Cryptographic functions
+passlib[bcrypt]==1.7.4           # Password utilities
+
+# ===== ENVIRONMENT & CONFIGURATION =====
+python-dotenv==1.0.0             # Environment variables
+click==8.1.7                     # CLI framework
+typer==0.9.0                     # Modern CLI
+
+# ===== ASYNC & MESSAGING =====
+asyncio-mqtt==0.16.1             # Async MQTT client
+
+# ===== UTILITIES =====
+tqdm==4.66.1                     # Progress bars
+rich==13.7.0                     # Rich terminal output
+psutil==5.9.6                    # System utilities
+orjson==3.9.10                   # Fast JSON
+einops==0.7.0                    # Tensor operations
+memory-profiler==0.61.0          # Memory profiling
+
+# ===== WEB SCRAPING =====
+selenium==4.16.0                 # Web automation
+wikipedia==1.4.0                 # Wikipedia API
+
+# ===== VECTOR DATABASE =====
+chromadb==0.4.18                 # Vector storage
+
+# ===== IMAGE PROCESSING =====
+pillow==10.1.0                   # Image processing
+
+# ===== DEVELOPMENT & TESTING =====
+pytest==7.4.3                    # Testing framework
+pytest-asyncio==0.21.1           # Async testing
+black==23.11.0                   # Code formatting
+isort==5.12.0                    # Import sorting
+
+# ===== PRODUCTION =====
+gunicorn==21.2.0                 # WSGI server
+
+# ===== INSTALLATION NOTES =====
+# 1. Install in a virtual environment
+# 2. Ensure Python 3.10+ is active
+# 3. Update pip: pip install --upgrade pip
+# 4. Install: pip install -r requirements_final.txt
+# 5. For GPU support, verify CUDA drivers are updated
+# 6. PyTorch will auto-install CUDA 12.x runtime libraries

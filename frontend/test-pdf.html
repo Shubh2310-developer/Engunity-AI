@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PDF Test</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+    <button onclick="testPDF()">Test PDF Generation</button>
+    
+    <script>
+        function testPDF() {
+            try {
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF();
+                
+                pdf.setFontSize(16);
+                pdf.text('Test PDF', 20, 20);
+                
+                // Test autoTable
+                pdf.autoTable({
+                    startY: 30,
+                    head: [['Name', 'Value']],
+                    body: [
+                        ['Test 1', '123'],
+                        ['Test 2', '456']
+                    ]
+                });
+                
+                pdf.save('test.pdf');
+                console.log('PDF generated successfully!');
+            } catch (error) {
+                console.error('PDF generation failed:', error);
+                alert('PDF generation failed: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

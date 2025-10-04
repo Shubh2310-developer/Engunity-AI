@@ -22,8 +22,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 # Import our services
-from services.rag_processor import get_rag_processor
-from services.supabase_service import get_supabase_service
+from app.services.rag_processor import get_rag_processor
+from app.services.supabase_service import get_supabase_service
 
 logger = logging.getLogger(__name__)
 

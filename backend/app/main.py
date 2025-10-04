@@ -20,10 +20,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 # Import API routers
-from api.v1.chat import router as chat_router
-from api.v1.documents import router as documents_router
-from api.v1.auth import router as auth_router
-from api.v1.analysis import router as analysis_router
+from app.api.v1.chat import router as chat_router
+from app.api.v1.documents import router as documents_router
+from app.api.v1.auth import router as auth_router
+from app.api.v1.analysis import router as analysis_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
         logger.info("Local models initialized successfully")
         
         # Load demo datasets
-        from api.v1.analysis import load_demo_datasets
+        from app.api.v1.analysis import load_demo_datasets
         load_demo_datasets()
         logger.info("Demo datasets loaded")
         

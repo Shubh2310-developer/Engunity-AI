@@ -85,7 +85,7 @@ export function useDocuments() {
 
   // Client-side upload function that goes through API
   const uploadDocumentViaAPI = useCallback(async (file: File) => {
-    console.log('=== CLIENT UPLOAD DEBUG START ===');
+    // Debug logging removed for production
     
     if (!user) {
       console.error('Client: No user found');
@@ -192,12 +192,12 @@ export function useDocuments() {
 
       const document = await response.json();
       console.log('Client: Upload successful:', document);
-      console.log('=== CLIENT UPLOAD DEBUG END ===');
+      // Upload completed successfully
       return document;
       
     } catch (fetchError) {
       console.error('Client: Fetch error:', fetchError);
-      console.log('=== CLIENT UPLOAD DEBUG END (ERROR) ===');
+      // Upload failed
       throw fetchError;
     }
   }, [user]);
