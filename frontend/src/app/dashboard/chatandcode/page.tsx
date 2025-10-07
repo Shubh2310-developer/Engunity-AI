@@ -3,10 +3,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/auth/supabase';
-import { 
-  Send, 
-  Bot, 
-  User, 
+import MessageRenderer from '@/components/chat/MessageRenderer';
+import {
+  Send,
+  Bot,
+  User,
   Wifi,
   WifiOff,
   AlertTriangle,
@@ -224,9 +225,13 @@ export default function ChatCodePage() {
   }, [chatInput]);
 
   const createNewChat = async () => {
-    if (!user?.id) return;
-    
+    if (!user?.id) {
+      console.error('❌ Cannot create chat - no user');
+      return null;
+    }
+
     try {
+      console.log('🆕 Creating new chat session...');
       // Create new session via API
       const response = await fetch('/api/chat/sessions', {
         method: 'POST',
@@ -239,15 +244,17 @@ export default function ChatCodePage() {
           documentInfo: { name: 'General Chat', type: 'chat', category: 'general' }
         })
       });
-      
+
       const data = await response.json();
-      
+      console.log('📡 Session API response:', { success: data.success, sessionId: data.session?.sessionId });
+
       if (!data.success) {
+        console.error('❌ Session creation failed:', data.error);
         throw new Error(data.error || 'Failed to create session');
       }
-      
+
       const session = data.session;
-      
+
       const newSession: ChatSession = {
         sessionId: session.sessionId,
         documentId: session.documentId,
@@ -263,7 +270,7 @@ export default function ChatCodePage() {
         newSession,
         ...prev.map(s => ({ ...s, isActive: false }))
       ]);
-      
+
       setCurrentSessionId(session.sessionId);
       setMessages([
         {
@@ -274,6 +281,9 @@ export default function ChatCodePage() {
           tokens: 42
         }
       ]);
+
+      console.log('✅ New chat session created:', session.sessionId);
+      return session.sessionId;
     } catch (error) {
       console.error('Error creating new chat:', error);
     }
@@ -312,7 +322,28 @@ export default function ChatCodePage() {
   };
 
   const sendChatMessage = async (message: string) => {
-    if (!message.trim() || isChatLoading || !isAuthenticated || !currentSessionId || !user?.id) return;
+    if (!message.trim() || isChatLoading) {
+      console.log('❌ Cannot send message:', { message: message.trim(), isChatLoading, isAuthenticated, currentSessionId, userId: user?.id });
+      return;
+    }
+
+    if (!isAuthenticated || !user?.id) {
+      console.error('❌ User not authenticated');
+      alert('Please sign in to send messages.');
+      return;
+    }
+
+    if (!currentSessionId) {
+      console.error('❌ No active session');
+      alert('Creating new chat session...');
+      await createNewChat();
+      if (!currentSessionId) {
+        alert('Failed to create chat session. Please refresh the page.');
+        return;
+      }
+    }
+
+    console.log('📤 Sending message:', { message: message.substring(0, 50), sessionId: currentSessionId, userId: user.id });
 
     const userMessageId = `msg_${Date.now()}`;
     const userMessage: Message = {
@@ -384,6 +415,7 @@ export default function ChatCodePage() {
 
     try {
       // Call backend chat API
+      console.log('🔄 Calling /api/chat/stream...');
       const response = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: {
@@ -399,24 +431,31 @@ export default function ChatCodePage() {
         })
       });
 
+      console.log('📡 API Response status:', response.status);
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ API Error:', errorText);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
-      
+      console.log('✅ API Response:', { success: data.success, responseLength: data.response?.length, model: data.model });
+
       if (data.success) {
-        setMessages(prev => prev.map(msg => 
-          msg.id === assistantMessage.id 
-            ? { 
-                ...msg, 
-                content: data.response, 
-                isStreaming: false, 
+        setMessages(prev => prev.map(msg =>
+          msg.id === assistantMessage.id
+            ? {
+                ...msg,
+                content: data.response,
+                isStreaming: false,
                 tokens: data.usage?.totalTokens || 0,
                 confidence: data.confidence
               }
             : msg
         ));
+
+        console.log('✅ Message updated in UI');
 
         // Save assistant message via API
         try {
@@ -448,9 +487,13 @@ export default function ChatCodePage() {
       } else {
         throw new Error(data.error || 'Chat API failed');
       }
-    } catch (error) {
-      console.error('Chat error:', error);
+    } catch (error: any) {
+      console.error('❌ Chat error:', error);
+      console.error('❌ Error details:', { message: error.message, stack: error.stack });
       setSystemStatus('fallback');
+
+      // Show user-friendly error
+      alert(`Chat Error: ${error.message}\n\nPlease check:\n1. Backend server is running on port 8000\n2. MongoDB is running\n3. Network connection is stable\n\nCheck browser console for details.`);
       
       const fallbackResponse = `I apologize, but I'm currently running in fallback mode. Your question "${message}" has been received.\n\n**Fallback Response:**\nI'm here to help with engineering and technical questions. While the main AI system is temporarily unavailable, I can still provide guidance on:\n\n• **Programming & Development**: Code architecture, best practices, debugging\n• **System Design**: Scalability, performance optimization, microservices  \n• **DevOps & Infrastructure**: CI/CD, containerization, cloud platforms\n• **Data Engineering**: Database design, data pipelines, analytics\n\nPlease try again in a few moments for the full AI-powered experience.`;
 
@@ -762,14 +805,21 @@ export default function ChatCodePage() {
                       ? 'bg-slate-100 text-slate-700'
                       : 'bg-white border border-slate-200 text-slate-700 shadow-sm'
                   }`}>
-                    <div className="whitespace-pre-wrap">
-                      {message.content}
-                      {message.isStreaming && (
-                        <span className="inline-block w-1 h-4 bg-current ml-1 animate-pulse" />
-                      )}
-                    </div>
+                    {message.type === 'user' ? (
+                      <div className="whitespace-pre-wrap text-white">
+                        {message.content}
+                        {message.isStreaming && (
+                          <span className="inline-block w-1 h-4 bg-current ml-1 animate-pulse" />
+                        )}
+                      </div>
+                    ) : (
+                      <MessageRenderer
+                        content={message.content}
+                        type={message.type}
+                      />
+                    )}
                   </div>
-                  
+
                   <div className={`flex items-center gap-2 mt-1 text-xs text-slate-500 ${
                     message.type === 'user' ? 'justify-end' : ''
                   }`}>

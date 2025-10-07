@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { SimpleDocument, SimpleDocumentStatus } from '@/types/simple-document';
-import { supabase } from '@/lib/auth/supabase';
+import { supabase } from '@/lib/auth/integrated-auth';
 import { useToast } from '@/components/ui/use-toast';
 
 interface DocumentsState {

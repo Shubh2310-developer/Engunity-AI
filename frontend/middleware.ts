@@ -54,7 +54,17 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  await supabase.auth.getSession()
+  // This will refresh the session if needed
+  const { data: { session } } = await supabase.auth.getSession()
+
+  // Log session status for debugging
+  if (request.nextUrl.pathname.startsWith('/api/')) {
+    console.log('🔒 Middleware - API request:', {
+      path: request.nextUrl.pathname,
+      hasSession: !!session,
+      userId: session?.user?.id
+    });
+  }
 
   return response
 }
@@ -66,6 +76,7 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * Must include /api/ routes to refresh sessions for API calls
      */
     '/((?!_next/static|_next/image|favicon.ico).*)',
   ],

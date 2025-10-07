@@ -170,6 +170,15 @@ export class IntegratedAuthService {
   // ================================
 
   static async syncUserWithFirestore(supabaseUser: SupabaseUser): Promise<User | null> {
+    // DISABLED: Firestore sync is optional - return null if Firebase is not configured
+    // This prevents permission errors when using Supabase-only authentication
+    const useFirestore = process.env.NEXT_PUBLIC_ENABLE_FIRESTORE_SYNC === 'true';
+
+    if (!useFirestore) {
+      console.log('ℹ️ Firestore sync disabled - using Supabase authentication only');
+      return null;
+    }
+
     try {
       // Check if user exists in Firestore
       let firestoreProfile = await UserService.getUserProfile(supabaseUser.id);

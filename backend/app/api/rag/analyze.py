@@ -21,10 +21,14 @@ import asyncio
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from pathlib import Path
+import io
+import tempfile
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 from pydantic import BaseModel, Field
+from bson import ObjectId
 import json
+import pdfplumber
 
 # Add the app directory to Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -32,7 +36,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 try:
     from app.services.rag.rag_pipeline import create_rag_pipeline, RAGPipeline
     from app.services.rag.structured_formatter import create_structured_formatter, ResponseFormat
-    from app.services.supabase_service import get_supabase_service
+    from database.mongodb import get_mongo_db
 except ImportError as e:
     logging.error(f"Error importing RAG modules: {e}")
     raise
@@ -50,39 +54,56 @@ def get_rag_pipeline() -> RAGPipeline:
     """Get or create RAG pipeline instance."""
     global _rag_pipeline
     if _rag_pipeline is None:
-        logger.info("Initializing RAG pipeline...")
+        logger.info("Initializing lightweight RAG pipeline for fast processing...")
         _rag_pipeline = create_rag_pipeline(
-            # BGE Configuration
+            # BGE Configuration - optimized for speed
             bge_config={
                 "model_name": "BAAI/bge-small-en-v1.5",
                 "index_path": "./data/faiss_index",
-                "device": "auto",
-                "max_chunk_size": 512,
-                "chunk_overlap": 50
+                "device": "cpu",  # Use CPU for faster startup
+                "max_chunk_size": 256,  # Smaller chunks for faster processing
+                "chunk_overlap": 20
             },
-            # Phi-2 Configuration
+            # Phi-2 Configuration - optimized
             phi2_config={
                 "model_name": "microsoft/phi-2",
-                "device": "auto",
-                "use_quantization": True,
-                "temperature": 0.7,
-                "do_sample": True,
-                "top_p": 0.9,
-                "top_k": 50
+                "device": "cpu",
+                "use_quantization": True,  # Keep quantization for memory efficiency
+                "temperature": 0.5,  # Lower temperature for faster, more deterministic responses
+                "do_sample": False,  # Disable sampling for speed
+                "max_new_tokens": 256  # Limit token generation
             },
-            # Pipeline Configuration
-            pipeline_config={
-                "default_retrieval_k": 10,
-                "default_generation_tokens": 512,
-                "context_window_size": 4000,
-                "min_retrieval_score": 0.3,
-                "min_confidence_threshold": 0.5,
-                "enable_caching": True,
-                "cache_ttl": 3600
-            }
+            # Pipeline settings - optimized for speed
+            default_retrieval_k=5,  # Fewer documents to process
+            default_generation_tokens=256,  # Shorter responses
+            context_window_size=2000,  # Smaller context window
+            min_retrieval_score=0.2,  # Lower threshold for faster processing
+            min_confidence_threshold=0.3,
+            enable_caching=True,
+            cache_ttl=7200  # Longer cache
         )
         logger.info("RAG pipeline initialized successfully")
     return _rag_pipeline
+
+async def extract_text_from_pdf(pdf_bytes: bytes) -> tuple[str, int]:
+    """Extract text and page count from PDF bytes using pdfplumber.
+
+    Returns:
+        tuple: (extracted_text, page_count)
+    """
+    try:
+        with io.BytesIO(pdf_bytes) as pdf_file:
+            with pdfplumber.open(pdf_file) as pdf:
+                text_parts = []
+                page_count = len(pdf.pages)
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text_parts.append(page_text)
+                return "\n\n".join(text_parts), page_count
+    except Exception as e:
+        logger.error(f"Error extracting text from PDF: {e}")
+        return "", 0
 
 def get_structured_formatter():
     """Get or create structured formatter instance."""
@@ -137,20 +158,27 @@ async def analyze_document(
     """
     try:
         logger.info(f"Starting document analysis for {request.document_id}")
-        
-        # Get document from Supabase
-        supabase = get_supabase_service()
-        document = await supabase.get_document(request.document_id)
-        
+
+        # Get document from MongoDB
+        db = await get_mongo_db()
+        documents_collection = db["documents"]
+
+        try:
+            document_object_id = ObjectId(request.document_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid document ID format")
+
+        document = await documents_collection.find_one({
+            "_id": document_object_id,
+            "user_id": request.user_id
+        })
+
         if not document:
-            raise HTTPException(status_code=404, detail="Document not found")
-        
-        if document.user_id != request.user_id:
-            raise HTTPException(status_code=403, detail="Access denied")
-        
+            raise HTTPException(status_code=404, detail="Document not found or access denied")
+
         # Generate analysis ID
         analysis_id = f"analysis_{request.document_id}_{int(datetime.now().timestamp())}"
-        
+
         # Start background processing
         background_tasks.add_task(
             process_document_background,
@@ -159,7 +187,7 @@ async def analyze_document(
             analysis_id,
             request.options
         )
-        
+
         return RAGAnalysisResponse(
             success=True,
             document_id=request.document_id,
@@ -167,7 +195,7 @@ async def analyze_document(
             status="processing",
             message="Document analysis started successfully"
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -177,82 +205,128 @@ async def analyze_document(
 @router.post("/question-answer", response_model=QuestionAnswerResponse)
 async def question_answer(request: QuestionAnswerRequest):
     """
-    Answer a question about a specific document using RAG.
+    Answer a question about a specific document using Enhanced RAG server.
     """
+    import httpx
+
     try:
         logger.info(f"Processing Q&A for document {request.document_id}: {request.question}")
-        
-        # Get document from Supabase
-        supabase = get_supabase_service()
-        document = await supabase.get_document(request.document_id)
-        
+
+        # Get document from MongoDB
+        db = await get_mongo_db()
+        documents_collection = db["documents"]
+
+        try:
+            document_object_id = ObjectId(request.document_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid document ID format")
+
+        document = await documents_collection.find_one({
+            "_id": document_object_id,
+            "user_id": request.user_id
+        })
+
         if not document:
-            raise HTTPException(status_code=404, detail="Document not found")
-        
-        if document.user_id != request.user_id:
-            raise HTTPException(status_code=403, detail="Access denied")
-        
-        if document.status != 'processed':
-            raise HTTPException(status_code=400, detail="Document not yet processed")
-        
-        # Get RAG pipeline
-        pipeline = get_rag_pipeline()
-        
-        # Check if document is in vector store, if not, process it
-        retriever_stats = pipeline.retriever.get_stats()
-        if request.document_id not in pipeline.retriever.metadata_store:
-            logger.info(f"Document {request.document_id} not in vector store, processing...")
-            
-            # Get document content
-            document_text = await supabase.get_document_content_text(document)
-            if not document_text:
-                raise HTTPException(status_code=400, detail="Document content not available")
-            
-            # Add to RAG pipeline
-            pipeline.retriever.add_document(
-                text=document_text,
-                document_id=request.document_id,
-                metadata={
-                    'name': document.name,
-                    'type': document.type,
-                    'category': document.category,
-                    'user_id': document.user_id
-                }
-            )
-        
-        # Process question with document filter
-        response = pipeline.query(
-            query=request.question,
-            document_filter={'document_id': request.document_id},
-            retrieval_k=request.max_sources,
-            response_format=request.response_format,
-            include_sources=True
-        )
-        
-        return QuestionAnswerResponse(
-            success=True,
-            query=request.question,
-            answer=response.answer,
-            confidence=response.confidence,
-            sources=[
-                {
-                    'document_id': source['document_id'],
-                    'content_preview': source.get('content_preview', ''),
-                    'relevance_score': source.get('relevance_score', 0.0),
-                    'metadata': source.get('metadata', {})
-                }
-                for source in response.sources
-            ],
-            metadata={
-                'response_format': request.response_format,
-                'processing_time': response.total_time,
-                'retrieval_time': response.retrieval_time,
-                'generation_time': response.generation_time,
-                'quality_score': getattr(response, 'relevance_score', 0.0)
-            },
-            processing_time=response.total_time
-        )
-        
+            raise HTTPException(status_code=404, detail="Document not found or access denied")
+
+        # Get document content (fetch from storage if not extracted)
+        document_text = document.get('extracted_text') or document.get('content')
+
+        # If no extracted text, try to fetch from storage URL
+        if not document_text:
+            storage_url = document.get('storage_url')
+            file_name = document.get('file_name', '') or document.get('original_filename', '')
+
+            if storage_url:
+                try:
+                    async with httpx.AsyncClient() as client:
+                        response = await client.get(storage_url, timeout=30.0)
+                        if response.status_code == 200:
+                            page_count = None
+                            # Check if it's a PDF
+                            if file_name.lower().endswith('.pdf'):
+                                logger.info(f"Extracting text from PDF: {file_name}")
+                                document_text, page_count = await extract_text_from_pdf(response.content)
+                            else:
+                                # For text files, try to decode
+                                try:
+                                    document_text = response.content.decode('utf-8')
+                                except:
+                                    document_text = response.text
+
+                            # Limit to 100K chars
+                            document_text = document_text[:100000]
+
+                            # Update MongoDB with extracted text and page count
+                            if document_text:
+                                update_data = {"extracted_text": document_text}
+                                if page_count is not None:
+                                    update_data["page_count"] = page_count
+
+                                await documents_collection.update_one(
+                                    {"_id": document_object_id},
+                                    {"$set": update_data}
+                                )
+                                logger.info(f"Extracted {len(document_text)} characters from {file_name}" +
+                                           (f" ({page_count} pages)" if page_count else ""))
+                except Exception as e:
+                    logger.error(f"Error fetching document from storage: {e}")
+
+        if not document_text:
+            raise HTTPException(status_code=400, detail="Document content not available")
+
+        # Send to Enhanced RAG server (port 8002) with document content
+        logger.info(f"Sending to Enhanced RAG - doc_text length: {len(document_text) if document_text else 0}")
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            try:
+                # Try Enhanced RAG server
+                rag_response = await client.post(
+                    "http://localhost:8002/query",
+                    json={
+                        "query": request.question,
+                        "document_text": document_text,
+                        "metadata": {
+                            "document_id": request.document_id,
+                            "document_name": document.get("file_name", document.get("original_filename", "unknown"))
+                        }
+                    }
+                )
+
+                if rag_response.status_code == 200:
+                    result = rag_response.json()
+                    return QuestionAnswerResponse(
+                        success=True,
+                        query=request.question,
+                        answer=result.get("answer", ""),
+                        confidence=result.get("confidence", 0.0),
+                        sources=[
+                            {
+                                'document_id': request.document_id,
+                                'content_preview': chunk,
+                                'relevance_score': 0.9,
+                                'metadata': {}
+                            }
+                            for chunk in result.get("source_chunks_used", [])[:request.max_sources]
+                        ],
+                        metadata=result.get("metadata", {}),
+                        processing_time=result.get("processing_time", 0.0)
+                    )
+                else:
+                    raise HTTPException(status_code=500, detail="Enhanced RAG server error")
+
+            except Exception as e:
+                logger.error(f"Enhanced RAG server error: {e}")
+                # Fallback to generic response
+                return QuestionAnswerResponse(
+                    success=False,
+                    query=request.question,
+                    answer="I apologize, but I'm having trouble processing your question at the moment. Please try again later.",
+                    confidence=0.0,
+                    sources=[],
+                    metadata={"error": str(e)},
+                    processing_time=0.0
+                )
+
     except HTTPException:
         raise
     except Exception as e:
@@ -271,16 +345,23 @@ async def batch_question_answer(
     """
     try:
         logger.info(f"Processing {len(questions)} questions for document {document_id}")
-        
-        # Verify document access
-        supabase = get_supabase_service()
-        document = await supabase.get_document(document_id)
-        
+
+        # Verify document access from MongoDB
+        db = await get_mongo_db()
+        documents_collection = db["documents"]
+
+        try:
+            document_object_id = ObjectId(document_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid document ID format")
+
+        document = await documents_collection.find_one({
+            "_id": document_object_id,
+            "user_id": user_id
+        })
+
         if not document:
-            raise HTTPException(status_code=404, detail="Document not found")
-        
-        if document.user_id != user_id:
-            raise HTTPException(status_code=403, detail="Access denied")
+            raise HTTPException(status_code=404, detail="Document not found or access denied")
         
         # Process each question
         results = []
@@ -377,52 +458,105 @@ async def process_document_background(
     """
     try:
         logger.info(f"Background processing started for document {document_id}")
-        
-        # Get document and content
-        supabase = get_supabase_service()
-        document = await supabase.get_document(document_id)
-        
+
+        # Get document from MongoDB
+        db = await get_mongo_db()
+        documents_collection = db["documents"]
+
+        try:
+            document_object_id = ObjectId(document_id)
+        except Exception:
+            logger.error(f"Invalid document ID format: {document_id}")
+            return
+
+        document = await documents_collection.find_one({
+            "_id": document_object_id,
+            "user_id": user_id
+        })
+
         if not document:
             logger.error(f"Document {document_id} not found")
             return
-        
+
         # Update status to processing
-        await supabase.update_document_status(document_id, 'processing')
-        
-        # Get document content
-        document_text = await supabase.get_document_content_text(document)
+        await documents_collection.update_one(
+            {"_id": document_object_id},
+            {"$set": {"processing_status": "processing", "updated_at": datetime.now()}}
+        )
+
+        # Get document content - try multiple fields
+        document_text = (
+            document.get('extracted_text') or
+            document.get('content') or
+            document.get('text_content') or
+            document.get('file_content')
+        )
+
+        # If no text content, try to extract from storage URL
+        if not document_text:
+            storage_url = document.get('storage_url')
+            if storage_url:
+                logger.info(f"No extracted text found, attempting to fetch from storage URL: {storage_url}")
+                try:
+                    import httpx
+                    async with httpx.AsyncClient() as client:
+                        response = await client.get(storage_url, timeout=30.0)
+                        if response.status_code == 200:
+                            # For now, use raw text - in production you'd parse PDFs, DOCX, etc.
+                            file_content = response.text
+                            document_text = file_content[:100000]  # Limit to first 100k chars
+                            logger.info(f"Successfully fetched document content: {len(document_text)} characters")
+
+                            # Store extracted text back to MongoDB
+                            await documents_collection.update_one(
+                                {"_id": document_object_id},
+                                {"$set": {"extracted_text": document_text}}
+                            )
+                        else:
+                            logger.error(f"Failed to fetch document from storage: HTTP {response.status_code}")
+                except Exception as fetch_error:
+                    logger.error(f"Error fetching document from storage: {fetch_error}")
+
         if not document_text:
             logger.error(f"No content available for document {document_id}")
-            await supabase.update_document_status(document_id, 'failed')
+            logger.error(f"Document keys: {list(document.keys())}")
+            await documents_collection.update_one(
+                {"_id": document_object_id},
+                {"$set": {"processing_status": "failed", "updated_at": datetime.now()}}
+            )
             return
-        
-        # Get RAG pipeline
-        pipeline = get_rag_pipeline()
-        
-        # Process document
-        pipeline.retriever.add_document(
-            text=document_text,
-            document_id=document_id,
-            metadata={
-                'name': document.name,
-                'type': document.type,
-                'category': document.category,
-                'user_id': document.user_id,
-                'analysis_id': analysis_id,
-                'processed_at': datetime.now().isoformat()
-            }
+
+        logger.info(f"Processing document with {len(document_text)} characters")
+
+        # For now, just mark as processed since RAG indexing happens on-demand during Q&A
+        # This avoids loading heavy models during upload
+        # The agentic RAG server (port 8001) will handle actual processing during queries
+
+        logger.info(f"Skipping heavy model loading - will use agentic RAG server for queries")
+
+        # Update status to processed immediately
+        await documents_collection.update_one(
+            {"_id": document_object_id},
+            {"$set": {
+                "processing_status": "processed",
+                "updated_at": datetime.now(),
+                "rag_ready": True,  # Mark as ready for RAG queries
+                "processing_method": "lazy_load"  # Indicate lazy loading strategy
+            }}
         )
-        
-        # Update status to processed
-        await supabase.update_document_status(document_id, 'processed')
-        
-        logger.info(f"Document {document_id} processed successfully")
-        
+
+        logger.info(f"Document {document_id} marked as processed - ready for RAG queries")
+
     except Exception as e:
         logger.error(f"Background processing failed for document {document_id}: {e}")
         try:
-            supabase = get_supabase_service()
-            await supabase.update_document_status(document_id, 'failed')
+            db = await get_mongo_db()
+            documents_collection = db["documents"]
+            document_object_id = ObjectId(document_id)
+            await documents_collection.update_one(
+                {"_id": document_object_id},
+                {"$set": {"processing_status": "failed", "updated_at": datetime.now()}}
+            )
         except:
             pass
 

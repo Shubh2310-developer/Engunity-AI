@@ -1690,11 +1690,36 @@ FROM dataset`;
         
       } else {
         const errorData = await response.json();
-        alert(`Prediction failed: ${errorData.error || 'Unknown error'}`);
+        // Handle detailed error responses
+        if (errorData.detail && typeof errorData.detail === 'object') {
+          const detail = errorData.detail;
+          alert(
+            `Prediction Error:\n\n` +
+            `${detail.message || detail.error || 'Unknown error'}\n\n` +
+            (detail.action ? `Action: ${detail.action}\n` : '') +
+            (detail.fileName ? `File: ${detail.fileName}\n` : '') +
+            (response.status === 410 ? '\n⚠️ Please re-upload your dataset to continue.' : '')
+          );
+        } else if (typeof errorData.detail === 'string') {
+          // Parse nested detail string if it contains JSON
+          try {
+            const match = errorData.detail.match(/\{[^}]+\}/);
+            if (match) {
+              const parsed = JSON.parse(match[0]);
+              alert(`Prediction Error:\n\n${parsed.message || parsed.error || errorData.detail}`);
+            } else {
+              alert(`Prediction failed: ${errorData.detail}`);
+            }
+          } catch {
+            alert(`Prediction failed: ${errorData.detail}`);
+          }
+        } else {
+          alert(`Prediction failed: ${errorData.error || 'Unknown error'}`);
+        }
       }
     } catch (error) {
       console.error('Error generating predictions:', error);
-      alert('Failed to generate predictions. Please try again.');
+      alert('Failed to generate predictions. Please check that:\n\n1. Dataset is uploaded and loaded\n2. Target column contains numeric values\n3. Backend server is running\n\nThen try again.');
     } finally {
       setIsLoading(prev => ({ ...prev, prediction: false }));
     }
@@ -2846,20 +2871,21 @@ FROM dataset`;
                 strokeWidth={2}
               >
                 {chart.data?.map((entry, index) => (
-                  <Cell 
-                    key={`cell-${index}`} 
-                    fill={entry.fill || professionalColors[index % professionalColors.length]} 
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={entry.fill || professionalColors[index % professionalColors.length]}
                   />
                 ))}
               </Pie>
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#1e293b', 
-                  border: 'none', 
-                  borderRadius: '8px', 
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#1e293b',
+                  border: 'none',
+                  borderRadius: '8px',
                   color: 'white',
                   fontSize: '12px'
                 }}
+                itemStyle={{ color: 'white' }}
               />
             </RechartsPie>
           </ResponsiveContainer>
@@ -2956,20 +2982,21 @@ FROM dataset`;
                 strokeWidth={2}
               >
                 {chart.data?.map((entry, index) => (
-                  <Cell 
-                    key={`cell-${index}`} 
-                    fill={entry.fill || donutColors[index % donutColors.length]} 
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={entry.fill || donutColors[index % donutColors.length]}
                   />
                 ))}
               </Pie>
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#1e293b', 
-                  border: 'none', 
-                  borderRadius: '8px', 
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: '#1e293b',
+                  border: 'none',
+                  borderRadius: '8px',
                   color: 'white',
                   fontSize: '12px'
                 }}
+                itemStyle={{ color: 'white' }}
               />
             </RechartsPie>
           </ResponsiveContainer>
@@ -3094,7 +3121,7 @@ FROM dataset`;
                     type="text"
                     value={chartForm.title}
                     onChange={(e) => setChartForm(prev => ({ ...prev, title: e.target.value }))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900"
                     placeholder="Enter chart title"
                   />
                 </div>
@@ -3121,10 +3148,10 @@ FROM dataset`;
                 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">X-Axis Column</label>
-                  <select 
+                  <select
                     value={chartForm.xAxis}
                     onChange={(e) => setChartForm(prev => ({ ...prev, xAxis: e.target.value }))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900"
                   >
                     <option value="">Select column...</option>
                     {Array.isArray(columnMetadata) ? columnMetadata.map((col) => (
@@ -3135,10 +3162,10 @@ FROM dataset`;
                 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Y-Axis Column</label>
-                  <select 
+                  <select
                     value={chartForm.yAxis}
                     onChange={(e) => setChartForm(prev => ({ ...prev, yAxis: e.target.value }))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900"
                   >
                     <option value="">Select column...</option>
                     {Array.isArray(columnMetadata) ? columnMetadata.filter(col => col.type === 'numeric').map((col) => (

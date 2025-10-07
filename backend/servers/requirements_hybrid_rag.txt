@@ -1,0 +1,22 @@
+# Hybrid RAG v3.0 Dependencies
+
+# Core Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+python-dotenv
+
+# Vector Embeddings & Search
+sentence-transformers>=2.2.2
+chromadb>=0.4.18
+numpy>=1.24.0
+
+# LLM Integration
+groq>=0.4.0
+
+# Web Search
+wikipedia>=1.4.0
+
+# Utilities
+httpx
+requests

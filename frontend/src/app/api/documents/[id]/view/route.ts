@@ -1,5 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDocumentByIdNoAuth } from '@/lib/supabase/document-storage-no-auth';
+import { MongoClient, ObjectId } from 'mongodb';
+
+// Disable static optimization and caching for this route
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+// MongoDB connection
+const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/engunity-ai-dev';
+const dbName = process.env.MONGODB_DB_NAME || 'engunity-ai-dev';
+let cachedMongoClient: MongoClient | null = null;
+
+async function getMongoClient() {
+  if (cachedMongoClient) {
+    return cachedMongoClient;
+  }
+  const client = new MongoClient(mongoUri);
+  await client.connect();
+  cachedMongoClient = client;
+  return client;
+}
 
 export async function GET(
   request: NextRequest,
@@ -15,9 +34,30 @@ export async function GET(
       );
     }
 
-    // Get document details
-    const document = await getDocumentByIdNoAuth(documentId);
-    
+    // Get document from MongoDB
+    const mongoClient = await getMongoClient();
+    const db = mongoClient.db(dbName);
+    const documentsCollection = db.collection('documents');
+
+    let documentObjectId: ObjectId;
+    try {
+      documentObjectId = new ObjectId(documentId);
+    } catch (err) {
+      return NextResponse.json(
+        { error: 'Invalid document ID format' },
+        { status: 400 }
+      );
+    }
+
+    const document = await documentsCollection.findOne({ _id: documentObjectId });
+
+    if (!document) {
+      return NextResponse.json(
+        { error: 'Document not found' },
+        { status: 404 }
+      );
+    }
+
     if (!document.storage_url) {
       return NextResponse.json(
         { error: 'Document storage URL not found' },
@@ -27,7 +67,7 @@ export async function GET(
 
     // Fetch the file from storage
     const response = await fetch(document.storage_url);
-    
+
     if (!response.ok) {
       console.error('Failed to fetch document from storage:', response.status, response.statusText);
       return NextResponse.json(
@@ -36,14 +76,20 @@ export async function GET(
       );
     }
 
-    const blob = await response.blob();
-    
-    // Return the file with proper headers
-    return new NextResponse(blob, {
+    const fileName = document.file_name || document.original_filename || 'document.pdf';
+    const contentType = response.headers.get('content-type') || document.file_type || 'application/octet-stream';
+
+    // Get the response body as an array buffer for better streaming
+    const buffer = await response.arrayBuffer();
+
+    // Return the file with proper headers for PDF viewing
+    return new NextResponse(buffer, {
       headers: {
-        'Content-Type': response.headers.get('content-type') || 'application/octet-stream',
-        'Content-Disposition': `inline; filename="${document.name}"`,
-        'Cache-Control': 'public, max-age=31536000',
+        'Content-Type': contentType,
+        'Content-Disposition': `inline; filename="${fileName}"`,
+        'Content-Length': buffer.byteLength.toString(),
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'no-cache', // Disable caching for large files
         'Access-Control-Allow-Origin': '*',
       },
     });

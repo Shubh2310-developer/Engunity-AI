@@ -561,15 +561,18 @@ class StructuredFormatter:
         query = html.escape(rag_response.get('query', ''))
         answer = html.escape(rag_response.get('answer', ''))
         
+        # Replace newlines with HTML line breaks
+        formatted_answer = answer.replace('\n', '<br>')
+
         html_content = f"""
         <div class="rag-response">
             <h2>Question: {query}</h2>
             <div class="answer">
-                {answer.replace('\n', '<br>')}
+                {formatted_answer}
             </div>
         </div>
         """
-        
+
         return html_content
     
     def _load_templates(self) -> Dict[str, str]:

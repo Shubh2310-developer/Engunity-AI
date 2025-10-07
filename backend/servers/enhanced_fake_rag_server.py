@@ -12,11 +12,16 @@ import random
 import requests
 import wikipedia
 import re
+import os
 from typing import Dict, List, Any, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,13 +38,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Groq API configuration
-GROQ_API_KEY = "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"
+# Groq API configuration - Load from environment variables
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+
+# Log API key status (first/last 4 chars only for security)
+if GROQ_API_KEY:
+    logger.info(f"✅ Groq API Key loaded: {GROQ_API_KEY[:4]}...{GROQ_API_KEY[-4:]}")
+else:
+    logger.error("❌ Groq API Key not found in environment!")
 
 class QueryRequest(BaseModel):
     query: str
     document_id: Optional[str] = None
+    document_text: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 class RAGResponse(BaseModel):
     answer: str
@@ -382,9 +395,9 @@ Answer:"""
 
             payload = {
                 "messages": [{"role": "user", "content": enhanced_prompt}],
-                "model": "llama-3.3-70b-versatile",
+                "model": "llama-3.3-70b-versatile",  # Using llama for higher rate limits
                 "temperature": temperature,
-                "max_completion_tokens": 1024,
+                "max_tokens": 8192,
                 "top_p": 1,
                 "stream": False,
                 "stop": None
@@ -417,23 +430,38 @@ Answer:"""
         """Remove formatting artifacts and clean response"""
         if not text:
             return text
-            
+
+        # Remove markdown formatting
+        # Remove headers (### Header -> Header)
+        text = re.sub(r'#{1,6}\s+', '', text)
+
+        # Remove bold markdown (**text** -> text)
+        text = re.sub(r'\*\*([^\*]+)\*\*', r'\1', text)
+
+        # Remove italic markdown (*text* or _text_ -> text)
+        text = re.sub(r'(?<!\*)\*(?!\*)([^\*]+)\*(?!\*)', r'\1', text)
+        text = re.sub(r'_([^_]+)_', r'\1', text)
+
+        # Remove code blocks (```code``` -> code)
+        text = re.sub(r'```[\s\S]*?```', '', text)
+        text = re.sub(r'`([^`]+)`', r'\1', text)
+
         # Remove specific formatting artifacts
         artifacts_to_remove = [
             r'={3,}',  # Remove === and longer
-            r'-{3,}',  # Remove --- and longer  
+            r'-{3,}',  # Remove --- and longer
             r'_{3,}',  # Remove ___ and longer
             r'\*{3,}', # Remove *** and longer
         ]
-        
+
         for pattern in artifacts_to_remove:
             text = re.sub(pattern, '', text)
-        
+
         # Clean up whitespace
         text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)  # Multiple newlines to double
         text = re.sub(r'[ \t]+', ' ', text)  # Multiple spaces to single
         text = text.strip()
-        
+
         return text
 
     def _fallback_response(self, query: str) -> str:
@@ -444,16 +472,37 @@ However, from the document content, I can provide that this appears to be a tech
 
 Please try your question again for a complete document-based analysis."""
 
-    async def process_query(self, query: str, document_id: Optional[str] = None) -> RAGResponse:
+    async def process_query(self, query: str, document_id: Optional[str] = None, document_text: Optional[str] = None) -> RAGResponse:
         """Main processing pipeline with all enhancements"""
         start_time = time.time()
-        
+
         # Step 1: Document type detection
         doc_type = self.detect_document_type(document_id or "", query)
         logger.info(f"📋 Document type detected: {doc_type}")
-        
+
         # Step 2: Generate document context
-        document_context = self.generate_document_context(doc_type, query)
+        # Use actual document text if provided, otherwise generate generic context
+        if document_text:
+            # Use actual document content - use up to 30K chars for better context
+            # This gives the LLM much more information to work with
+            max_context_chars = 30000
+            document_excerpt = document_text[:max_context_chars]
+
+            # If the text was truncated, add an indicator
+            truncation_note = ""
+            if len(document_text) > max_context_chars:
+                truncation_note = f"\n\n[Note: Document excerpt shown. Full document is {len(document_text)} characters.]"
+
+            document_context = f"""Based on the uploaded document content, here is the relevant information:
+
+{document_excerpt}{truncation_note}
+
+IMPORTANT: Answer the question based ONLY on the information provided above from the document. If the answer is not in the document content shown above, clearly state that the information is not available in the document."""
+            logger.info(f"📄 Using actual document content for context ({len(document_excerpt)} chars from {len(document_text)} total)")
+        else:
+            # Fallback to generic context
+            document_context = self.generate_document_context(doc_type, query)
+            logger.info("⚠️ No document text provided, using generic context")
         
         # Step 3: Simulate BGE retrieval
         logger.info("🔍 Simulating BGE retrieval with reranking...")
@@ -504,7 +553,7 @@ Please try your question again for a complete document-based analysis."""
                 "formatting_cleaned": True
             },
             "document_focused": True,
-            "actual_backend": "groq_llama_3.3_70b_enhanced"
+            "actual_backend": "groq_gpt_oss_120b_enhanced"
         }
         
         return RAGResponse(
@@ -523,7 +572,11 @@ async def process_query(request: QueryRequest):
     """Process a query through the enhanced fake RAG pipeline"""
     try:
         logger.info(f"Processing enhanced query: {request.query}")
-        result = await enhanced_fake_rag.process_query(request.query, request.document_id)
+        result = await enhanced_fake_rag.process_query(
+            request.query,
+            request.document_id,
+            request.document_text
+        )
         logger.info(f"Enhanced query processed successfully in {result.processing_time:.2f}s")
         return result
     except Exception as e:
@@ -564,8 +617,8 @@ async def get_status():
             },
             "Groq API": {
                 "status": "active_enhanced",
-                "model": "llama-3.3-70b-versatile",
-                "features": ["best_of_n", "document_focused", "artifact_removal"]
+                "model": "openai/gpt-oss-120b",
+                "features": ["best_of_n", "document_focused", "artifact_removal", "reasoning_effort"]
             },
             "Wikipedia Crawler": {
                 "status": "active",

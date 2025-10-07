@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
+import { supabase } from '@/lib/auth/supabase';
 
 import type { SupabaseDocument } from '@/lib/supabase/document-storage-no-auth';
 
@@ -42,19 +43,37 @@ const DocumentViewerPage: React.FC = () => {
   const fetchDocument = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/documents/${documentId}`);
-      
+
+      // Get authentication token
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError || !session) {
+        throw new Error('Authentication required');
+      }
+
+      const response = await fetch(`/api/documents/${documentId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+
       if (!response.ok) {
         throw new Error('Failed to fetch document');
       }
-      
+
       const data = await response.json();
       setDocument(data.document);
-      
+
       // Generate presigned URL for secure access if needed
       if (data.document?.storage_url) {
         try {
-          const presignedResponse = await fetch(`/api/documents/${documentId}/presigned-url`);
+          const presignedResponse = await fetch(`/api/documents/${documentId}/presigned-url`, {
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`
+            }
+          });
           if (presignedResponse.ok) {
             const presignedData = await presignedResponse.json();
             setPresignedUrl(presignedData.url);
@@ -123,8 +142,9 @@ const DocumentViewerPage: React.FC = () => {
     const fileType = document.type.toLowerCase();
     // Use our local API endpoint to serve the document
     const viewUrl = `/api/documents/${documentId}/view`;
-    
-    if (fileType === 'pdf') {
+
+    // Check if it's a PDF (handles 'pdf', 'PDF', 'application/pdf')
+    if (fileType === 'pdf' || fileType === 'application/pdf' || fileType.includes('pdf')) {
       return (
         <div className="relative w-full h-full bg-slate-100 rounded-lg overflow-hidden">
           <iframe

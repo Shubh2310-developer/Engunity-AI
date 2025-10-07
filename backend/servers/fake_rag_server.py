@@ -10,6 +10,7 @@ import logging
 import time
 import random
 import requests
+import os
 from typing import Dict, List, Any, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -31,8 +32,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Groq API configuration
-GROQ_API_KEY = "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"
+# Groq API configuration - Load from environment variables
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 class QueryRequest(BaseModel):

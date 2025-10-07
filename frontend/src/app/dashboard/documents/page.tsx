@@ -51,10 +51,6 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { useRAG } from '@/hooks/useRAG';
 import { supabase } from '@/lib/auth/supabase';
-import { 
-  updateDocumentStatusNoAuth 
-} from '@/lib/supabase/document-storage-no-auth';
-
 import type { SupabaseDocument } from '@/lib/supabase/document-storage-no-auth';
 
 const statusConfig = {
@@ -86,9 +82,9 @@ const statusConfig = {
 
 const DocumentsPage: React.FC = () => {
   const { user } = useAuth();
-  const { error: showError, success: showSuccess, show: toast } = useToast();
+  const { error: showError, success: showSuccess } = useToast();
   const router = useRouter();
-  const { analyzeDocument, loading: ragLoading, error: ragError } = useRAG();
+  const { analyzeDocument, loading: ragLoading } = useRAG();
   const [documents, setDocuments] = useState<SupabaseDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -146,7 +142,7 @@ const DocumentsPage: React.FC = () => {
           console.log('📄 Documents data:', userDocs);
           
           // Convert to expected format
-          const convertedDocs = (userDocs || []).map(doc => ({
+          const convertedDocs = (userDocs || []).map((doc: any) => ({
             id: doc.id,
             user_id: doc.user_id,
             name: doc.name,
@@ -335,16 +331,16 @@ const DocumentsPage: React.FC = () => {
   const handleAnalyzeDocument = async (documentId: string) => {
     try {
       setAnalyzingDocs(prev => new Set(prev).add(documentId));
-      
+
       // Update UI immediately
-      setDocuments(prev => 
-        prev.map(doc => 
-          doc.id === documentId 
+      setDocuments(prev =>
+        prev.map(doc =>
+          doc.id === documentId
             ? { ...doc, status: 'processing' as SupabaseDocument['status'] }
             : doc
         )
       );
-      
+
       // Start RAG analysis
       await analyzeDocument(documentId, {
         enable_advanced_processing: true,
@@ -353,37 +349,60 @@ const DocumentsPage: React.FC = () => {
       });
 
       showSuccess('RAG document analysis started successfully!');
-      
-      // Poll for status updates (optional)
+
+      // Poll for status updates using MongoDB API
       const pollInterval = setInterval(async () => {
         try {
-          const { data: updatedDoc } = await supabase
-            .from('documents')
-            .select('*')
-            .eq('id', documentId)
-            .single();
-          
-          if (updatedDoc && updatedDoc.status === 'processed') {
-            setDocuments(prev => 
-              prev.map(doc => 
-                doc.id === documentId 
-                  ? { ...doc, status: 'processed' as SupabaseDocument['status'] }
-                  : doc
-              )
-            );
+          // Get current session for authentication
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+          if (sessionError || !session) {
+            console.error('Session error during polling:', sessionError);
             clearInterval(pollInterval);
-            setAnalyzingDocs(prev => {
-              const newSet = new Set(prev);
-              newSet.delete(documentId);
-              return newSet;
-            });
-            showSuccess('Document is ready for AI questions!');
+            return;
+          }
+
+          // Fetch document status from MongoDB via API
+          const response = await fetch('/api/documents/list', {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${session.access_token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (response.ok) {
+            const docs = await response.json();
+            const updatedDoc = docs.find((d: any) => d.id === documentId);
+
+            if (updatedDoc && updatedDoc.status === 'processed') {
+              setDocuments(prev =>
+                prev.map(doc =>
+                  doc.id === documentId
+                    ? { ...doc, status: 'processed' as SupabaseDocument['status'] }
+                    : doc
+                )
+              );
+              clearInterval(pollInterval);
+              setAnalyzingDocs(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(documentId);
+                return newSet;
+              });
+              showSuccess('Document is ready for AI questions!');
+
+              // Automatically redirect to QA interface with longer delay for MongoDB sync
+              setTimeout(() => {
+                console.log('Redirecting to QA page for document:', documentId);
+                router.push(`/dashboard/documents/${documentId}/qa`);
+              }, 2500); // Increased to 2.5 seconds to allow MongoDB to sync
+            }
           }
         } catch (error) {
           console.error('Status polling error:', error);
         }
       }, 3000);
-      
+
       // Clean up after 2 minutes
       setTimeout(() => {
         clearInterval(pollInterval);
@@ -393,25 +412,25 @@ const DocumentsPage: React.FC = () => {
           return newSet;
         });
       }, 120000);
-      
+
     } catch (error: any) {
       console.error('RAG Analysis error:', error);
-      
+
       // Revert status on error
-      setDocuments(prev => 
-        prev.map(doc => 
-          doc.id === documentId 
+      setDocuments(prev =>
+        prev.map(doc =>
+          doc.id === documentId
             ? { ...doc, status: 'failed' as SupabaseDocument['status'] }
             : doc
         )
       );
-      
+
       setAnalyzingDocs(prev => {
         const newSet = new Set(prev);
         newSet.delete(documentId);
         return newSet;
       });
-      
+
       showError(`RAG analysis failed: ${error.message}`);
     }
   };
@@ -686,7 +705,7 @@ const DocumentsPage: React.FC = () => {
                                   {document.name}
                                 </div>
                                 <div className="text-sm text-slate-500">
-                                  {document.type} • {document.category} • {document.tags.length > 0 ? document.tags.slice(0, 2).join(', ') : 'No tags'}
+                                  {document.type} • {document.category} • {document.tags && document.tags.length > 0 ? document.tags.slice(0, 2).join(', ') : 'No tags'}
                                 </div>
                               </div>
                             </div>

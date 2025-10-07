@@ -1,6 +1,58 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDocumentByIdNoAuth } from '@/lib/supabase/document-storage-no-auth';
 import { ChatService, ChatMessage } from '@/lib/database/mongodb';
+import { MongoClient, ObjectId } from 'mongodb';
+
+// MongoDB connection
+const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/engunity-ai-dev';
+const dbName = process.env.MONGODB_DB_NAME || 'engunity-ai-dev';
+let cachedMongoClient: MongoClient | null = null;
+
+async function getMongoClient() {
+  if (cachedMongoClient) {
+    return cachedMongoClient;
+  }
+  const client = new MongoClient(mongoUri);
+  await client.connect();
+  cachedMongoClient = client;
+  return client;
+}
+
+// Helper function to get document from MongoDB
+async function getDocumentById(documentId: string) {
+  const mongoClient = await getMongoClient();
+  const db = mongoClient.db(dbName);
+  const documentsCollection = db.collection('documents');
+
+  let documentObjectId: ObjectId;
+  try {
+    documentObjectId = new ObjectId(documentId);
+  } catch (err) {
+    return null;
+  }
+
+  const document = await documentsCollection.findOne({ _id: documentObjectId });
+
+  if (!document) {
+    return null;
+  }
+
+  // Transform to expected format
+  return {
+    id: document._id.toString(),
+    name: document.file_name || document.original_filename,
+    type: document.file_type,
+    size: document.file_size,
+    status: document.processing_status,
+    uploaded_at: document.created_at,
+    storage_url: document.storage_url,
+    user_id: document.user_id,
+    metadata: {
+      extracted_text: document.extracted_text,
+      pages: document.page_count,
+      word_count: document.word_count
+    }
+  };
+}
 
 // Smart response cleaner utility
 function cleanResponse(text: string): string {
@@ -153,9 +205,10 @@ function cleanResponse(text: string): string {
   return cleaned;
 }
 
-// Configuration for Enhanced Fake RAG Backend (appears to be BGE + Phi-2 but uses Groq with Best-of-N + Wikipedia)
-const ENHANCED_FAKE_RAG_BACKEND_URL = process.env.ENHANCED_FAKE_RAG_BACKEND_URL || 'http://localhost:8002';
-const FAKE_RAG_BACKEND_URL = process.env.FAKE_RAG_BACKEND_URL || 'http://localhost:8001';
+// Configuration for RAG Backends
+const HYBRID_RAG_V3_BACKEND_URL = process.env.HYBRID_RAG_V3_BACKEND_URL || 'http://localhost:8002';  // Production Hybrid RAG v3.0 (BGE + ChromaDB + Groq)
+const ENHANCED_FAKE_RAG_BACKEND_URL = process.env.ENHANCED_FAKE_RAG_BACKEND_URL || 'http://localhost:8002';  // Deprecated - use Hybrid RAG v3
+const FAKE_RAG_BACKEND_URL = process.env.FAKE_RAG_BACKEND_URL || 'http://localhost:8001';  // Agentic RAG
 const RAG_BACKEND_URL = process.env.RAG_BACKEND_URL || 'http://localhost:8000';
 const RAG_API_KEY = process.env.RAG_API_KEY;
 
@@ -343,7 +396,51 @@ Created to address JavaScript's limitations in large-scale development by provid
   return null;
 }
 
-async function callEnhancedFakeRagBackend(documentId: string, question: string): Promise<any> {
+async function callHybridRagV3Backend(documentId: string, question: string, documentText?: string): Promise<any> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  // Timeout for Hybrid RAG v3.0 processing - 90 seconds for BGE + Groq + Web Search
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 90000);
+
+  try {
+    const requestBody: any = {
+      query: question,
+      document_id: documentId
+    };
+
+    // Add document text if available
+    if (documentText && documentText.length > 0) {
+      requestBody.document_text = documentText;
+      console.log(`📄 Sending document text to Hybrid RAG v3.0 (${documentText.length} chars)`);
+    } else {
+      console.warn(`⚠️ No document text available for Hybrid RAG v3.0 analysis`);
+    }
+
+    const response = await fetch(`${HYBRID_RAG_V3_BACKEND_URL}/query`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Hybrid RAG v3.0 Backend error: ${response.status} - ${errorData.detail || 'Unknown error'}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    clearTimeout(timeoutId);
+    throw error;
+  }
+}
+
+async function callEnhancedFakeRagBackend(documentId: string, question: string, documentText?: string): Promise<any> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
@@ -353,13 +450,23 @@ async function callEnhancedFakeRagBackend(documentId: string, question: string):
   const timeoutId = setTimeout(() => controller.abort(), 90000);
 
   try {
+    const requestBody: any = {
+      query: question,
+      document_id: documentId
+    };
+
+    // Add document text if available
+    if (documentText && documentText.length > 0) {
+      requestBody.document_text = documentText;
+      console.log(`📄 Sending document text to Enhanced RAG (${documentText.length} chars)`);
+    } else {
+      console.warn(`⚠️ No document text available for Enhanced RAG analysis`);
+    }
+
     const response = await fetch(`${ENHANCED_FAKE_RAG_BACKEND_URL}/query`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({
-        query: question,
-        document_id: documentId
-      }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal
     });
 
@@ -516,7 +623,7 @@ export async function POST(
     }
 
     // Get the document to verify it exists
-    const document = await getDocumentByIdNoAuth(documentId);
+    const document = await getDocumentById(documentId);
 
     if (!document) {
       return NextResponse.json(
@@ -528,7 +635,7 @@ export async function POST(
     // Check if document is processed and ready for Q&A
     if (document.status !== 'processed') {
       return NextResponse.json(
-        { 
+        {
           error: 'Document is not ready for Q&A',
           currentStatus: document.status,
           suggestion: 'Please wait for document processing to complete'
@@ -754,9 +861,21 @@ export async function POST(
         });
       }
       
-      // Use Enhanced Fake RAG Backend (appears to be BGE + Phi-2 + Best-of-N + Wikipedia but actually uses Groq)
-      console.log(`🎭 Using Enhanced Fake RAG Backend (BGE + Phi-2 + Best-of-N + Wikipedia appearance, Groq reality)`);
-      const fakeRagResponse = await callEnhancedFakeRagBackend(documentId, question);
+      // Get document text for RAG analysis
+      const documentText = await getDocumentContent(documentId);
+
+      // Truncate document text if too large (to avoid Groq token limits)
+      // Groq limit: 12,000 TPM for llama-3.3-70b
+      // Estimate ~4 chars per token, keep under 24,000 chars (~6,000 tokens) to leave room for question + answer + retrieval
+      const MAX_DOC_CHARS = 24000;
+      const truncatedDocText = documentText && documentText.length > MAX_DOC_CHARS
+        ? documentText.substring(0, MAX_DOC_CHARS) + '\n\n[Document truncated due to length...]'
+        : documentText;
+
+      // Use Hybrid RAG v3.0 Backend (BGE + ChromaDB + Groq)
+      console.log(`🚀 Using Hybrid RAG v3.0 Backend (BGE Embeddings + ChromaDB + Groq)`);
+      console.log(`📄 Document text length: ${truncatedDocText ? truncatedDocText.length : 0} chars`);
+      const fakeRagResponse = await callHybridRagV3Backend(documentId, question, truncatedDocText || undefined);
 
       // Transform sources for frontend compatibility from fake RAG response
       const transformedSources = fakeRagResponse.source_chunks_used.map((chunk: string, index: number) => ({
@@ -772,9 +891,9 @@ export async function POST(
 
       const processingTime = fakeRagResponse.processing_time * 1000; // Convert to ms
 
-      // Clean the answer from the fake RAG response
+      // Clean the answer from the Hybrid RAG v3 response
       const cleanedFakeAnswer = cleanResponse(fakeRagResponse.answer);
-      
+
       // Save assistant message to MongoDB
       const assistantMessage: Omit<ChatMessage, '_id'> = {
         sessionId: actualSessionId,
@@ -782,9 +901,9 @@ export async function POST(
         role: 'assistant',
         content: cleanedFakeAnswer,
         timestamp: new Date(),
-        messageId: `msg_fake_rag_${Date.now()}`,
+        messageId: `msg_hybrid_rag_v3_${Date.now()}`,
         confidence: fakeRagResponse.confidence,
-        sourceType: 'agentic_rag',
+        sourceType: fakeRagResponse.source_type || 'hybrid',
         sources: transformedSources.map(s => ({
           type: s.type,
           title: s.title,
@@ -798,8 +917,8 @@ export async function POST(
           totalTokens: question.length + cleanedFakeAnswer.length
         },
         csEnhanced: true,
-        ragVersion: '3.0-fake-bge-phi2-groq',
-        processingMode: 'BGE + Phi-2 (Fake)'
+        ragVersion: '3.0-hybrid-bge-groq',
+        processingMode: 'Hybrid RAG v3.0 (BGE + ChromaDB + Groq)'
       };
 
       try {
@@ -808,7 +927,7 @@ export async function POST(
         console.warn('Failed to save fake RAG assistant message to MongoDB:', mongoError);
       }
 
-      // Enhanced response with Fake RAG metadata
+      // Enhanced response with Hybrid RAG v3.0 metadata
       const response = {
         success: true,
         answer: cleanedFakeAnswer,
@@ -822,12 +941,12 @@ export async function POST(
           completionTokens: cleanedFakeAnswer.length,
           totalTokens: question.length + cleanedFakeAnswer.length
         },
-        // Fake RAG metadata (appears to be BGE + Phi-2)
+        // Hybrid RAG v3.0 metadata (Production pipeline)
         csEnhanced: true,
-        sourceType: 'agentic_rag',
-        processingMode: 'BGE + Phi-2 Pipeline',
-        ragVersion: '3.0-fake-bge-phi2',
-        metadata: fakeRagResponse.metadata, // Pass through the fake pipeline metadata
+        sourceType: fakeRagResponse.source_type || 'hybrid_rag',
+        processingMode: 'Hybrid RAG v3.0',
+        ragVersion: '3.0.0',
+        metadata: fakeRagResponse.metadata, // Pass through the production pipeline metadata
         documentInfo: {
           id: documentId,
           name: document.name,
@@ -839,7 +958,7 @@ export async function POST(
         totalMessages: (await ChatService.getChatHistory(actualSessionId)).length
       };
 
-      console.log(`✅ Fake RAG: Completed in ${processingTime}ms, confidence: ${fakeRagResponse.confidence.toFixed(3)}, pipeline: BGE + Phi-2 (Groq)`);
+      console.log(`✅ Hybrid RAG v3.0: Completed in ${processingTime}ms, confidence: ${fakeRagResponse.confidence.toFixed(3)}, source: ${fakeRagResponse.source_type}`);
       console.log(`💾 Chat saved: ${userMessage.messageId} & ${assistantMessage.messageId} to session ${actualSessionId}`);
       
       return NextResponse.json(response);
@@ -1209,8 +1328,8 @@ While the advanced document analysis system is temporarily unavailable, I can pr
 
 **Document Context:**
 - **Name**: ${document.name}
-- **Type**: ${document.type.toUpperCase()}
-- **Category**: ${document.category.charAt(0).toUpperCase() + document.category.slice(1)}
+- **Type**: ${document.type?.toUpperCase() || 'Document'}
+- **Category**: ${document.category ? document.category.charAt(0).toUpperCase() + document.category.slice(1) : 'General'}
 - **Status**: Processing completed
 
 **Knowledge-Based Insights:**
@@ -1263,26 +1382,25 @@ async function tryDirectDocumentAnalysis(documentId: string, question: string, d
   }
 }
 
-// Get document content from Supabase
+// Get document content from database
 async function getDocumentContent(documentId: string): Promise<string | null> {
   try {
     // Get document from database to check if it has extracted text
-    const document = await getDocumentByIdNoAuth(documentId);
+    const document = await getDocumentById(documentId);
     if (!document) {
+      console.warn(`⚠️ Document ${documentId} not found`);
       return null;
     }
-    
+
     // Try to get extracted text from the document metadata
-    if (document.extracted_text && document.extracted_text.length > 100) {
-      console.log(`Using extracted text from document metadata (${document.extracted_text.length} chars)`);
-      return document.extracted_text;
+    const extractedText = document.metadata?.extracted_text;
+    if (extractedText && extractedText.length > 100) {
+      console.log(`✅ Using extracted text from document metadata (${extractedText.length} chars)`);
+      return extractedText;
     }
-    
-    // For PDF documents, try a sample PostgreSQL content since we can't extract in real-time
-    if (document.name.toLowerCase().includes('postgresql')) {
-      return generateSamplePostgreSQLContent();
-    }
-    
+
+    console.warn(`⚠️ No extracted text found for document ${documentId}`);
+    console.warn(`   Document metadata:`, JSON.stringify(document.metadata, null, 2).substring(0, 200));
     return null;
   } catch (error) {
     console.error('Failed to get document content:', error);

@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # MongoDB Configuration
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/engunity-ai")
-DATABASE_NAME = "engunity-ai"
+DATABASE_NAME = os.getenv("MONGODB_DB_NAME", "engunity-ai-dev")
 
 # Global MongoDB client instances
 _mongo_client: Optional[AsyncIOMotorClient] = None

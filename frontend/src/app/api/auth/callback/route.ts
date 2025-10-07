@@ -7,8 +7,9 @@
  * Framework: Next.js 14 App Router + Supabase Auth
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import type { Database } from '@/types/database';
 import { getAuthFlowRedirect } from '@/lib/auth/flow';
 
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
   // Handle OAuth errors
   if (error) {
     console.error('OAuth error:', error, errorDescription);
-    
+
     let errorMessage = 'Authentication failed. Please try again.';
     switch (error) {
       case 'access_denied':
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
         errorMessage = 'Server error during authentication. Please try again later.';
         break;
     }
-    
+
     return NextResponse.redirect(
       new URL(`/auth/login?error=${encodeURIComponent(errorMessage)}`, requestUrl.origin)
     );
@@ -61,19 +62,36 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Create Supabase client for route handler
-    const supabase = createClient<Database>(
+    const cookieStore = cookies();
+
+    // Create Supabase client for PKCE flow - MUST use cookies to access code_verifier
+    const supabase = createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value;
+          },
+          set(name: string, value: string, options: CookieOptions) {
+            try {
+              cookieStore.set({ name, value, ...options });
+            } catch (error) {
+              // Cookie setting might fail in some cases
+            }
+          },
+          remove(name: string, options: CookieOptions) {
+            try {
+              cookieStore.set({ name, value: '', ...options });
+            } catch (error) {
+              // Cookie removal might fail in some cases
+            }
+          },
+        },
       }
     );
 
-    // Exchange the code for a session
+    // Exchange the code for a session - this will use the code_verifier from cookies
     const { data: authData, error: authError } = await supabase.auth.exchangeCodeForSession(code);
 
     if (authError) {

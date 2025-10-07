@@ -102,64 +102,8 @@ export const supabase: TypedSupabaseClient = createClient<Database>(
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: true,
-      storageKey: 'engunity-auth-token',
-      storage: {
-        getItem: (key: string) => {
-          if (typeof window === 'undefined') return null;
-          const item = localStorage.getItem(key);
-          if (!item) return null;
-          
-          try {
-            const parsed = JSON.parse(item);
-            // Extended session validity check - 30 days (2592000 seconds)
-            // Only remove if explicitly expired AND not a refresh token scenario
-            if (parsed.expires_at && Date.now() / 1000 > parsed.expires_at) {
-              // Check if it's been less than 30 days since login
-              const loginTime = localStorage.getItem('engunity-login-time');
-              if (loginTime) {
-                const daysSinceLogin = (Date.now() - parseInt(loginTime)) / (1000 * 60 * 60 * 24);
-                if (daysSinceLogin < 30) {
-                  // Keep session if within 30 days, even if access token expired
-                  return item;
-                }
-              }
-              // Remove only if truly expired (>30 days)
-              localStorage.removeItem(key);
-              localStorage.removeItem('engunity-login-time');
-              return null;
-            }
-            
-            // Store login time for tracking 30-day period
-            if (parsed.access_token && !localStorage.getItem('engunity-login-time')) {
-              localStorage.setItem('engunity-login-time', Date.now().toString());
-            }
-            
-            return item;
-          } catch {
-            return item;
-          }
-        },
-        setItem: (key: string, value: string) => {
-          if (typeof window === 'undefined') return;
-          localStorage.setItem(key, value);
-          
-          // Track login time for 30-day persistence
-          try {
-            const parsed = JSON.parse(value);
-            if (parsed.access_token && !localStorage.getItem('engunity-login-time')) {
-              localStorage.setItem('engunity-login-time', Date.now().toString());
-            }
-          } catch {
-            // Ignore parsing errors
-          }
-        },
-        removeItem: (key: string) => {
-          if (typeof window === 'undefined') return;
-          localStorage.removeItem(key);
-          // Also remove login time when session is explicitly removed
-          localStorage.removeItem('engunity-login-time');
-        },
-      },
+      // Use default cookie-based storage for better SSR compatibility
+      flowType: 'pkce',
     },
     db: {
       schema: 'public'
@@ -228,7 +172,7 @@ export function getSupabaseClient(options?: SupabaseClientOptions): TypedSupabas
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: true,
-        storageKey: 'engunity-auth-token',
+        flowType: 'pkce',
         ...options?.auth
       },
       db: {
@@ -415,8 +359,8 @@ export function checkSupabaseConfig(): {
  */
 export async function testSupabaseConnection(): Promise<boolean> {
   try {
-    // Try to make a simple request to test connectivity
-    const { error } = await supabase.from('users').select('count').limit(1);
+    // Try to make a simple request to test connectivity using documents table
+    const { error } = await supabase.from('documents').select('count').limit(1);
     return !error || error.code === 'PGRST116'; // PGRST116 = no rows returned, which is fine
   } catch (error) {
     console.error('Supabase connection test failed:', error);
@@ -521,7 +465,6 @@ export const SUPABASE_CONFIG = {
   url: supabaseUrl,
   anonKey: supabaseAnonKey,
   hasServiceKey: !!supabaseServiceKey,
-  storageKey: 'engunity-auth-token'
 } as const;
 
 /** Common Supabase error codes */

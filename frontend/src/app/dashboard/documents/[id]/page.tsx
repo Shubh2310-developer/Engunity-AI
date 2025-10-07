@@ -21,6 +21,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Skeleton } from '@/components/ui/skeleton';
 
 import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/lib/auth/supabase';
 import type { SupabaseDocument } from '@/lib/supabase/document-storage-no-auth';
 
 interface QAMessage {
@@ -60,12 +61,26 @@ const DocumentViewPage: React.FC = () => {
   const fetchDocument = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/documents/${documentId}`);
-      
+
+      // Get authentication token
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError || !session) {
+        throw new Error('Authentication required');
+      }
+
+      const response = await fetch(`/api/documents/${documentId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+
       if (!response.ok) {
         throw new Error('Failed to fetch document');
       }
-      
+
       const data = await response.json();
       setDocument(data.document);
     } catch (error: any) {
@@ -268,7 +283,7 @@ const DocumentViewPage: React.FC = () => {
                   <span className="text-sm text-slate-600">Category:</span>
                   <span className="text-sm font-medium">{document.category}</span>
                 </div>
-                {document.tags.length > 0 && (
+                {document.tags && document.tags.length > 0 && (
                   <div>
                     <span className="text-sm text-slate-600">Tags:</span>
                     <div className="flex flex-wrap gap-1 mt-1">

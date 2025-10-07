@@ -8,6 +8,7 @@ import { ArrowLeft, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
+import { supabase } from '@/lib/auth/supabase';
 
 import QAInterface from '../../components/QAInterface';
 
@@ -32,12 +33,20 @@ const DocumentQAPage: React.FC = () => {
 
       try {
         console.log('🔍 Fetching document for Q&A:', id);
-        
-        // Fetch document via API route (no auth required)
+
+        // Get authentication token
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+        if (sessionError || !session) {
+          throw new Error('Authentication required');
+        }
+
+        // Fetch document via API route with auth
         const response = await fetch(`/api/documents/${id}`, {
           method: 'GET',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
           }
         });
 

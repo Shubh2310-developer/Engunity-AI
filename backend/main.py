@@ -887,9 +887,11 @@ async def try_restore_dataset(file_id: str) -> bool:
                 print(f"Failed to restore from session data: {e}")
         
         # Fallback: Create appropriate sample dataset based on metadata
+        print(f"🔄 Attempting to restore dataset from metadata...")
         column_names = metadata.get("columnNames", [])
         column_types = metadata.get("columnTypes", {})
         rows = metadata.get("rows", 10)
+        print(f"📊 Metadata: {len(column_names)} columns, {rows} rows, types: {column_types}")
         
         if column_names and len(column_names) > 0:
             # Create sample data based on column types
@@ -1883,7 +1885,7 @@ async def execute_nlq_query(payload: dict):
                 """
                 
                 response = groq_client.chat.completions.create(
-                    model="llama3-8b-8192",
+                    model="llama-3.3-70b-versatile",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.1,
                     max_tokens=200
@@ -2908,39 +2910,55 @@ async def make_predictions(payload: dict):
         file_id = payload.get("fileId")
         target_column = payload.get("targetColumn")
         prediction_type = payload.get("type", "classification")  # classification or regression
-        
-        # Create sample linear regression data for demonstration
-        try:
-            import pandas as pd
-            import numpy as np
-            
-            # Generate sample linear regression data similar to the user's dataset
-            np.random.seed(42)  # For reproducible results
-            n_samples = 100
-            
-            # Generate X values (1 to 100)
-            X_values = np.arange(1, n_samples + 1)
-            
-            # Generate Y values with linear relationship plus some noise
-            slope = 0.67  # Similar to the pattern in the user's data
-            intercept = 3.2
-            noise = np.random.normal(0, 2, n_samples)  # Add some random noise
-            Y_values = slope * X_values + intercept + noise
-            
-            # Create DataFrame
-            df = pd.DataFrame({
-                'X': X_values,
-                'Y': Y_values
-            })
-            
-            print(f"Generated sample linear regression data: {len(df)} rows")
-            
-        except Exception as e:
-            print(f"Error creating sample data for prediction: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to create sample data: {str(e)}")
-        
+
+        if not file_id:
+            raise HTTPException(status_code=400, detail="fileId is required")
+        if not target_column:
+            raise HTTPException(status_code=400, detail="targetColumn is required")
+
+        # Get the dataset from memory - try to restore if not found
+        if file_id not in datasets:
+            print(f"⚠️ Dataset '{file_id}' not found in memory, attempting to restore from saved session...")
+
+            # Try to restore dataset from saved analysis session
+            if await try_restore_dataset(file_id):
+                print(f"✅ Dataset '{file_id}' restored successfully from saved session!")
+            else:
+                # Try to get metadata from MongoDB to provide helpful error
+                try:
+                    if db is not None:
+                        metadata = db.datasets_metadata.find_one({"_id": file_id})
+                        if metadata:
+                            raise HTTPException(
+                                status_code=410,
+                                detail={
+                                    "error": "Dataset no longer in memory",
+                                    "message": f"Dataset '{metadata.get('fileName', file_id)}' was uploaded but the server was restarted. Please refresh the page and re-upload your dataset.",
+                                    "fileName": metadata.get('fileName'),
+                                    "originalRows": metadata.get('rows'),
+                                    "uploadedAt": str(metadata.get('createdAt')),
+                                    "action": "Please re-upload the dataset to continue analysis"
+                                }
+                            )
+                except Exception as mongo_err:
+                    print(f"Could not check MongoDB: {mongo_err}")
+
+                # If not in MongoDB or error, return generic message
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "error": "Dataset not found",
+                        "message": f"Dataset {file_id} not found. Please upload the dataset first.",
+                        "availableDatasets": list(datasets.keys()),
+                        "action": "Upload a CSV or Excel file to begin analysis"
+                    }
+                )
+
+        df = datasets[file_id].copy()
+        print(f"Using dataset {file_id} with {len(df)} rows and columns: {list(df.columns)}")
+
         if target_column not in df.columns:
-            raise HTTPException(status_code=400, detail="Target column not found")
+            raise HTTPException(status_code=400, detail=f"Target column '{target_column}' not found in dataset. Available columns: {list(df.columns)}")
         
         try:
             from sklearn.model_selection import train_test_split
@@ -3048,6 +3066,18 @@ except ImportError as e:
 except Exception as e:
     print(f"❌ Error loading Simple Query routes: {e}")
 
+# 23. RAG ANALYSIS API
+# Import RAG document analysis router
+try:
+    from app.api.rag.analyze import router as rag_router
+    app.include_router(rag_router, tags=["rag"])
+    print("✅ RAG Analysis routes loaded successfully")
+except ImportError as e:
+    print(f"❌ Error loading RAG Analysis routes: {e}")
+    print("⚠️ RAG functionality will not be available")
+except Exception as e:
+    print(f"❌ Error loading RAG Analysis routes: {e}")
+
 # Error handlers
 @app.exception_handler(500)
 async def internal_error_handler(request, exc):
@@ -3079,13 +3109,225 @@ try:
     }
     test_df = pd.DataFrame(test_data)
     datasets["test"] = test_df
-    
+
     # Initialize test dataset in DuckDB
     conn = get_duckdb_connection("test")
     conn.register('dataset', test_df)
     print("✅ Test dataset 'test' loaded successfully")
 except Exception as e:
     print(f"❌ Error loading test dataset: {e}")
+
+# RAG Question-Answer Endpoint
+@app.post("/rag/question-answer")
+async def rag_question_answer(request: dict):
+    """
+    RAG question-answer endpoint that fetches document content from MongoDB
+    and sends it to Enhanced RAG server for processing
+    """
+    import httpx
+    from bson import ObjectId
+
+    try:
+        document_id = request.get("document_id")
+        question = request.get("question")
+        user_id = request.get("user_id")
+
+        if not document_id or not question:
+            raise HTTPException(status_code=400, detail="document_id and question are required")
+
+        # Fetch document from MongoDB
+        documents_collection = db["documents"]
+
+        try:
+            doc_object_id = ObjectId(document_id)
+        except:
+            raise HTTPException(status_code=400, detail="Invalid document_id format")
+
+        document = documents_collection.find_one({"_id": doc_object_id})
+
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        # Verify user ownership if user_id is provided
+        if user_id and document.get("user_id") != user_id:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        # Get document content
+        document_text = document.get("extracted_text", "")
+
+        # If no extracted text, try to fetch from storage URL
+        if not document_text:
+            storage_url = document.get("storage_url")
+            if storage_url:
+                try:
+                    async with httpx.AsyncClient() as client:
+                        response = await client.get(storage_url, timeout=30.0)
+                        if response.status_code == 200:
+                            document_text = response.text[:100000]  # Limit to 100K chars
+                            # Update MongoDB with extracted text
+                            documents_collection.update_one(
+                                {"_id": doc_object_id},
+                                {"$set": {"extracted_text": document_text}}
+                            )
+                except Exception as e:
+                    print(f"Error fetching document from storage: {e}")
+
+        if not document_text:
+            raise HTTPException(status_code=400, detail="Document has no content available")
+
+        # Send to Enhanced RAG server (port 8002) with document content
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            try:
+                # Try Enhanced RAG server first
+                rag_response = await client.post(
+                    "http://localhost:8002/query",
+                    json={
+                        "query": question,
+                        "document_text": document_text,
+                        "metadata": {
+                            "document_id": document_id,
+                            "document_name": document.get("file_name", document.get("original_filename", "unknown"))
+                        }
+                    }
+                )
+
+                if rag_response.status_code == 200:
+                    result = rag_response.json()
+                    return {
+                        "success": True,
+                        "query": question,
+                        "answer": result.get("answer", ""),
+                        "confidence": result.get("confidence", 0.0),
+                        "sources": result.get("source_chunks_used", []),
+                        "metadata": result.get("metadata", {}),
+                        "processing_time": result.get("processing_time", 0.0)
+                    }
+                else:
+                    raise HTTPException(status_code=500, detail="Enhanced RAG server error")
+
+            except Exception as e:
+                print(f"Enhanced RAG server error: {e}")
+                # Fallback to generic response
+                return {
+                    "success": False,
+                    "query": question,
+                    "answer": "I apologize, but I'm having trouble processing your question at the moment. Please try again later.",
+                    "confidence": 0.0,
+                    "sources": [],
+                    "metadata": {"error": str(e)},
+                    "processing_time": 0.0
+                }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"RAG question-answer error: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 24. CHAT API ENDPOINTS
+from pydantic import BaseModel
+
+class ChatStreamRequest(BaseModel):
+    message: str
+    sessionId: Optional[str] = None
+    model: Optional[str] = "default"
+    temperature: Optional[float] = 0.7
+    maxTokens: Optional[int] = 2000
+    stream: Optional[bool] = False
+
+@app.post("/api/v1/chat/stream")
+async def chat_stream(request: ChatStreamRequest):
+    """
+    Chat endpoint that uses Groq API for responses
+    """
+    try:
+        session_id = request.sessionId or f"session_{int(datetime.now().timestamp())}"
+        message_id = f"msg_{int(datetime.now().timestamp())}"
+
+        # Use Groq client if available
+        if groq_client:
+            try:
+                chat_completion = groq_client.chat.completions.create(
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "You are a helpful AI assistant specialized in programming, engineering, and computer science. Provide clear, accurate, and detailed explanations."
+                        },
+                        {
+                            "role": "user",
+                            "content": request.message
+                        }
+                    ],
+                    model="llama-3.3-70b-versatile",
+                    temperature=request.temperature,
+                    max_tokens=request.maxTokens,
+                )
+
+                response_text = chat_completion.choices[0].message.content
+
+                return {
+                    "success": True,
+                    "response": response_text,
+                    "sessionId": session_id,
+                    "messageId": message_id,
+                    "model": "llama-3.3-70b-versatile",
+                    "usage": {
+                        "promptTokens": chat_completion.usage.prompt_tokens,
+                        "completionTokens": chat_completion.usage.completion_tokens,
+                        "totalTokens": chat_completion.usage.total_tokens
+                    },
+                    "confidence": 0.9,
+                    "cs_enhanced": True,
+                    "rag_version": "1.0.0"
+                }
+            except Exception as groq_error:
+                print(f"Groq API error: {groq_error}")
+                # Fall through to fallback response
+
+        # Fallback response if Groq is not available
+        fallback_response = f"""I received your message: "{request.message}"
+
+I'm here to help with programming, engineering, and computer science questions. Here's how I can assist:
+
+**Programming & Development**: Code architecture, best practices, debugging strategies
+**Algorithms & Data Structures**: Algorithm design, complexity analysis, implementation guidance
+**System Design**: Scalability patterns, performance optimization, distributed systems
+**Software Engineering**: Design patterns, testing strategies, code quality practices
+
+Please note: The AI service is currently in fallback mode. For full capabilities, please ensure the Groq API key is configured."""
+
+        return {
+            "success": True,
+            "response": fallback_response,
+            "sessionId": session_id,
+            "messageId": message_id,
+            "model": "fallback",
+            "usage": {
+                "promptTokens": len(request.message.split()),
+                "completionTokens": len(fallback_response.split()),
+                "totalTokens": len(request.message.split()) + len(fallback_response.split())
+            },
+            "confidence": 0.7,
+            "fallback": True,
+            "cs_enhanced": False,
+            "rag_version": "1.0.0"
+        }
+
+    except Exception as e:
+        print(f"Chat stream error: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/chat/health")
+async def chat_health():
+    """Chat service health check"""
+    return {
+        "status": "healthy",
+        "service": "chat-api",
+        "groq_available": groq_client is not None,
+        "timestamp": datetime.now().isoformat()
+    }
 
 if __name__ == "__main__":
     import uvicorn

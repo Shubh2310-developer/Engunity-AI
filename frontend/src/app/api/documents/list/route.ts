@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { MongoClient } from 'mongodb';
 
-// Initialize Supabase client for server-side operations
+// Initialize Supabase client for authentication
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -9,16 +10,24 @@ if (!supabaseUrl || !supabaseServiceKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-// Create Supabase client with service role key for server-side operations
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  }
-});
-
 // Create regular Supabase client for user authentication
 const supabase = createClient(supabaseUrl, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+
+// MongoDB connection
+const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/engunity-ai-dev';
+const dbName = process.env.MONGODB_DB_NAME || 'engunity-ai-dev';
+let cachedMongoClient: MongoClient | null = null;
+
+async function getMongoClient() {
+  if (cachedMongoClient) {
+    return cachedMongoClient;
+  }
+
+  const client = new MongoClient(mongoUri);
+  await client.connect();
+  cachedMongoClient = client;
+  return client;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -75,27 +84,35 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch documents using admin client to bypass RLS
+    // Fetch documents from MongoDB
     console.log('API: Fetching documents for user:', authenticatedUser.id);
-    
-    const { data: documents, error: fetchError } = await supabaseAdmin
-      .from('documents')
-      .select('*')
-      .eq('user_id', authenticatedUser.id)
-      .order('uploaded_at', { ascending: false });
 
-    if (fetchError) {
-      console.error('API: Error fetching documents:', fetchError);
-      return NextResponse.json(
-        { error: 'Failed to fetch documents' },
-        { status: 500 }
-      );
-    }
+    const mongoClient = await getMongoClient();
+    const db = mongoClient.db(dbName);
+    const documentsCollection = db.collection('documents');
 
-    console.log('API: Documents fetched successfully:', documents?.length || 0);
+    const documents = await documentsCollection
+      .find({ user_id: authenticatedUser.id })
+      .sort({ created_at: -1 })
+      .toArray();
+
+    console.log('API: Documents fetched successfully:', documents.length);
+
+    // Transform MongoDB documents to match expected frontend format
+    const transformedDocuments = documents.map(doc => ({
+      id: doc._id.toString(),
+      name: doc.file_name || doc.original_filename,
+      type: getDocumentTypeFromMimeType(doc.file_type),
+      size: formatFileSize(doc.file_size || 0),
+      status: mapProcessingStatus(doc.processing_status),
+      uploaded_at: doc.created_at,
+      storage_url: doc.storage_url,
+      user_id: doc.user_id
+    }));
+
     console.log('=== API DOCUMENTS LIST DEBUG END ===');
-    
-    return NextResponse.json(documents || []);
+
+    return NextResponse.json(transformedDocuments);
 
   } catch (error: any) {
     console.error('API: List documents error:', error);
@@ -104,4 +121,50 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// Helper functions
+function getDocumentTypeFromMimeType(mimeType: string): string {
+  if (!mimeType) return 'general';
+
+  const typeMap: Record<string, string> = {
+    'application/pdf': 'PDF',
+    'application/msword': 'DOCX',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+    'application/vnd.ms-excel': 'XLSX',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+    'application/vnd.ms-powerpoint': 'PPTX',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PPTX',
+    'text/plain': 'TXT',
+    'text/markdown': 'MD',
+    'text/csv': 'CSV',
+    'text/html': 'HTML',
+    'text/xml': 'XML',
+    'application/json': 'JSON',
+    'application/rtf': 'RTF',
+    'text/rtf': 'RTF',
+  };
+
+  return typeMap[mimeType] || 'general';
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B';
+
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function mapProcessingStatus(status: string): string {
+  const statusMap: Record<string, string> = {
+    'uploaded': 'ready',
+    'processing': 'processing',
+    'processed': 'processed',
+    'failed': 'failed'
+  };
+
+  return statusMap[status] || 'ready';
 }

@@ -1,6 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDocumentByIdNoAuth } from '@/lib/supabase/document-storage-no-auth';
-import { extractS3KeyFromUrl } from '@/lib/storage/s3-storage';
+import { MongoClient, ObjectId } from 'mongodb';
+
+// MongoDB connection
+const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/engunity-ai-dev';
+const dbName = process.env.MONGODB_DB_NAME || 'engunity-ai-dev';
+let cachedMongoClient: MongoClient | null = null;
+
+async function getMongoClient() {
+  if (cachedMongoClient) {
+    return cachedMongoClient;
+  }
+  const client = new MongoClient(mongoUri);
+  await client.connect();
+  cachedMongoClient = client;
+  return client;
+}
 
 export async function GET(
   request: NextRequest,
@@ -16,29 +30,67 @@ export async function GET(
       );
     }
 
-    const document = await getDocumentByIdNoAuth(documentId);
+    // Get document from MongoDB
+    const mongoClient = await getMongoClient();
+    const db = mongoClient.db(dbName);
+    const documentsCollection = db.collection('documents');
 
-    if (!document) {
+    let documentObjectId: ObjectId;
+    try {
+      documentObjectId = new ObjectId(documentId);
+    } catch (err) {
+      return NextResponse.json(
+        { error: 'Invalid document ID format' },
+        { status: 400 }
+      );
+    }
+
+    const doc = await documentsCollection.findOne({ _id: documentObjectId });
+
+    if (!doc) {
       return NextResponse.json(
         { error: 'Document not found' },
         { status: 404 }
       );
     }
 
+    const document = {
+      id: doc._id.toString(),
+      type: doc.file_type,
+      size: doc.file_size,
+      uploaded_at: doc.created_at,
+      processed_at: doc.updated_at,
+      status: doc.processing_status,
+      metadata: {
+        pages: doc.page_count,
+        word_count: doc.word_count,
+        language: doc.language
+      }
+    };
+
     // Try to extract metadata from S3 file if not available
     let metadata = document.metadata || {};
     
-    // If pages is not set and this is a PDF, try to get it from the file
-    if (!metadata.pages && document.type === 'PDF') {
+    // If pages is not set and this is a PDF, try to extract from extracted_text
+    if (!metadata.pages && (document.type === 'PDF' || document.type === 'application/pdf')) {
       try {
-        // For PDF files, we can attempt to extract metadata
-        // This is a placeholder - in a real implementation you'd use a PDF parsing library
-        // or service to extract the actual page count
-        metadata = {
-          ...metadata,
-          pages: 1, // Default for now
-          estimated: true
-        };
+        // Try to estimate pages from extracted text if available
+        const extractedText = doc.extracted_text;
+        if (extractedText && extractedText.length > 0) {
+          // Rough estimate: average 3000 characters per page
+          const estimatedPages = Math.max(1, Math.ceil(extractedText.length / 3000));
+          metadata = {
+            ...metadata,
+            pages: estimatedPages,
+            estimated: true
+          };
+        } else {
+          metadata = {
+            ...metadata,
+            pages: 1, // Default if no text extracted
+            estimated: true
+          };
+        }
       } catch (error) {
         console.log('Could not extract PDF metadata:', error);
       }
