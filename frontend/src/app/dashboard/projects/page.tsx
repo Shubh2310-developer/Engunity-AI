@@ -1,4 +1,16 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
+import { useUserContext } from '@/hooks/useUserContext';
+import {
+  getPersonalizedDashboard,
+  type PersonalizedDashboard,
+} from '@/lib/api/projects';
+import {
+  generateMockDashboard,
+  shouldUseMockData,
+  toggleMockDataMode,
+} from '@/lib/mockData';
 import { 
   ChevronRight, 
   GitBranch, 
@@ -16,16 +28,14 @@ import {
   Clock, 
   Code, 
   BarChart3, 
-  LineChart, 
-  Trophy, 
-  MessageSquare, 
+  Trophy,
+  MessageSquare,
   Calendar,
   Target,
   Zap,
   GitCommit,
   Upload,
   Play,
-  Pause,
   MoreVertical,
   ExternalLink,
   Download,
@@ -33,14 +43,72 @@ import {
   Filter,
   Plus,
   Eye,
-  Share2,
-  Bookmark
+  Share2
 } from 'lucide-react';
 import { LineChart as RechartsLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 
 const ProjectAnalysisWorkspace = () => {
+  const user = useUserContext();
   const [activeSection, setActiveSection] = useState('overview');
-  const [aiStatus, setAiStatus] = useState('online');
+  const [useMockData, setUseMockData] = useState(false);
+  const [dashboard, setDashboard] = useState<PersonalizedDashboard | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Load user dashboard data
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    const loadDashboard = async () => {
+      setLoading(true);
+
+      try {
+        // Check if we should use mock data
+        const shouldMock = shouldUseMockData();
+        setUseMockData(shouldMock);
+
+        if (shouldMock) {
+          // Use mock data
+          const mockDashboard = generateMockDashboard(user);
+          setDashboard(mockDashboard);
+          console.log('📊 Using mock data for user:', user.name);
+        } else {
+          // Fetch real data from backend
+          try {
+            const realDashboard = await getPersonalizedDashboard(user);
+            setDashboard(realDashboard);
+            console.log('✅ Loaded real dashboard for user:', user.name);
+          } catch (apiError) {
+            console.warn('⚠️ Backend unavailable, falling back to mock data:', apiError);
+            // Fallback to mock data if backend is unavailable
+            const mockDashboard = generateMockDashboard(user);
+            setDashboard(mockDashboard);
+            setUseMockData(true);
+          }
+        }
+      } catch (err) {
+        console.error('Error loading dashboard:', err);
+        // Fallback to mock data on error
+        const mockDashboard = generateMockDashboard(user);
+        setDashboard(mockDashboard);
+        setUseMockData(true);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDashboard();
+  }, [user]);
+
+  // Toggle between mock and real data
+  const handleToggleMockData = () => {
+    const newValue = toggleMockDataMode();
+    setUseMockData(newValue);
+    // Reload dashboard with new mode
+    window.location.reload();
+  };
 
   // Mock data for demonstrations
   const experimentData = [
@@ -141,7 +209,12 @@ const ProjectAnalysisWorkspace = () => {
     </div>
   );
 
-  const AIInsightCard = ({ type, title, message, severity = 'info' }) => (
+  const AIInsightCard = ({ type, title, message, severity = 'info' }: {
+    type: string;
+    title: string;
+    message: string;
+    severity?: 'info' | 'warning' | 'error' | 'success';
+  }) => (
     <div className={`p-4 rounded-xl border ${
       severity === 'warning' ? 'bg-orange-50 border-orange-200' :
       severity === 'error' ? 'bg-red-50 border-red-200' :
@@ -168,7 +241,13 @@ const ProjectAnalysisWorkspace = () => {
     </div>
   );
 
-  const MetricCard = ({ title, value, change, icon: Icon, color = 'blue' }) => (
+  const MetricCard = ({ title, value, change, icon: Icon, color = 'blue' }: {
+    title: string;
+    value: string | number;
+    change?: string;
+    icon: any;
+    color?: 'blue' | 'green' | 'purple' | 'orange' | 'gray';
+  }) => (
     <div className="bg-white rounded-xl p-6 border border-slate-100 hover:border-slate-200 hover:shadow-lg transition-all duration-300">
       <div className="flex items-center justify-between mb-4">
         <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${
@@ -238,12 +317,94 @@ const ProjectAnalysisWorkspace = () => {
     </div>
   );
 
+  const UserProfileCard = () => {
+    if (!user || !dashboard) return null;
+
+    return (
+      <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-6 border border-indigo-100 mb-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            {/* User Avatar */}
+            <div className="relative">
+              <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                {user.initials}
+              </div>
+              <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-400 border-2 border-white rounded-full"></div>
+            </div>
+
+            {/* User Info */}
+            <div>
+              <h3 className="text-xl font-bold text-slate-900">Welcome back, {user.name}!</h3>
+              <div className="flex items-center gap-3 mt-1">
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                  user.role === 'Owner' ? 'bg-purple-100 text-purple-700' :
+                  user.role === 'Admin' ? 'bg-blue-100 text-blue-700' :
+                  user.role === 'Contributor' ? 'bg-green-100 text-green-700' :
+                  'bg-gray-100 text-gray-700'
+                }`}>
+                  {user.role}
+                </span>
+                <span className="text-sm text-slate-600">{user.email}</span>
+                <span className="text-sm text-slate-500">• {user.organization_id}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Data Mode Toggle */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-lg border border-slate-200">
+              <div className={`w-2 h-2 rounded-full ${useMockData ? 'bg-orange-400' : 'bg-green-400'} animate-pulse`}></div>
+              <span className="text-sm font-medium text-slate-700">
+                {useMockData ? 'Demo Mode' : 'Live Data'}
+              </span>
+            </div>
+            <button
+              onClick={handleToggleMockData}
+              className="flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition-colors duration-200 text-sm"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Switch to {useMockData ? 'Live' : 'Demo'}
+            </button>
+          </div>
+        </div>
+
+        {/* Quick Stats */}
+        <div className="grid grid-cols-6 gap-4 mt-6">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-indigo-600">{dashboard.stats.total_projects}</div>
+            <div className="text-xs text-slate-600 mt-1">Projects</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-green-600">{dashboard.stats.active_projects}</div>
+            <div className="text-xs text-slate-600 mt-1">Active</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-orange-600">{dashboard.stats.at_risk_projects}</div>
+            <div className="text-xs text-slate-600 mt-1">At Risk</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-blue-600">{dashboard.stats.assigned_tasks}</div>
+            <div className="text-xs text-slate-600 mt-1">My Tasks</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-red-600">{dashboard.stats.overdue_tasks}</div>
+            <div className="text-xs text-slate-600 mt-1">Overdue</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-purple-600">{dashboard.stats.completed_this_week}</div>
+            <div className="text-xs text-slate-600 mt-1">Done This Week</div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const ProjectHeader = () => (
     <div className="bg-white border-b border-slate-200 px-8 py-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">Customer Churn Prediction</h1>
-          <p className="text-slate-600 mb-4">Advanced ML pipeline for predicting customer behavior patterns</p>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Projects Dashboard</h1>
+          <p className="text-slate-600 mb-4">Manage and monitor all your projects in one place</p>
           
           <div className="flex items-center gap-6 text-sm">
             <div className="flex items-center gap-2">
@@ -277,7 +438,45 @@ const ProjectAnalysisWorkspace = () => {
     </div>
   );
 
+  // Loading State
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-600">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Not logged in
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-xl mx-auto mb-4">
+            🔒
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Authentication Required</h2>
+          <p className="text-slate-600 mb-4">Please log in to view your projects</p>
+          <a href="/login" className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all duration-200">
+            Log In
+          </a>
+        </div>
+      </div>
+    );
+  }
+
   const renderContent = () => {
+    if (!dashboard) {
+      return (
+        <div className="text-center py-12">
+          <p className="text-slate-600">No data available</p>
+        </div>
+      );
+    }
+
     switch (activeSection) {
       case 'overview':
         return (
@@ -713,10 +912,10 @@ const ProjectAnalysisWorkspace = () => {
                   AC
                 </div>
                 <div className="flex-1">
-                  <textarea 
+                  <textarea
                     placeholder="Add a comment..."
                     className="w-full p-3 border border-slate-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    rows="3"
+                    rows={3}
                   />
                   <div className="flex justify-end mt-2">
                     <button className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all duration-200 text-sm">
@@ -861,7 +1060,7 @@ const ProjectAnalysisWorkspace = () => {
                     }} 
                   />
                   <Bar dataKey="accuracy" fill="url(#barGradient)" radius={[4, 4, 0, 0]}>
-                    {experimentData.map((entry, index) => (
+                    {experimentData.map((_entry, index) => (
                       <Cell key={`cell-${index}`} fill={`hsl(${220 + index * 10}, 70%, ${60 + index * 5}%)`} />
                     ))}
                   </Bar>
@@ -889,9 +1088,77 @@ const ProjectAnalysisWorkspace = () => {
         
         <div className="flex-1 flex flex-col overflow-hidden">
           <ProjectHeader />
-          
+
           <main className="flex-1 overflow-y-auto p-8">
             <div className="max-w-7xl mx-auto">
+              <UserProfileCard />
+
+              {/* User-specific insights */}
+              {dashboard && dashboard.personal_insights.length > 0 && (
+                <div className="bg-white rounded-xl p-6 border border-slate-200 mb-6">
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    <Bot className="w-5 h-5 text-indigo-600" />
+                    Personalized AI Insights for {user?.name}
+                  </h3>
+                  <div className="grid gap-4">
+                    {dashboard.personal_insights.slice(0, 3).map((insight) => (
+                      <AIInsightCard
+                        key={insight.id}
+                        type={insight.type}
+                        title={insight.title}
+                        message={insight.description}
+                        severity={insight.impact === 'high' ? 'warning' : insight.impact === 'medium' ? 'info' : 'success'}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Upcoming Deadlines */}
+              {dashboard && dashboard.upcoming_deadlines.length > 0 && (
+                <div className="bg-white rounded-xl p-6 border border-slate-200 mb-6">
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-orange-600" />
+                    Your Upcoming Deadlines
+                  </h3>
+                  <div className="space-y-3">
+                    {dashboard.upcoming_deadlines.map((deadline) => (
+                      <div key={deadline.task_id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                        <div className="flex-1">
+                          <p className="font-medium text-slate-900">{deadline.title}</p>
+                          <p className="text-sm text-slate-600">
+                            Due in {deadline.days_until} days • {new Date(deadline.due_date).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          deadline.priority === 'Critical' ? 'bg-red-100 text-red-700' :
+                          deadline.priority === 'High' ? 'bg-orange-100 text-orange-700' :
+                          deadline.priority === 'Medium' ? 'bg-blue-100 text-blue-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {deadline.priority}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Role-based visibility message */}
+              {user?.role === 'Viewer' && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+                  <div className="flex items-start gap-3">
+                    <Eye className="w-5 h-5 text-blue-600 mt-0.5" />
+                    <div>
+                      <h4 className="font-medium text-blue-900 mb-1">Viewer Mode</h4>
+                      <p className="text-sm text-blue-700">
+                        You have read-only access. Some information like budget details may be hidden based on your role.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {renderContent()}
             </div>
           </main>
