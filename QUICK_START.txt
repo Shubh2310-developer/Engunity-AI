@@ -1,0 +1,197 @@
+╔═══════════════════════════════════════════════════════════════╗
+║                                                               ║
+║          ENGUNITY AI CODE EDITOR - QUICK START GUIDE          ║
+║                                                               ║
+╚═══════════════════════════════════════════════════════════════╝
+
+📦 INSTALLATION
+────────────────────────────────────────────────────────────────
+
+1. Install Backend Dependencies:
+   cd code-executor && npm install
+
+2. Install Frontend Dependencies:
+   cd ../frontend && npm install
+
+3. Install Socket.IO Client (if not done):
+   npm install socket.io-client
+
+
+🚀 START SERVICES
+────────────────────────────────────────────────────────────────
+
+Option 1: Manual Start (Recommended for Development)
+──────────────────────────────────────────────────────
+
+Terminal 1 - MongoDB:
+   docker run -d --name engunity-mongo -p 27017:27017 mongo:7.0
+
+Terminal 2 - Backend:
+   cd code-executor
+   npm run dev
+
+Terminal 3 - Frontend:
+   cd frontend
+   npm run dev
+
+
+Option 2: Docker Compose (Recommended for Testing)
+───────────────────────────────────────────────────
+
+   docker-compose up -d
+
+
+🌐 ACCESS APPLICATIONS
+────────────────────────────────────────────────────────────────
+
+Frontend:       http://localhost:3000
+Code Editor:    http://localhost:3000/dashboard/editor
+Backend API:    http://localhost:4000/api
+Health Check:   http://localhost:4000/health
+MongoDB:        mongodb://localhost:27017
+
+
+🧪 TEST CODE EXECUTION
+────────────────────────────────────────────────────────────────
+
+Python Example:
+───────────────
+curl -X POST http://localhost:4000/api/execute \
+  -H "Content-Type: application/json" \
+  -d '{"code": "print(\"Hello World!\")", "language": "python"}'
+
+JavaScript Example:
+───────────────────
+curl -X POST http://localhost:4000/api/execute \
+  -H "Content-Type: application/json" \
+  -d '{"code": "console.log(\"Hello World!\")", "language": "javascript"}'
+
+
+🔐 TEST AUTHENTICATION
+────────────────────────────────────────────────────────────────
+
+Register:
+─────────
+curl -X POST http://localhost:4000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test","email":"test@test.com","password":"test123"}'
+
+Login:
+──────
+curl -X POST http://localhost:4000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@test.com","password":"test123"}'
+
+
+🛑 STOP SERVICES
+────────────────────────────────────────────────────────────────
+
+Stop Backend:     Ctrl+C in Terminal 2
+Stop Frontend:    Ctrl+C in Terminal 3
+Stop MongoDB:     docker stop engunity-mongo
+Stop All:         docker-compose down
+
+
+📋 USEFUL COMMANDS
+────────────────────────────────────────────────────────────────
+
+View Backend Logs:
+   cd code-executor && npm run dev
+
+View Frontend Logs:
+   cd frontend && npm run dev
+
+Check MongoDB:
+   docker ps | grep mongo
+   mongosh mongodb://localhost:27017
+
+Check Running Containers:
+   docker ps
+
+Pull Docker Images:
+   docker pull python:3.11-slim
+   docker pull node:20-slim
+   docker pull openjdk:21-slim
+   docker pull gcc:latest
+
+View Logs:
+   docker-compose logs -f
+
+
+🏗️ BUILD FOR PRODUCTION
+────────────────────────────────────────────────────────────────
+
+Backend:
+   cd code-executor
+   npm run build
+   npm start
+
+Frontend:
+   cd frontend
+   npm run build
+   npm start
+
+
+📚 DOCUMENTATION
+────────────────────────────────────────────────────────────────
+
+Full Setup Guide:           SETUP.md
+Backend Documentation:      code-executor/README.md
+Integration Details:        BACKEND_INTEGRATION.md
+API Reference:              code-executor/README.md
+
+
+🆘 TROUBLESHOOTING
+────────────────────────────────────────────────────────────────
+
+Port Already in Use:
+   lsof -i :3000  # or :4000
+   kill -9 <PID>
+
+Docker Not Running:
+   sudo systemctl start docker
+
+MongoDB Connection Failed:
+   docker restart engunity-mongo
+
+WebSocket Connection Failed:
+   Check backend is running on port 4000
+   Verify .env.local has correct WS_URL
+
+
+✅ SUCCESS CHECKLIST
+────────────────────────────────────────────────────────────────
+
+□ MongoDB running (docker ps shows engunity-mongo)
+□ Backend running on port 4000
+□ Frontend running on port 3000
+□ Health check returns "ok" (curl http://localhost:4000/health)
+□ Code execution works (test with curl command above)
+□ Frontend editor loads (http://localhost:3000/dashboard/editor)
+□ Can type and run code in editor
+□ Output displays in Output panel
+
+
+🎯 SUPPORTED LANGUAGES
+────────────────────────────────────────────────────────────────
+
+✓ Python         (python:3.11-slim)
+✓ JavaScript     (node:20-slim)
+✓ TypeScript     (node:20-slim)
+✓ Java           (openjdk:21-slim)
+✓ C++            (gcc:latest)
+✓ C              (gcc:latest)
+✓ Go             (golang:1.21-alpine)
+✓ Rust           (rust:latest)
+
+
+💡 PRO TIPS
+────────────────────────────────────────────────────────────────
+
+1. Use WebSocket for real-time output streaming
+2. Enable auto-save in editor settings
+3. Try different themes (9 available)
+4. Use code templates for quick start
+5. Save projects for later use
+6. Check execution logs in MongoDB
+

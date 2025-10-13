@@ -4,15 +4,15 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/auth/supabase';
 import { formatTimeUntilExpiry, getDaysUntilExpiry } from '@/lib/auth/persistence';
-import { 
-  FileText, 
-  Code, 
-  Brain, 
-  MessageSquare, 
-  TrendingUp, 
-  Upload, 
-  HelpCircle, 
-  BarChart3, 
+import {
+  FileText,
+  Code,
+  Brain,
+  MessageSquare,
+  TrendingUp,
+  Upload,
+  HelpCircle,
+  BarChart3,
   Play,
   Clock,
   CheckCircle,
@@ -31,6 +31,7 @@ import {
   Activity,
   Settings,
   ChevronRight,
+  ChevronLeft,
   MoreHorizontal,
   Star,
   Shield,
@@ -104,13 +105,14 @@ const fallbackStats = {
 export default function DashboardPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [mounted, setMounted] = useState(false);
-  const [scrollPosition, setScrollPosition] = useState(0);
-  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
-  
+
   // Get authentication state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
+
+  // Scroll state for Quick Actions
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   
   // Check authentication on mount with persistent session support
   useEffect(() => {
@@ -320,6 +322,19 @@ export default function DashboardPage() {
     }
   };
 
+  // Scroll functions for Quick Actions
+  const scrollLeft = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollBy({ left: -400, behavior: 'smooth' });
+    }
+  };
+
+  const scrollRight = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollBy({ left: 400, behavior: 'smooth' });
+    }
+  };
+
   return (
     <TooltipProvider>
       {/* Main Container with Professional Layout */}
@@ -516,37 +531,38 @@ export default function DashboardPage() {
                 </Button>
               </div>
 
-              <div className="relative">
-                {/* Left Scroll Button */}
+              <div className="relative px-12">
+                {/* Left Scroll Arrow */}
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="icon"
-                  className="absolute left-0 top-1/2 -translate-y-1/2 z-10 rounded-full bg-white shadow-lg border-slate-300 hover:bg-slate-100 hover:border-slate-400"
                   onClick={scrollLeft}
+                  className="absolute left-0 top-1/2 -translate-y-1/2 z-20 bg-white/90 hover:bg-white shadow-lg rounded-full w-10 h-10"
                 >
-                  <ChevronLeft className="w-5 h-5 text-slate-700" />
+                  <ChevronLeft className="w-6 h-6 text-slate-700" />
                 </Button>
 
-                {/* Right Scroll Button */}
+                {/* Right Scroll Arrow */}
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="icon"
-                  className="absolute right-0 top-1/2 -translate-y-1/2 z-10 rounded-full bg-white shadow-lg border-slate-300 hover:bg-slate-100 hover:border-slate-400"
                   onClick={scrollRight}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 z-20 bg-white/90 hover:bg-white shadow-lg rounded-full w-10 h-10"
                 >
-                  <ChevronRight className="w-5 h-5 text-slate-700" />
+                  <ChevronRight className="w-6 h-6 text-slate-700" />
                 </Button>
 
-                {/* Scrollable Container */}
                 <div
                   ref={scrollContainerRef}
-                  onScroll={handleScroll}
-                  className="overflow-x-auto scrollbar-hide px-12"
-                  style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                  className="flex gap-6 pb-4 overflow-x-auto scroll-smooth scrollbar-hide"
+                  style={{
+                    scrollbarWidth: 'none',
+                    msOverflowStyle: 'none'
+                  }}
                 >
-                  <div className="flex gap-6 pb-4" style={{ width: 'max-content' }}>
                   {[
                     { title: "Document Analysis", icon: Upload, color: "from-blue-600 to-cyan-600", description: "Process new files", link: "/dashboard/documents" },
+                    { title: "Code Editor", icon: Code, color: "from-indigo-600 to-purple-600", description: "Professional IDE", link: "/dashboard/editor" },
                     { title: "Code and Chat Assistant", icon: MessageSquare, color: "from-violet-600 to-purple-600", description: "Get instant answers", link: "/dashboard/chatandcode" },
                     { title: "Research Analysis", icon: Brain, color: "from-emerald-600 to-teal-600", description: "Research solution", link: "/dashboard/research" },
                     { title: "Data Analysis", icon: BarChart3, color: "from-amber-600 to-orange-600", description: "Extract insights", link: "/dashboard/analysis" },
@@ -563,9 +579,10 @@ export default function DashboardPage() {
                     whileHover={{ y: -6, scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                    className="flex-shrink-0"
                   >
                     <Card
-                      className="bg-white border-slate-200/60 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer h-full flex-shrink-0"
+                      className="bg-white border-slate-200/60 shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer h-full"
                       style={{ width: '200px' }}
                       onClick={() => {
                         if (action.link) {

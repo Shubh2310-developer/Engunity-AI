@@ -1,6 +1,7 @@
 import React from 'react';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import { Toaster } from 'react-hot-toast';
+import { Toaster as SonnerToaster } from 'sonner';
 import { Analytics } from '@vercel/analytics/react';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import { LoadingProvider } from '@/contexts/LoadingContext';
@@ -23,6 +24,7 @@ const inter = Inter({
   variable: '--font-inter',
   weight: ['300', '400', '500', '600', '700', '800', '900'],
   preload: true,
+  fallback: ['system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
 });
 
 const jetbrainsMono = JetBrains_Mono({
@@ -31,6 +33,7 @@ const jetbrainsMono = JetBrains_Mono({
   variable: '--font-mono',
   weight: ['400', '500', '600', '700'],
   preload: true,
+  fallback: ['Menlo', 'Monaco', 'Courier New', 'monospace'],
 });
 
 // =================================
@@ -445,7 +448,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
               padding: '16px 20px',
               maxWidth: '420px',
             },
-            
+
             success: {
               iconTheme: {
                 primary: 'rgb(34, 197, 94)',
@@ -456,7 +459,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
                 background: 'rgba(240, 253, 244, 0.95)',
               },
             },
-            
+
             error: {
               iconTheme: {
                 primary: 'rgb(239, 68, 68)',
@@ -467,7 +470,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
                 background: 'rgba(254, 242, 242, 0.95)',
               },
             },
-            
+
             loading: {
               iconTheme: {
                 primary: 'rgb(59, 130, 246)',
@@ -477,6 +480,22 @@ export default function RootLayout({ children }: RootLayoutProps) {
                 borderColor: 'rgba(59, 130, 246, 0.2)',
                 background: 'rgba(239, 246, 255, 0.95)',
               },
+            },
+          }}
+        />
+
+        {/* Sonner Toast Notification System for Editor */}
+        <SonnerToaster
+          position="top-right"
+          richColors
+          expand={true}
+          closeButton
+          toastOptions={{
+            style: {
+              background: 'rgba(15, 23, 42, 0.95)',
+              color: 'white',
+              border: '1px solid rgba(148, 163, 184, 0.2)',
+              backdropFilter: 'blur(12px)',
             },
           }}
         />
