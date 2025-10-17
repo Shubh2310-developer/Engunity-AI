@@ -22,7 +22,8 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
 const supabase = createClient(supabaseUrl, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
 // MongoDB connection
-const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/engunity';
+const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/engunity-ai';
+const dbName = process.env.MONGODB_DB_NAME || 'engunity-ai';
 let cachedMongoClient: MongoClient | null = null;
 
 async function getMongoClient() {
@@ -97,7 +98,7 @@ export async function DELETE(
     // First, get the document from MongoDB to verify ownership and get storage URL
     console.log('API: Fetching document details from MongoDB...');
     const mongoClient = await getMongoClient();
-    const db = mongoClient.db('engunity-ai-dev');
+    const db = mongoClient.db(dbName);
     const documentsCollection = db.collection('documents');
 
     let documentObjectId: ObjectId;

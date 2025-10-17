@@ -136,25 +136,35 @@ class RAGResponse(BaseModel):
 # ============================================================================
 
 class BGERetriever:
-    """BGE-based semantic retrieval with vector storage"""
+    """BGE-based semantic retrieval with vector storage (LAZY LOADING)"""
 
     def __init__(self, config: RAGConfig):
         self.config = config
-        logger.info(f"🔧 Initializing BGE Retriever: {config.BGE_MODEL}")
-
-        # Load BGE model
-        self.embedder = SentenceTransformer(config.BGE_MODEL)
-        logger.info("✅ BGE model loaded successfully")
-
-        # Initialize ChromaDB
-        self.chroma_client = chromadb.Client(Settings(
-            persist_directory=config.CHROMA_PERSIST_DIR,
-            anonymized_telemetry=False
-        ))
-        logger.info("✅ ChromaDB initialized")
-
-        # Document collections (one per document)
+        self._embedder = None  # Lazy load
+        self._chroma_client = None  # Lazy load
         self.collections = {}
+        logger.info(f"🔧 BGE Retriever initialized (models will load on first use)")
+
+    @property
+    def embedder(self):
+        """Lazy load BGE model only when needed"""
+        if self._embedder is None:
+            logger.info(f"⚡ Loading BGE model: {self.config.BGE_MODEL}")
+            self._embedder = SentenceTransformer(self.config.BGE_MODEL)
+            logger.info("✅ BGE model loaded successfully")
+        return self._embedder
+
+    @property
+    def chroma_client(self):
+        """Lazy load ChromaDB only when needed"""
+        if self._chroma_client is None:
+            logger.info("⚡ Initializing ChromaDB...")
+            self._chroma_client = chromadb.Client(Settings(
+                persist_directory=self.config.CHROMA_PERSIST_DIR,
+                anonymized_telemetry=False
+            ))
+            logger.info("✅ ChromaDB initialized")
+        return self._chroma_client
 
     def detect_document_type(self, text: str, filename: str = "") -> DocumentType:
         """Detect document type from content and filename"""
@@ -217,6 +227,7 @@ class BGERetriever:
     async def index_document(self, document_id: str, text: str, metadata: Dict[str, Any] = None) -> None:
         """Index a document into vector store"""
         logger.info(f"🔍 Indexing document: {document_id}")
+        logger.info(f"📝 Document text length: {len(text)} chars ({len(text.split())} words)")
 
         # Detect document type
         doc_type = self.detect_document_type(text, metadata.get('filename', '') if metadata else '')
@@ -255,6 +266,7 @@ class BGERetriever:
         ]
 
         # Add to collection
+        logger.info(f"💾 Adding {len(chunks)} chunks to ChromaDB collection '{collection_name}'...")
         collection.add(
             ids=ids,
             embeddings=embeddings.tolist(),
@@ -484,7 +496,11 @@ class HybridRAGPipeline:
 
         # Step 1: Index document if provided
         if document_text and document_id:
+            logger.info(f"📥 Received document_text for indexing: {len(document_text)} chars")
             await self.retriever.index_document(document_id, document_text, metadata)
+            logger.info(f"✅ Document indexing complete for: {document_id}")
+        elif not document_text and document_id:
+            logger.warning(f"⚠️  No document_text provided, will search existing index for: {document_id}")
 
         # Step 2: Retrieve relevant chunks
         if not document_id:
@@ -605,8 +621,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize pipeline
-pipeline = HybridRAGPipeline()
+# Lazy initialize pipeline (models load on first request)
+pipeline = None
+
+def get_pipeline():
+    """Lazy load pipeline to save memory at startup"""
+    global pipeline
+    if pipeline is None:
+        logger.info("⚡ Initializing Hybrid RAG Pipeline on first request...")
+        pipeline = HybridRAGPipeline()
+    return pipeline
 
 
 @app.post("/query", response_model=RAGResponse)
@@ -615,7 +639,10 @@ async def process_query(request: QueryRequest):
     try:
         logger.info(f"📥 New query: '{request.query[:50]}...'")
 
-        result = await pipeline.process_query(
+        # Lazy load pipeline
+        pipe = get_pipeline()
+
+        result = await pipe.process_query(
             query=request.query,
             document_id=request.document_id,
             document_text=request.document_text,
@@ -638,9 +665,10 @@ async def health_check():
         "status": "healthy",
         "version": "3.0.0",
         "system": "Hybrid RAG v3.0",
+        "models_loaded": pipeline is not None,
         "components": {
-            "bge_retriever": "active",
-            "groq_generator": "active",
+            "bge_retriever": "lazy_load" if pipeline is None else "active",
+            "groq_generator": "lazy_load" if pipeline is None else "active",
             "web_fallback": "active",
             "vector_store": "chromadb"
         }

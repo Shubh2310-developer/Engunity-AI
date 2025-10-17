@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/auth/supabase';
 import MessageRenderer from '@/components/chat/MessageRenderer';
+import ServiceLoader from '@/components/services/ServiceLoader';
 import {
   Send,
   Bot,
@@ -51,7 +52,7 @@ interface ChatSession {
   userId?: string;
 }
 
-export default function ChatCodePage() {
+function ChatCodePageContent() {
   // Authentication & User State
   const [user, setUser] = useState<any>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -911,5 +912,12 @@ export default function ChatCodePage() {
         </div>
       </div>
     </div>
+  );
+}
+export default function ChatCodePage() {
+  return (
+    <ServiceLoader feature="chatandcode">
+      <ChatCodePageContent />
+    </ServiceLoader>
   );
 }

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Editor from '@monaco-editor/react';
+import ServiceLoader from '@/components/services/ServiceLoader';
 import {
   Play,
   Save,
@@ -275,7 +276,7 @@ interface Message {
   timestamp: Date;
 }
 
-export default function EditorPage() {
+function EditorPageContent() {
   const [code, setCode] = useState('# Python\nprint("Hello, World!")');
   const [language, setLanguage] = useState('python');
   const [theme, setTheme] = useState<'vs-dark' | 'light'>('light');
@@ -1710,5 +1711,13 @@ export default function EditorPage() {
         />
       </div>
     </TooltipProvider>
+  );
+}
+
+export default function EditorPage() {
+  return (
+    <ServiceLoader feature="editor">
+      <EditorPageContent />
+    </ServiceLoader>
   );
 }

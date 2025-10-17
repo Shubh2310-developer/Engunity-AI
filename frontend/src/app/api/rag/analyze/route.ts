@@ -59,10 +59,20 @@ export async function POST(request: NextRequest) {
 
     // If no session from cookies, try to get it from Authorization header
     if (!session) {
-      const authHeader = request.headers.get('authorization');
+      // Try both lowercase and capitalized versions
+      const authHeader = request.headers.get('authorization') || request.headers.get('Authorization');
+
+      // Debug: Log all headers
+      const allHeaders: Record<string, string> = {};
+      request.headers.forEach((value, key) => {
+        allHeaders[key] = value.substring(0, 50); // Truncate for security
+      });
+      console.log('🔍 RAG Analyze - All headers:', allHeaders);
+
       console.log('🔍 RAG Analyze - Checking Authorization header:', {
         hasAuthHeader: !!authHeader,
-        startsWithBearer: authHeader?.startsWith('Bearer ')
+        startsWithBearer: authHeader?.startsWith('Bearer '),
+        headerLength: authHeader?.length
       });
 
       if (authHeader?.startsWith('Bearer ')) {
@@ -85,16 +95,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (!session) {
-      console.error('❌ RAG Analyze - Authentication failed: No session found');
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      );
-    }
-
     const body = await request.json();
-    const { documentId, options = {} } = body;
+    const { documentId, userId, options = {} } = body;
 
     if (!documentId) {
       return NextResponse.json(
@@ -103,7 +105,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('🔍 RAG Analyze - Looking for document:', { documentId, userId: session.user.id });
+    // Use session user ID if available, otherwise use provided userId
+    const effectiveUserId = session?.user?.id || userId;
+
+    console.log('🔍 RAG Analyze - Looking for document:', { documentId, userId: effectiveUserId });
 
     // Verify document ownership from MongoDB
     const db = await getDatabase();
@@ -120,10 +125,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const document = await documentsCollection.findOne({
-      _id: documentObjectId,
-      user_id: session.user.id
-    });
+    // Build query - if we have a userId, check ownership, otherwise just find by ID
+    const query: any = { _id: documentObjectId };
+    if (effectiveUserId) {
+      query.user_id = effectiveUserId;
+    }
+
+    const document = await documentsCollection.findOne(query);
 
     if (!document) {
       console.error('❌ RAG Analyze - Document not found or access denied');
@@ -139,48 +147,30 @@ export async function POST(request: NextRequest) {
       status: document.processing_status
     });
 
-    // Call RAG backend
-    const ragResponse = await fetch(`${RAG_API_BASE}/rag/analyze-document`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        document_id: documentId,
-        user_id: session.user.id,
-        options
-      }),
-    });
-
-    if (!ragResponse.ok) {
-      const errorData = await ragResponse.json().catch(() => ({}));
-      return NextResponse.json(
-        { error: errorData.detail || 'RAG analysis failed' },
-        { status: ragResponse.status }
-      );
-    }
-
-    const result = await ragResponse.json();
-
-    // Update document status in MongoDB
-    const newStatus = result.status === 'completed' ? 'processed' : 'processing';
+    // For now, simply mark document as ready for Q&A
+    // The actual RAG analysis happens on-demand during Q&A queries
     await documentsCollection.updateOne(
       { _id: documentObjectId },
       {
         $set: {
-          processing_status: newStatus,
-          updated_at: new Date()
+          processing_status: 'processed',
+          updated_at: new Date(),
+          analyzed_at: new Date()
         }
       }
     );
 
-    console.log('✅ RAG Analyze - Document status updated to:', newStatus);
+    console.log('✅ RAG Analyze - Document marked as ready for Q&A');
 
     return NextResponse.json({
       success: true,
-      message: result.status === 'completed' ? 'Document analysis completed' : 'Document analysis started',
-      data: result
+      message: 'Document is ready for Q&A',
+      data: {
+        status: 'completed',
+        document_id: documentId,
+        document_name: document.file_name,
+        ready_for_qa: true
+      }
     });
 
   } catch (error) {

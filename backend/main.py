@@ -3329,6 +3329,14 @@ async def chat_health():
         "timestamp": datetime.now().isoformat()
     }
 
+# Include service manager routes
+from service_manager import router as service_manager_router
+app.include_router(service_manager_router)
+
+# Include document processor routes
+from document_processor_api import router as document_processor_router
+app.include_router(document_processor_router)
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

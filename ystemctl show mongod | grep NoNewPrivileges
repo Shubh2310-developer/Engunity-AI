@@ -34,3 +34,6 @@ TasksAccounting=false
 [Install]
 WantedBy=multi-user.target
 mongod --dbpath ~/mongodb-data --logpath ~/mongodb-data/mongod.log --fork
+
+
+ok so this is my script /home/ghost/engunity-ai/start-all-services.sh  now in tjis script tehre are various modules taht are laoded with diffrent port numbers , now i want  this script to work like when i load my website on mair server should work other than taht when i load any service like for document q anda a the hybrid server should be loaded , like for specific quick actions tghe modules should be loaded -

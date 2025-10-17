@@ -48,8 +48,7 @@ import {
   BookOpen,
   Briefcase,
   Github,
-  Terminal,
-  ChevronLeft
+  Terminal
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -239,43 +238,7 @@ export default function DashboardPage() {
     }
   };
 
-  const handleScroll = () => {
-    if (scrollContainerRef.current) {
-      setScrollPosition(scrollContainerRef.current.scrollLeft);
-    }
-  };
-
-  // Show loading state
-  if (!mounted || dashboardLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto" />
-          <p className="text-slate-600 text-lg">Loading your dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Show sign in prompt if not authenticated
-  if (!isAuthenticated || !user) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 flex items-center justify-center">
-        <div className="text-center space-y-6 p-8">
-          <h1 className="text-3xl font-bold text-slate-900">Welcome to Engunity AI</h1>
-          <p className="text-slate-600 text-lg">Please sign in to access your dashboard</p>
-          <button 
-            onClick={() => window.location.href = '/auth/login'}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Sign In
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Use mock data for now
+  // Use mock data
   const currentStats = fallbackStats;
   const currentActivity: any[] = [];
   const currentFiles: any[] = [];
@@ -322,18 +285,35 @@ export default function DashboardPage() {
     }
   };
 
-  // Scroll functions for Quick Actions
-  const scrollLeft = () => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollBy({ left: -400, behavior: 'smooth' });
-    }
-  };
+  // Show loading state
+  if (!mounted || dashboardLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto" />
+          <p className="text-slate-600 text-lg">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
-  const scrollRight = () => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollBy({ left: 400, behavior: 'smooth' });
-    }
-  };
+  // Show sign in prompt if not authenticated
+  if (!isAuthenticated || !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 flex items-center justify-center">
+        <div className="text-center space-y-6 p-8">
+          <h1 className="text-3xl font-bold text-slate-900">Welcome to Engunity AI</h1>
+          <p className="text-slate-600 text-lg">Please sign in to access your dashboard</p>
+          <button
+            onClick={() => window.location.href = '/auth/login'}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Sign In
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <TooltipProvider>
@@ -602,7 +582,6 @@ export default function DashboardPage() {
                     </Card>
                   </motion.div>
                   ))}
-                  </div>
                 </div>
               </div>
             </motion.section>

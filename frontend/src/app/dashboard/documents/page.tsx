@@ -52,6 +52,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useRAG } from '@/hooks/useRAG';
 import { supabase } from '@/lib/auth/supabase';
 import type { SupabaseDocument } from '@/lib/supabase/document-storage-no-auth';
+import ServiceLoader from '@/components/services/ServiceLoader';
 
 const statusConfig = {
   uploading: { 
@@ -80,7 +81,7 @@ const statusConfig = {
   }
 };
 
-const DocumentsPage: React.FC = () => {
+const DocumentsPageContent: React.FC = () => {
   const { user } = useAuth();
   const { error: showError, success: showSuccess } = useToast();
   const router = useRouter();
@@ -373,7 +374,9 @@ const DocumentsPage: React.FC = () => {
 
           if (response.ok) {
             const docs = await response.json();
+            console.log('📊 Polling - Documents from API:', docs.length);
             const updatedDoc = docs.find((d: any) => d.id === documentId);
+            console.log('📊 Polling - Found document:', updatedDoc?.id, 'Status:', updatedDoc?.status);
 
             if (updatedDoc && updatedDoc.status === 'processed') {
               setDocuments(prev =>
@@ -811,6 +814,14 @@ const DocumentsPage: React.FC = () => {
         </Card>
       </motion.div>
     </div>
+  );
+};
+
+const DocumentsPage: React.FC = () => {
+  return (
+    <ServiceLoader feature="documents">
+      <DocumentsPageContent />
+    </ServiceLoader>
   );
 };
 

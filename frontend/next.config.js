@@ -1,5 +1,31 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Memory optimization settings
+  experimental: {
+    optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
+  },
+
+  // Webpack optimization for lower memory usage
+  webpack: (config, { dev, isServer }) => {
+    if (dev && !isServer) {
+      // Reduce memory during development
+      config.optimization = {
+        ...config.optimization,
+        runtimeChunk: false,
+        splitChunks: false,
+      };
+    }
+    // Reduce parallelism
+    config.parallelism = 1;
+    return config;
+  },
+
+  // Disable source maps to save memory
+  productionBrowserSourceMaps: false,
+
+  // Use SWC minifier (faster, less memory)
+  swcMinify: true,
+
   async rewrites() {
     return {
       beforeFiles: [

@@ -24,7 +24,7 @@ class DatabaseService:
     def __init__(self):
         # MongoDB connection
         mongodb_uri = os.getenv('MONGODB_URI', 'mongodb://localhost:27017/')
-        db_name = os.getenv('DATABASE_NAME', 'engunity-ai-dev')
+        db_name = os.getenv('DATABASE_NAME', 'engunity-ai')
         
         self.client = AsyncIOMotorClient(mongodb_uri)
         self.db = self.client[db_name]

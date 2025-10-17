@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { supabase } from '@/lib/auth/supabase'
 import { DocumentService } from '@/lib/services/document-service'
+import ServiceLoader from '@/components/services/ServiceLoader'
 // Client-side types only - no server imports
 interface ResearchStats {
   userId: string;
@@ -292,7 +293,7 @@ const uploadDocument = async (file: File) => {
   }
 }
 
-export default function ResearchAnalysisDashboard() {
+function ResearchAnalysisDashboardContent() {
   const [aiQuery, setAiQuery] = useState('')
   const [currentTime, setCurrentTime] = useState(new Date())
   const [mounted, setMounted] = useState(false)
@@ -1430,4 +1431,12 @@ export default function ResearchAnalysisDashboard() {
       </div>
     </div>
   )
+}
+
+export default function ResearchAnalysisDashboard() {
+  return (
+    <ServiceLoader feature="research">
+      <ResearchAnalysisDashboardContent />
+    </ServiceLoader>
+  );
 }

@@ -96,6 +96,7 @@ export const useRAG = () => {
         },
         body: JSON.stringify({
           documentId,
+          userId: user?.id,
           options
         }),
       });

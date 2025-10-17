@@ -3,8 +3,8 @@ import { ChatService, ChatMessage } from '@/lib/database/mongodb';
 import { MongoClient, ObjectId } from 'mongodb';
 
 // MongoDB connection
-const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/engunity-ai-dev';
-const dbName = process.env.MONGODB_DB_NAME || 'engunity-ai-dev';
+const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/engunity-ai';
+const dbName = process.env.MONGODB_DB_NAME || 'engunity-ai';
 let cachedMongoClient: MongoClient | null = null;
 
 async function getMongoClient() {
@@ -863,18 +863,25 @@ export async function POST(
       
       // Get document text for RAG analysis
       const documentText = await getDocumentContent(documentId);
+      console.log(`📥 Retrieved document text: ${documentText ? documentText.length : 0} chars`);
 
-      // Truncate document text if too large (to avoid Groq token limits)
-      // Groq limit: 12,000 TPM for llama-3.3-70b
-      // Estimate ~4 chars per token, keep under 24,000 chars (~6,000 tokens) to leave room for question + answer + retrieval
-      const MAX_DOC_CHARS = 24000;
+      // Truncate document text if too large (Hybrid RAG will chunk it properly)
+      // Allow up to 500K chars (~125K tokens) - Hybrid RAG handles chunking internally
+      // This ensures full document content is available for semantic search
+      const MAX_DOC_CHARS = 500000;
       const truncatedDocText = documentText && documentText.length > MAX_DOC_CHARS
         ? documentText.substring(0, MAX_DOC_CHARS) + '\n\n[Document truncated due to length...]'
         : documentText;
 
+      if (truncatedDocText) {
+        console.log(`✅ Sending document text to Hybrid RAG: ${truncatedDocText.length} chars`);
+        console.log(`📊 Document coverage: ${documentText ? Math.min(100, (truncatedDocText.length / documentText.length * 100).toFixed(1)) : 0}%`);
+      } else {
+        console.warn(`⚠️ WARNING: No document text available! Hybrid RAG will fall back to web search.`);
+      }
+
       // Use Hybrid RAG v3.0 Backend (BGE + ChromaDB + Groq)
       console.log(`🚀 Using Hybrid RAG v3.0 Backend (BGE Embeddings + ChromaDB + Groq)`);
-      console.log(`📄 Document text length: ${truncatedDocText ? truncatedDocText.length : 0} chars`);
       const fakeRagResponse = await callHybridRagV3Backend(documentId, question, truncatedDocText || undefined);
 
       // Transform sources for frontend compatibility from fake RAG response

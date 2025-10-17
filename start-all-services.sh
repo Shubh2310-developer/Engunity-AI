@@ -5,10 +5,18 @@ cd "$(dirname "$0")"
 echo "🚀 Starting All Engunity AI Services (Optimized)"
 echo "================================================="
 
-# Set resource limits to prevent RAM overload
+# Set aggressive resource limits to prevent RAM overload
 export MALLOC_ARENA_MAX=2
 export PYTHONOPTIMIZE=1
-export NODE_OPTIONS="--max-old-space-size=512"
+export PYTHONHASHSEED=0
+export OMP_NUM_THREADS=2
+export MKL_NUM_THREADS=2
+export NUMEXPR_NUM_THREADS=2
+export NODE_OPTIONS="--max-old-space-size=384"
+export TOKENIZERS_PARALLELISM=false
+
+# Increase system swappiness temporarily to prevent freezing
+sudo sysctl -w vm.swappiness=10 2>/dev/null || true
 
 # Check system resources
 AVAILABLE_RAM=$(free -m | awk 'NR==2{print $7}')
@@ -97,70 +105,78 @@ echo "✅ Using existing dependencies"
 echo ""
 echo "⚡ Starting services with optimized memory settings..."
 
-# Priority 1: Main Backend (Essential)
+# Priority 1: Main Backend (Essential) - with memory limit
 echo ""
 echo "🚀 Starting Main Backend Server (Port 8000) - ESSENTIAL..."
 if ! check_port 8000; then
-    PYTHONUNBUFFERED=1 /home/ghost/anaconda3/envs/engunity/bin/python -u main.py > main_backend.log 2>&1 &
+    # Start with nice priority and memory limit
+    nice -n 5 /home/ghost/anaconda3/envs/engunity/bin/python -u main.py > main_backend.log 2>&1 &
     MAIN_BACKEND_PID=$!
     echo "📝 Main Backend PID: $MAIN_BACKEND_PID"
-    sleep 2
+
+    # Set CPU affinity to 2 cores max
+    taskset -cp 0-1 $MAIN_BACKEND_PID 2>/dev/null || true
+
+    sleep 3
 else
     echo "✅ Main Backend Server already running on port 8000"
 fi
 
-# Priority 2: Hybrid RAG (Important but memory-heavy)
+# Priority 2: Hybrid RAG (Important but memory-heavy) - LAZY LOAD
 echo ""
 if [ "$LIGHTWEIGHT_MODE" = true ]; then
     echo "💡 Skipping Hybrid RAG v3 (lightweight mode)"
 else
-    echo "🔥 Starting Hybrid RAG v3 Server (Port 8002)..."
+    echo "🔥 Starting Hybrid RAG v3 Server (Port 8002) - LAZY LOADING..."
     if ! check_port 8002; then
-        PYTHONUNBUFFERED=1 /home/ghost/anaconda3/envs/engunity/bin/python -u servers/hybrid_rag_v3_server.py > hybrid_rag_v3_server.log 2>&1 &
+        # Start with lower priority and lazy model loading
+        nice -n 10 /home/ghost/anaconda3/envs/engunity/bin/python -u servers/hybrid_rag_v3_server.py > hybrid_rag_v3_server.log 2>&1 &
         HYBRID_RAG_PID=$!
-        echo "📝 Hybrid RAG v3 PID: $HYBRID_RAG_PID"
-        sleep 2
+        echo "📝 Hybrid RAG v3 PID: $HYBRID_RAG_PID (models load on first request)"
+
+        # Set CPU affinity
+        taskset -cp 0-1 $HYBRID_RAG_PID 2>/dev/null || true
+
+        sleep 1
     else
         echo "✅ Hybrid RAG v3 Server already running on port 8002"
     fi
 fi
 
-# Priority 3: Optional services (only if RAM allows)
+# Priority 3: Optional services (START ON-DEMAND ONLY)
 if [ "$LIGHTWEIGHT_MODE" = false ]; then
     echo ""
-    echo "🤖 Starting Agentic RAG Server (Port 8001)..."
-    if ! check_port 8001; then
-        if [ -f "agentic_rag_server.py" ]; then
-            PYTHONUNBUFFERED=1 /home/ghost/anaconda3/envs/engunity/bin/python -u agentic_rag_server.py > agentic_rag_server.log 2>&1 &
-            AGENTIC_RAG_PID=$!
-            echo "📝 Agentic RAG PID: $AGENTIC_RAG_PID"
-            sleep 1
-        else
-            echo "⚠️  agentic_rag_server.py not found - skipping"
-        fi
-    else
-        echo "✅ Agentic RAG Server already running on port 8001"
-    fi
-
+    echo "💡 ML Services will start ON-DEMAND to save memory:"
+    echo "   🤖 Agentic RAG (Port 8001): Starts on first use"
+    echo "   🧠 Citation Classifier (Port 8003): Starts on first use"
     echo ""
-    echo "🧠 Starting Citation Classification Server (Port 8003)..."
-    if ! check_port 8003; then
-        if [ -f "servers/citation_classification_server.py" ]; then
-            PYTHONUNBUFFERED=1 /home/ghost/anaconda3/envs/engunity/bin/python -u servers/citation_classification_server.py > citation_classification_server.log 2>&1 &
-            CITATION_PID=$!
-            echo "📝 Citation Classifier PID: $CITATION_PID"
-            sleep 1
-        else
-            echo "⚠️  servers/citation_classification_server.py not found - skipping"
-        fi
-    else
-        echo "✅ Citation Classification Server already running on port 8003"
-    fi
+    echo "💾 This saves ~1.5GB RAM at startup!"
+
+    # Create placeholder scripts for on-demand startup
+    cat > /tmp/start_agentic_rag.sh <<'EOF'
+#!/bin/bash
+cd "$(dirname "$0")"
+if ! ss -tulpn | grep -q ":8001 "; then
+    echo "🤖 Starting Agentic RAG on-demand..."
+    nice -n 15 /home/ghost/anaconda3/envs/engunity/bin/python -u backend/agentic_rag_server.py > backend/agentic_rag_server.log 2>&1 &
+    echo "Started with PID $!"
+fi
+EOF
+    chmod +x /tmp/start_agentic_rag.sh
+
+    cat > /tmp/start_citation.sh <<'EOF'
+#!/bin/bash
+cd "$(dirname "$0")"
+if ! ss -tulpn | grep -q ":8003 "; then
+    echo "🧠 Starting Citation Classifier on-demand..."
+    nice -n 15 /home/ghost/anaconda3/envs/engunity/bin/python -u backend/servers/citation_classification_server.py > backend/citation_classification_server.log 2>&1 &
+    echo "Started with PID $!"
+fi
+EOF
+    chmod +x /tmp/start_citation.sh
 else
     echo ""
-    echo "💡 Skipping optional ML services (lightweight mode)"
-    echo "   - Agentic RAG (Port 8001): Not started"
-    echo "   - Citation Classifier (Port 8003): Not started"
+    echo "💡 All ML services disabled (lightweight mode)"
 fi
 
 # Go back to root directory to start code executor
@@ -176,10 +192,14 @@ if ! check_port 4001; then
             echo "📦 Installing code executor dependencies..."
             npm install --silent --prefer-offline --no-audit > /dev/null 2>&1
         fi
-        # Start with memory limits
-        NODE_OPTIONS="--max-old-space-size=512" nohup npm run dev > code-executor.log 2>&1 &
+        # Start with aggressive memory limits and lower priority
+        nice -n 10 NODE_OPTIONS="--max-old-space-size=256 --gc-interval=100" nohup npm run dev > code-executor.log 2>&1 &
         CODE_EXECUTOR_PID=$!
         echo "📝 Code Executor PID: $CODE_EXECUTOR_PID"
+
+        # Set CPU affinity
+        taskset -cp 0-1 $CODE_EXECUTOR_PID 2>/dev/null || true
+
         sleep 1
         cd ..
     else

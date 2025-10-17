@@ -100,7 +100,7 @@ async function uploadDocumentServerSide(file: File, userId: string, user: any) {
       console.log('Server: Document record created successfully in MongoDB:', insertResult.insertedId);
     } catch (dbError: any) {
       console.error('Server: MongoDB insert error:', dbError);
-      
+
       // Try to clean up uploaded file
       try {
         await supabaseAdmin.storage.from('documents').remove([storagePath]);
@@ -108,8 +108,32 @@ async function uploadDocumentServerSide(file: File, userId: string, user: any) {
       } catch (cleanupError) {
         console.warn('Server: Failed to cleanup uploaded file:', cleanupError);
       }
-      
+
       throw new Error(`Database error: ${dbError.message}`);
+    }
+
+    // Extract text from document in background (non-blocking)
+    const documentId = insertResult.insertedId.toString();
+    console.log('Server: Triggering text extraction for document:', documentId);
+
+    // Call backend to process document asynchronously
+    try {
+      fetch(`http://localhost:8000/api/documents/${documentId}/process`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storage_url: publicUrl,
+          file_type: file.type,
+          file_name: file.name
+        })
+      }).catch(err => {
+        console.warn('Server: Background text extraction failed:', err.message);
+        // Don't block upload on extraction failure
+      });
+      console.log('Server: Text extraction triggered in background');
+    } catch (extractError) {
+      console.warn('Server: Failed to trigger text extraction:', extractError);
+      // Don't fail upload if extraction fails
     }
     
     const dbData = {

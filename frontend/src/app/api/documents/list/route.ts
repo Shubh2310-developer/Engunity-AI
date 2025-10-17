@@ -14,8 +14,8 @@ if (!supabaseUrl || !supabaseServiceKey) {
 const supabase = createClient(supabaseUrl, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
 // MongoDB connection
-const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/engunity-ai-dev';
-const dbName = process.env.MONGODB_DB_NAME || 'engunity-ai-dev';
+const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/engunity-ai';
+const dbName = process.env.MONGODB_DB_NAME || 'engunity-ai';
 let cachedMongoClient: MongoClient | null = null;
 
 async function getMongoClient() {
