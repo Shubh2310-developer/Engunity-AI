@@ -118,7 +118,7 @@ async function uploadDocumentServerSide(file: File, userId: string, user: any) {
 
     // Call backend to process document asynchronously
     try {
-      fetch(`http://localhost:8000/api/documents/${documentId}/process`, {
+      fetch(`http://localhost:8003/api/documents/${documentId}/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

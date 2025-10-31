@@ -63,9 +63,9 @@ class RAGConfig:
     EMBEDDING_DIM = 768
 
     # Retrieval Settings
-    TOP_K_CHUNKS = 5
-    SIMILARITY_THRESHOLD = 0.75  # Minimum similarity for document relevance
-    WEB_FALLBACK_THRESHOLD = 0.70  # Trigger web search if below this (reduced from 0.85)
+    TOP_K_CHUNKS = 10  # Increased from 5 to get more relevant chunks
+    SIMILARITY_THRESHOLD = 0.60  # Lowered to allow more document chunks
+    WEB_FALLBACK_THRESHOLD = 0.30  # Disabled web fallback - focus on document only
 
     # Groq LLM
     GROQ_MODEL = "llama-3.3-70b-versatile"
@@ -74,9 +74,9 @@ class RAGConfig:
     TEMPERATURE = 0.5  # Reduced from 0.7 for more factual answers
 
     # Document Processing
-    CHUNK_SIZE = 512
-    CHUNK_OVERLAP = 100  # Increased from 50 for better context continuity
-    MAX_CONTEXT_LENGTH = 8000  # Max chars for context (approx 2000 tokens)
+    CHUNK_SIZE = 800  # Increased from 512 for better context per chunk
+    CHUNK_OVERLAP = 200  # Increased overlap for continuity
+    MAX_CONTEXT_LENGTH = 12000  # Increased from 8000 for more context (approx 3000 tokens)
 
     # ChromaDB
     CHROMA_PERSIST_DIR = "./data/chroma_db"
@@ -351,14 +351,21 @@ Question: {query}
 
 Provide a comprehensive answer that synthesizes both sources. Be clear about what comes from the document vs. web search."""
         else:
-            user_prompt = f"""You are answering based on the provided document content.
+            user_prompt = f"""You are a document analysis assistant. Your job is to answer questions STRICTLY based on the provided document content.
 
 Document Context:
 {context}
 
 Question: {query}
 
-IMPORTANT: Only answer based on the information in the context above. If the answer is not in the context, clearly state: "The provided document does not contain information about [topic]. However, based on general knowledge..." and then provide a helpful general answer."""
+CRITICAL INSTRUCTIONS:
+1. Answer ONLY using information from the document context above
+2. Quote specific sections when possible
+3. If the information is present, provide a detailed answer with relevant details from the document
+4. DO NOT use external knowledge or general information
+5. If the answer is NOT in the context, respond: "This specific information is not available in the provided document sections."
+6. Be specific and cite which part of the document you're referencing
+7. Focus on the user's exact question - don't provide generic overviews"""
 
         try:
             response = self.client.chat.completions.create(
@@ -513,18 +520,28 @@ class HybridRAGPipeline:
         source_type = "document"
 
         # Build context with token limit enforcement
-        # Limit to top 3 chunks and enforce MAX_CONTEXT_LENGTH
+        # Use top 5-7 chunks instead of just 3 for better coverage
+        # Filter by similarity threshold to ensure quality
         selected_chunks = []
         total_length = 0
-        for chunk in retrieval_result.chunks[:3]:
+        min_similarity = self.config.SIMILARITY_THRESHOLD
+
+        for i, chunk in enumerate(retrieval_result.chunks[:10]):  # Consider more chunks
+            # Skip chunks with very low similarity
+            if i < len(retrieval_result.scores) and retrieval_result.scores[i] < min_similarity:
+                logger.info(f"⏭️  Skipping chunk {i} with low similarity: {retrieval_result.scores[i]:.3f}")
+                continue
+
             if total_length + len(chunk) > self.config.MAX_CONTEXT_LENGTH:
                 # Truncate the chunk to fit
                 remaining_space = self.config.MAX_CONTEXT_LENGTH - total_length
-                if remaining_space > 100:  # Only add if meaningful space left
+                if remaining_space > 200:  # Only add if meaningful space left
                     selected_chunks.append(chunk[:remaining_space] + "...")
                 break
             selected_chunks.append(chunk)
             total_length += len(chunk)
+
+        logger.info(f"✅ Selected {len(selected_chunks)} chunks with total length {total_length} chars")
 
         context = "\n\n".join(selected_chunks)
         logger.info(f"📝 Context length: {len(context)} chars from {len(selected_chunks)} chunks")

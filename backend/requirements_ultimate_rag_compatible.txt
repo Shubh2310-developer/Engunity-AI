@@ -1,0 +1,51 @@
+# Ultimate RAG System - Compatible Dependencies for Python 3.10
+# This file adds RAG dependencies while maintaining Supabase compatibility
+
+# ============================================================================
+# CORE RAG DEPENDENCIES (New)
+# ============================================================================
+
+# Sentence Transformers & BGE Embeddings
+sentence-transformers>=2.7.0
+
+# Cross-Encoder for Re-ranking
+# Already included via sentence-transformers
+
+# LangChain (for document processing utilities)
+langchain>=0.1.20
+langchain-community>=0.0.38
+langchain-text-splitters>=0.0.1
+
+# Redis for caching
+redis>=5.0.0
+
+# ============================================================================
+# ALREADY SATISFIED BY EXISTING requirements.txt
+# ============================================================================
+
+# torch>=2.0.0 ✓ (already in requirements.txt line 19)
+# transformers>=4.30.0 ✓ (already in requirements.txt line 23)
+# faiss-cpu>=1.8.0 ✓ (already in requirements.txt line 5 - faiss-cpu==1.11.0.post1)
+# groq>=0.8.0 ✓ (already in requirements.txt line 94 - groq==0.11.0)
+# PyPDF2>=3.0.1 ✓ (already in requirements.txt line 103 - PyPDF2==3.0.1)
+# fastapi>=0.110.0 ✓ (already in requirements.txt line 44 - fastapi==0.104.1)
+# uvicorn[standard]>=0.27.0 ✓ (already in requirements.txt line 46 - uvicorn==0.24.0)
+# pydantic>=2.6.0 ✓ (already in requirements.txt line 135 - pydantic==2.11.7)
+# httpx (compatible version 0.24.1 already in requirements.txt line 62)
+
+# ============================================================================
+# NOTES
+# ============================================================================
+#
+# The existing requirements.txt already has most dependencies.
+# Only install this file to add:
+# - sentence-transformers (for BGE embeddings)
+# - langchain (for document processing)
+# - redis (for caching)
+#
+# Installation:
+#   pip install -r requirements.txt  # Install base dependencies first
+#   pip install -r requirements_ultimate_rag_compatible.txt  # Then add RAG deps
+#
+# Or install all at once:
+#   pip install -r requirements.txt -r requirements_ultimate_rag_compatible.txt

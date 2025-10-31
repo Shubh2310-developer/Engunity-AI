@@ -42,6 +42,10 @@ kill_port 8002 "Hybrid RAG v3"
 kill_port 8003 "Citation Classifier"
 kill_port 4001 "Code Executor"
 
+# Kill any remaining frontend processes
+pkill -f "next-server" 2>/dev/null || true
+pkill -f "next dev" 2>/dev/null || true
+
 # Kill any remaining backend processes
 pkill -f "run_server.py" 2>/dev/null || true
 pkill -f "enhanced_fake_rag_server.py" 2>/dev/null || true

@@ -25,6 +25,7 @@ from app.api.v1.documents import router as documents_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.analysis import router as analysis_router
 from app.api.rag.analyze import router as rag_router
+from app.api.v1.ultimate_rag import router as ultimate_rag_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -115,6 +116,7 @@ app.include_router(documents_router, prefix="/api/v1", tags=["documents"])
 app.include_router(auth_router, prefix="/api/v1", tags=["auth"])
 app.include_router(analysis_router, prefix="/api", tags=["analysis"])
 app.include_router(rag_router, tags=["rag"])
+app.include_router(ultimate_rag_router, prefix="/api/v1", tags=["ultimate-rag"])
 
 # Error handlers
 @app.exception_handler(HTTPException)

@@ -1,12 +1,12 @@
 /**
  * Supabase Client Configuration for Engunity AI
  * Authentication, Database, and Storage Client Setup
- * 
+ *
  * Stack: Next.js 14 + Supabase + TypeScript
  * File: frontend/src/lib/auth/supabase.ts
  */
 
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { type SupabaseClient } from '@supabase/supabase-js';
 import { createBrowserClient, createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import type { Database } from '@/types/database';
@@ -94,54 +94,19 @@ export interface SupabaseClientOptions {
  * The anonymous key has limited permissions defined by your RLS policies.
  * Never expose the service role key to the client-side.
  */
-export const supabase: TypedSupabaseClient = createClient<Database>(
+export const supabase: TypedSupabaseClient = createBrowserClient<Database>(
   supabaseUrl,
-  supabaseAnonKey,
-  {
-    auth: {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true,
-      // Use default cookie-based storage for better SSR compatibility
-      flowType: 'pkce',
-    },
-    db: {
-      schema: 'public'
-    },
-    global: {
-      headers: {
-        'X-Client-Info': 'engunity-ai-web'
-      }
-    }
-  }
+  supabaseAnonKey
 );
 
 /**
  * Server-side Supabase client with enhanced permissions
- * 
+ *
  * ⚠️ SERVER-SIDE ONLY: This client uses the service role key and should
  * NEVER be used on the client-side or exposed to the browser.
  */
 export const supabaseAdmin: TypedSupabaseClient | null = supabaseServiceKey
-  ? createClient<Database>(
-      supabaseUrl,
-      supabaseServiceKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-          detectSessionInUrl: false,
-        },
-        db: {
-          schema: 'public'
-        },
-        global: {
-          headers: {
-            'X-Client-Info': 'engunity-ai-server-admin'
-          }
-        }
-      }
-    )
+  ? createBrowserClient<Database>(supabaseUrl, supabaseServiceKey)
   : null;
 
 // ========================================
@@ -164,29 +129,10 @@ export const supabaseAdmin: TypedSupabaseClient | null = supabaseServiceKey
  * const { data: user } = await supabase.auth.getUser();
  */
 export function getSupabaseClient(options?: SupabaseClientOptions): TypedSupabaseClient {
+  // createBrowserClient automatically handles PKCE flow with proper cookie storage
   return createBrowserClient<Database>(
     supabaseUrl,
-    supabaseAnonKey,
-    {
-      auth: {
-        autoRefreshToken: true,
-        persistSession: true,
-        detectSessionInUrl: true,
-        flowType: 'pkce',
-        ...options?.auth
-      },
-      db: {
-        schema: 'public',
-        ...options?.db
-      },
-      global: {
-        headers: {
-          'X-Client-Info': 'engunity-ai-client',
-          ...options?.global?.headers
-        },
-        ...options?.global
-      }
-    }
+    supabaseAnonKey
   );
 }
 

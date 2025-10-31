@@ -1,0 +1,150 @@
+version: '3.8'
+
+services:
+  # Frontend - Next.js
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
+    container_name: engunity-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+      - NEXT_PUBLIC_CODE_EXECUTOR_URL=http://code-executor:4001
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - engunity-network
+
+  # Main Backend - FastAPI
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: engunity-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - MONGODB_URI=mongodb://mongodb:27017/engunity-ai-dev
+      - GROQ_API_KEY=${GROQ_API_KEY}
+    depends_on:
+      - mongodb
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - engunity-network
+
+  # Code Executor Service
+  code-executor:
+    build:
+      context: ./code-executor
+      dockerfile: Dockerfile
+    container_name: engunity-code-executor
+    restart: unless-stopped
+    ports:
+      - "4001:4001"
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/engunity-ai-dev
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - engunity-network
+
+  # MongoDB
+  mongodb:
+    image: mongo:7.0
+    container_name: engunity-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=engunity-ai-dev
+    volumes:
+      - mongodb-data:/data/db
+      - mongodb-config:/data/configdb
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+    command: mongod --wiredTigerCacheSizeGB 0.5
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - engunity-network
+
+  # Redis (for caching - optional but recommended)
+  redis:
+    image: redis:7-alpine
+    container_name: engunity-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+    command: redis-server --maxmemory 100mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - engunity-network
+
+volumes:
+  mongodb-data:
+    driver: local
+  mongodb-config:
+    driver: local
+
+networks:
+  engunity-network:
+    driver: bridge

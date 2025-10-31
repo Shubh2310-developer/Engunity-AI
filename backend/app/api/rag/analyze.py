@@ -279,9 +279,9 @@ async def question_answer(request: QuestionAnswerRequest):
         logger.info(f"Sending to Enhanced RAG - doc_text length: {len(document_text) if document_text else 0}")
         async with httpx.AsyncClient(timeout=60.0) as client:
             try:
-                # Try Enhanced RAG server
+                # Try Ultimate RAG v4.0 server
                 rag_response = await client.post(
-                    "http://localhost:8002/query",
+                    "http://localhost:8003/query",
                     json={
                         "query": request.question,
                         "document_text": document_text,

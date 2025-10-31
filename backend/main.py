@@ -3178,9 +3178,9 @@ async def rag_question_answer(request: dict):
         # Send to Enhanced RAG server (port 8002) with document content
         async with httpx.AsyncClient(timeout=60.0) as client:
             try:
-                # Try Enhanced RAG server first
+                # Try Ultimate RAG v4.0 server
                 rag_response = await client.post(
-                    "http://localhost:8002/query",
+                    "http://localhost:8003/query",
                     json={
                         "query": question,
                         "document_text": document_text,

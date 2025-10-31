@@ -4,6 +4,7 @@
   "description": "AI-powered SaaS platform for research, code generation & data analysis",
   "private": true,
   "scripts": {
+    "predev": "./cleanup-port.sh",
     "dev": "NODE_OPTIONS='--max-old-space-size=512' next dev -p 3000",
     "dev:frontend-only": "NODE_OPTIONS='--max-old-space-size=512' next dev -p 3000",
     "build": "NODE_OPTIONS='--max-old-space-size=1024' next build",

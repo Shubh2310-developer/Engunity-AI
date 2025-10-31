@@ -1,0 +1,39 @@
+# Ultimate RAG v4.0 - Advanced Dependencies
+# All state-of-the-art techniques
+
+# Core dependencies (keep compatible)
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+python-dotenv
+
+# Advanced Text Processing
+PyPDF2>=3.0.1
+requests>=2.31.0
+
+# Embeddings & Vector Search
+sentence-transformers>=2.7.0  # Includes both embedder and cross-encoder
+transformers>=4.40.0
+torch>=2.1.0
+
+# Vector Store
+chromadb>=0.4.18
+
+# BM25 for Hybrid Retrieval
+rank-bm25>=0.2.2
+
+# Semantic Chunking
+langchain-text-splitters>=0.0.1
+langchain-core>=0.1.0
+
+# LLM Integration
+groq>=0.8.0
+
+# Gemini Web Search
+google-generativeai>=0.3.0
+
+# Utilities
+numpy>=1.24.0
+
+# Optional: for better performance
+# faiss-gpu  # If you have CUDA

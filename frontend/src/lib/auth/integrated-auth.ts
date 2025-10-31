@@ -3,22 +3,17 @@
  * Combines Supabase Auth with Firebase Firestore user management
  */
 
-import { createClient, SupabaseClient, User as SupabaseUser, Session } from '@supabase/supabase-js';
+import { SupabaseClient, User as SupabaseUser, Session } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
 import { User, UserService } from '../firebase/firestore';
 import { Timestamp } from 'firebase/firestore';
 
-// Initialize Supabase client
+// Initialize Supabase client using createBrowserClient for proper PKCE support
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
-    flowType: 'pkce'
-  }
-});
+// Use createBrowserClient which automatically handles PKCE with cookies
+export const supabase: SupabaseClient = createBrowserClient(supabaseUrl, supabaseAnonKey);
 
 // ================================
 // TYPE DEFINITIONS

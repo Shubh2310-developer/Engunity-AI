@@ -115,62 +115,82 @@ export default function DashboardPage() {
   
   // Check authentication on mount with persistent session support
   useEffect(() => {
+    let mounted = true;
+
     const checkAuth = async () => {
       try {
+        console.log('🔍 Checking authentication...');
+
         // First check if we have a stored login time and it's within 30 days
         const loginTime = localStorage.getItem('engunity-login-time');
         if (loginTime) {
           const daysSinceLogin = (Date.now() - parseInt(loginTime)) / (1000 * 60 * 60 * 24);
           console.log(`Days since last login: ${daysSinceLogin.toFixed(1)}`);
-          
+
           if (daysSinceLogin > 30) {
             // More than 30 days, clear everything and require re-login
+            console.log('⏰ Session expired (>30 days)');
             localStorage.removeItem('engunity-auth-token');
             localStorage.removeItem('engunity-login-time');
             await supabase.auth.signOut();
-            setIsAuthenticated(false);
-            setDashboardLoading(false);
+            if (mounted) {
+              setIsAuthenticated(false);
+              setDashboardLoading(false);
+              // Redirect to login
+              window.location.href = '/auth/login?error=Session expired. Please sign in again.';
+            }
             return;
           }
         }
 
         // Get current session
         const { data: { session }, error } = await supabase.auth.getSession();
-        
+
         if (error) {
-          console.error('Auth error:', error);
-          setIsAuthenticated(false);
-          setDashboardLoading(false);
+          console.error('❌ Auth error:', error);
+          if (mounted) {
+            setIsAuthenticated(false);
+            setDashboardLoading(false);
+          }
           return;
         }
 
         if (session?.user) {
-          console.log('✅ Valid session found, user authenticated');
-          setIsAuthenticated(true);
-          setUser({
-            name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-            email: session.user.email,
-            avatar: session.user.user_metadata?.avatar_url,
-            plan: 'Pro',
-            initials: (session.user.user_metadata?.full_name || session.user.email || 'U').split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2),
-            role: 'Developer',
-            lastActive: 'Just now',
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-          });
-          
-          // Ensure login time is tracked
-          if (!loginTime) {
-            localStorage.setItem('engunity-login-time', Date.now().toString());
+          console.log('✅ Valid session found, user authenticated:', session.user.email);
+          if (mounted) {
+            setIsAuthenticated(true);
+            setUser({
+              name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
+              email: session.user.email,
+              avatar: session.user.user_metadata?.avatar_url,
+              plan: 'Pro',
+              initials: (session.user.user_metadata?.full_name || session.user.email || 'U').split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2),
+              role: 'Developer',
+              lastActive: 'Just now',
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+            });
+
+            // Ensure login time is tracked
+            if (!loginTime) {
+              localStorage.setItem('engunity-login-time', Date.now().toString());
+            }
           }
         } else {
-          console.log('❌ No valid session found');
-          setIsAuthenticated(false);
+          console.log('❌ No valid session found - user needs to sign in');
+          if (mounted) {
+            setIsAuthenticated(false);
+          }
         }
       } catch (error) {
-        console.error('Authentication check failed:', error);
-        setIsAuthenticated(false);
+        console.error('❌ Authentication check failed:', error);
+        if (mounted) {
+          setIsAuthenticated(false);
+        }
       } finally {
-        setDashboardLoading(false);
+        if (mounted) {
+          console.log('✅ Auth check complete, setting loading to false');
+          setDashboardLoading(false);
+        }
       }
     };
 
@@ -178,8 +198,10 @@ export default function DashboardPage() {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+
       console.log('🔄 Auth state changed:', event, session?.user?.email);
-      
+
       if (event === 'SIGNED_IN' && session?.user) {
         console.log('✅ User signed in');
         setIsAuthenticated(true);
@@ -193,7 +215,7 @@ export default function DashboardPage() {
           lastActive: 'Just now',
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
         });
-        
+
         // Track login time for 30-day persistence
         localStorage.setItem('engunity-login-time', Date.now().toString());
       } else if (event === 'SIGNED_OUT') {
@@ -209,7 +231,10 @@ export default function DashboardPage() {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
   
   useEffect(() => {
