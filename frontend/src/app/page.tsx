@@ -422,13 +422,8 @@ const Navigation = () => {
   };
 
   const handleGetStarted = () => {
-    if (user) {
-      // If user is logged in, go to dashboard
-      router.push('/dashboard');
-    } else {
-      // If not logged in, go to register
-      router.push('/auth/register');
-    }
+    // Always go directly to dashboard (no auth required)
+    router.push('/dashboard');
   };
 
   const handleSignOut = async () => {
@@ -723,13 +718,8 @@ const LandingPageContent = () => {
   }, []);
 
   const handleStartFreeTrial = () => {
-    if (user) {
-      // If user is logged in, go to dashboard
-      router.push('/dashboard');
-    } else {
-      // If not logged in, go to register
-      router.push('/auth/register');
-    }
+    // Always go directly to dashboard (no auth required)
+    router.push('/dashboard');
   };
 
   const handleWatchDemo = () => {

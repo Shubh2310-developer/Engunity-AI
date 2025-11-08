@@ -1,8 +1,18 @@
+/**
+ * Logout API Route - MongoDB Authentication
+ * Location: frontend/src/app/api/auth/logout/route.ts
+ *
+ * Purpose: Handle user logout by clearing session cookie
+ */
+
 import { NextResponse } from 'next/server';
+import { clearSessionCookie } from '@/lib/auth/mongodb-session';
 
 export async function POST() {
   try {
-    // In production, this would invalidate the user's token/session
+    // Clear the session cookie
+    await clearSessionCookie();
+
     return NextResponse.json({
       success: true,
       message: 'Logged out successfully'

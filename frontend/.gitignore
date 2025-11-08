@@ -162,3 +162,4 @@ storybook-static/
 # yarn.lock
 # pnpm-lock.yaml.env.local
 .env.example
+public/uploads/

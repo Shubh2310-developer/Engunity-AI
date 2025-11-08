@@ -1,64 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { getDatabase } from '@/lib/database/mongodb';
 import { ObjectId } from 'mongodb';
+import { getServerUser } from '@/lib/auth/server-session';
+import { writeFile, mkdir } from 'fs/promises';
+import { join } from 'path';
+import { existsSync } from 'fs';
 
-// Initialize Supabase client for server-side operations
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// MongoDB-only implementation - NO SUPABASE
+// Files are stored in local filesystem and referenced in MongoDB
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase environment variables');
-}
-
-// Create Supabase client with service role key for server-side operations
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  }
-});
-
-// Create regular Supabase client for user authentication
-const supabase = createClient(supabaseUrl, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
-
-// Server-side document upload function
+// Server-side document upload function (MongoDB + Local Filesystem)
 async function uploadDocumentServerSide(file: File, userId: string, user: any) {
   try {
-    console.log('Server: Starting Supabase upload for:', file.name, 'User:', userId);
-    
+    console.log('Server: Starting MongoDB upload for:', file.name, 'User:', userId);
+
     // Generate unique filename
     const timestamp = Date.now();
     const randomId = Math.random().toString(36).substring(2, 8);
     const fileExtension = file.name.split('.').pop();
     const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
     const uniqueFilename = `${timestamp}_${randomId}_${baseName}.${fileExtension}`;
-    const storagePath = `documents/${userId}/${uniqueFilename}`;
-    
-    console.log('Server: Uploading to Supabase Storage path:', storagePath);
-    
-    // Upload file to Supabase Storage using admin client
-    const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
-      .from('documents')
-      .upload(storagePath, file, {
-        cacheControl: '3600',
-        upsert: false
-      });
-    
-    if (uploadError) {
-      console.error('Server: Supabase Storage upload error:', uploadError);
-      throw new Error(`Upload failed: ${uploadError.message}`);
+
+    // Define upload directory (public/uploads/documents)
+    const uploadDir = join(process.cwd(), 'public', 'uploads', 'documents', userId);
+    const filePath = join(uploadDir, uniqueFilename);
+    const storagePath = `uploads/documents/${userId}/${uniqueFilename}`;
+    const publicUrl = `http://localhost:3000/${storagePath}`;
+
+    console.log('Server: Uploading to local filesystem:', filePath);
+
+    // Create directory if it doesn't exist
+    if (!existsSync(uploadDir)) {
+      await mkdir(uploadDir, { recursive: true });
+      console.log('Server: Created upload directory:', uploadDir);
     }
-    
-    console.log('Server: Supabase Storage upload successful:', uploadData.path);
-    
-    // Get public URL for the uploaded file
-    const { data: urlData } = supabaseAdmin.storage
-      .from('documents')
-      .getPublicUrl(storagePath);
-    
-    const publicUrl = urlData.publicUrl;
-    console.log('Server: Document public URL:', publicUrl);
+
+    // Convert file to buffer and save to filesystem
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    try {
+      await writeFile(filePath, buffer);
+      console.log('Server: File saved successfully to:', filePath);
+    } catch (fsError: any) {
+      console.error('Server: Filesystem write error:', fsError);
+      throw new Error(`File write failed: ${fsError.message}`);
+    }
     
     // Create document record in MongoDB Atlas
     const documentData = {
@@ -101,10 +88,13 @@ async function uploadDocumentServerSide(file: File, userId: string, user: any) {
     } catch (dbError: any) {
       console.error('Server: MongoDB insert error:', dbError);
 
-      // Try to clean up uploaded file
+      // Try to clean up uploaded file from filesystem
       try {
-        await supabaseAdmin.storage.from('documents').remove([storagePath]);
-        console.log('Server: Cleaned up uploaded file after database error');
+        const fs = require('fs');
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log('Server: Cleaned up uploaded file after database error');
+        }
       } catch (cleanupError) {
         console.warn('Server: Failed to cleanup uploaded file:', cleanupError);
       }
@@ -118,7 +108,7 @@ async function uploadDocumentServerSide(file: File, userId: string, user: any) {
 
     // Call backend to process document asynchronously
     try {
-      fetch(`http://localhost:8003/api/documents/${documentId}/process`, {
+      fetch(`http://localhost:8000/api/documents/${documentId}/process`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -136,34 +126,22 @@ async function uploadDocumentServerSide(file: File, userId: string, user: any) {
       // Don't fail upload if extraction fails
     }
     
-    const dbData = {
+    console.log('Server: Document record created successfully in MongoDB:', insertResult.insertedId);
+
+    // Return document data in expected format
+    return {
       id: insertResult.insertedId.toString(),
-      user_id: documentData.user_id,
-      name: documentData.file_name,
+      user_id: userId,
+      name: file.name,
       type: getDocumentType(file.type),
       size: formatFileSize(file.size),
       category: 'general',
       status: 'uploaded' as const,
       uploaded_at: documentData.created_at,
       processed_at: null,
-      storage_url: publicUrl
-    };
-    
-    console.log('Server: Document record created successfully:', dbData.id);
-    
-    return {
-      id: dbData.id,
-      userId: dbData.user_id,
-      name: dbData.name,
-      type: dbData.type,
-      size: dbData.size,
-      category: dbData.category,
-      status: dbData.status,
-      uploadedAt: { seconds: Math.floor(new Date(dbData.uploaded_at).getTime() / 1000) },
-      processedAt: { seconds: Math.floor(new Date(dbData.processed_at).getTime() / 1000) },
-      storageUrl: dbData.storage_url,
-      metadata: dbData.metadata,
-      tags: dbData.tags
+      storage_url: publicUrl,
+      metadata: {},
+      tags: []
     };
     
   } catch (error: any) {
@@ -235,98 +213,68 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Require authenticated user - no anonymous uploads
-    if (!userId) {
-      console.error('API: Missing user ID - authentication required');
-      return NextResponse.json(
-        { error: 'User authentication required for document upload' },
-        { status: 401 }
-      );
-    }
+    // Verify MongoDB authentication
+    console.log('API: Verifying MongoDB authentication...');
 
-    // Get authentication token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    console.log('API: Authorization header check:', {
-      hasAuthHeader: !!authHeader,
-      startsWithBearer: authHeader?.startsWith('Bearer '),
-      authHeaderLength: authHeader?.length,
-      authHeaderPreview: authHeader?.substring(0, 20) + '...'
-    });
-    
-    if (!authHeader?.startsWith('Bearer ')) {
-      console.error('API: Missing or invalid authorization header');
-      console.log('=== API UPLOAD DEBUG END (AUTH HEADER ERROR) ===');
-      return NextResponse.json(
-        { error: 'Authorization header required' },
-        { status: 401 }
-      );
-    }
-
-    const token = authHeader.substring(7);
-    console.log('API: Extracted token:', {
-      tokenLength: token.length,
-      tokenPreview: token.substring(0, 30) + '...'
-    });
-    console.log('API: Attempting to verify Supabase token...');
-
-    // Verify Supabase authentication token
-    let authenticatedUser;
     try {
-      const { data: { user }, error } = await supabase.auth.getUser(token);
-      
-      if (error) {
-        console.error('API: Token verification error:', error);
+      const authenticatedUser = await getServerUser();
+
+      if (!authenticatedUser) {
+        console.error('API: No authenticated user found');
         return NextResponse.json(
-          { error: 'Invalid authentication token' },
+          { error: 'Authentication required. Please sign in.' },
           { status: 401 }
         );
       }
 
-      if (!user) {
-        console.error('API: No user found from token');
+      console.log('API: User authenticated successfully via MongoDB:', authenticatedUser.email);
+
+
+      // Use authenticated user's ID
+      const authUserId = authenticatedUser._id?.toString();
+
+      if (!authUserId) {
+        console.error('API: Invalid user ID');
         return NextResponse.json(
-          { error: 'User not found' },
+          { error: 'Invalid user ID' },
           { status: 401 }
         );
       }
 
-      if (user.id !== userId) {
-        console.error('API: User ID mismatch - token user:', user.id, 'provided user:', userId);
+      // If userId was provided in form, verify it matches authenticated user
+      if (userId && userId !== authUserId) {
+        console.error('API: User ID mismatch - authenticated:', authUserId, 'provided:', userId);
         return NextResponse.json(
           { error: 'User ID mismatch' },
           { status: 403 }
         );
       }
 
-      authenticatedUser = user;
-      console.log('API: User authenticated successfully:', user.id);
+      // Validate file size (50MB limit)
+      const maxSize = 50 * 1024 * 1024; // 50MB
+      if (file.size > maxSize) {
+        console.error('API: File too large:', file.size);
+        return NextResponse.json(
+          { error: 'File size exceeds 50MB limit' },
+          { status: 400 }
+        );
+      }
 
-    } catch (authError) {
-      console.error('API: Authentication verification failed:', authError);
+      console.log('API: Starting authenticated document upload to Supabase');
+      // Upload document directly using Supabase (since we have server-side auth)
+      const document = await uploadDocumentServerSide(file, authUserId, authenticatedUser);
+
+      console.log('API: Upload successful, document ID:', document.id);
+      return NextResponse.json(document);
+
+    } catch (authError: any) {
+      console.error('API: Authentication error:', authError);
+      console.error('API: Error stack:', authError.stack);
       return NextResponse.json(
-        { error: 'Authentication verification failed' },
+        { error: `Authentication failed: ${authError.message}` },
         { status: 401 }
       );
     }
-
-    console.log('API: Using authenticated user ID:', userId);
-
-    // Validate file size (50MB limit)
-    const maxSize = 50 * 1024 * 1024; // 50MB
-    if (file.size > maxSize) {
-      console.error('API: File too large:', file.size);
-      return NextResponse.json(
-        { error: 'File size exceeds 50MB limit' },
-        { status: 400 }
-      );
-    }
-
-    console.log('API: Starting authenticated document upload to Supabase');
-    // Upload document directly using Supabase (since we have server-side auth)
-    const document = await uploadDocumentServerSide(file, userId, authenticatedUser);
-
-    console.log('API: Upload successful, document ID:', document.id);
-    return NextResponse.json(document);
   } catch (error: any) {
     console.error('API: Upload error:', error);
     return NextResponse.json(

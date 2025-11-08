@@ -18,12 +18,6 @@
 .env.bak
 *.env.backup
 
-# ENV_BACKUP folders with sensitive API keys (NEVER commit these!)
-ENV_BACKUP*/
-ENV_BACKUP-*/
-**/ENV_BACKUP/
-ENV_BACKUP-*
-
 # API Keys and secrets
 secrets/
 *.key

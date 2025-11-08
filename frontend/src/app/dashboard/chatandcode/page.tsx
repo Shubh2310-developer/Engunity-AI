@@ -81,17 +81,21 @@ function ChatCodePageContent() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
+        const response = await fetch('/api/auth/session', {
+          credentials: 'include'
+        });
+        const data = await response.json();
+
+        if (data.authenticated && data.user) {
           setIsAuthenticated(true);
           setUser({
-            id: session.user.id,
-            email: session.user.email,
-            name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User'
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.name || data.user.email?.split('@')[0] || 'User'
           });
-          
+
           // Load user's chat sessions
-          await loadUserSessions(session.user.id);
+          await loadUserSessions(data.user.id);
         } else {
           setIsAuthenticated(false);
           window.location.href = '/auth/login';
@@ -99,22 +103,13 @@ function ChatCodePageContent() {
       } catch (error) {
         console.error('Auth error:', error);
         setIsAuthenticated(false);
+        window.location.href = '/auth/login';
       } finally {
         setLoading(false);
       }
     };
 
     checkAuth();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
-        setIsAuthenticated(false);
-        setUser(null);
-        window.location.href = '/auth/login';
-      }
-    });
-
-    return () => subscription.unsubscribe();
   }, []);
 
   // Load user's chat sessions
@@ -565,10 +560,14 @@ function ChatCodePageContent() {
 
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut();
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      });
       window.location.href = '/auth/login';
     } catch (error) {
       console.error('Sign out error:', error);
+      window.location.href = '/auth/login';
     }
   };
 

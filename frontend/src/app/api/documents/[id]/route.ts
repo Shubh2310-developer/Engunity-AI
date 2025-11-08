@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { MongoClient, ObjectId } from 'mongodb';
-
-// Initialize Supabase for auth
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabase = createClient(supabaseUrl, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+import { getServerUser } from '@/lib/auth/server-session';
 
 // MongoDB connection
 const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/engunity-ai';
@@ -38,30 +34,28 @@ export async function GET(
       );
     }
 
-    // Get auth token
-    const authHeader = request.headers.get('authorization');
-    console.log('Auth header present:', !!authHeader);
+    // Verify MongoDB authentication
+    console.log('Verifying MongoDB authentication...');
+    const authenticatedUser = await getServerUser();
 
-    if (!authHeader?.startsWith('Bearer ')) {
-      console.error('No valid auth header');
+    if (!authenticatedUser) {
+      console.error('No authenticated user found');
       return NextResponse.json(
-        { error: 'Authorization required' },
+        { error: 'Authentication required. Please sign in.' },
         { status: 401 }
       );
     }
 
-    const token = authHeader.substring(7);
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    const userId = authenticatedUser._id?.toString();
+    console.log('User authenticated via MongoDB:', authenticatedUser.email, 'ID:', userId);
 
-    if (authError || !user) {
-      console.error('Auth error:', authError);
+    if (!userId) {
+      console.error('Invalid user ID');
       return NextResponse.json(
-        { error: 'Invalid authentication' },
+        { error: 'Invalid user ID' },
         { status: 401 }
       );
     }
-
-    console.log('User authenticated:', user.id);
 
     // Fetch from MongoDB
     const mongoClient = await getMongoClient();
@@ -79,11 +73,11 @@ export async function GET(
       );
     }
 
-    console.log('Querying MongoDB for:', { _id: documentObjectId, user_id: user.id });
+    console.log('Querying MongoDB for:', { _id: documentObjectId, user_id: userId });
 
     const document = await documentsCollection.findOne({
       _id: documentObjectId,
-      user_id: user.id
+      user_id: userId
     });
 
     console.log('Document found:', !!document);

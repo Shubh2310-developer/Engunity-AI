@@ -50,7 +50,7 @@ export async function getAuthFlowRedirect(
         // New OAuth user - show verification page for welcome experience
         return {
           shouldRedirect: true,
-          redirectPath: `/verify-email?email=${encodeURIComponent(user.email || '')}&oauth=true`,
+          redirectPath: `/auth/verify-email?email=${encodeURIComponent(user.email || '')}&oauth=true`,
           reason: 'new_user_needs_verification',
           message: 'Welcome! Setting up your account...'
         };
@@ -70,7 +70,7 @@ export async function getAuthFlowRedirect(
       // Unverified email user
       return {
         shouldRedirect: true,
-        redirectPath: `/verify-email?email=${encodeURIComponent(user.email || '')}`,
+        redirectPath: `/auth/verify-email?email=${encodeURIComponent(user.email || '')}`,
         reason: 'unverified_existing_user',
         message: 'Please verify your email to continue'
       };
@@ -80,7 +80,7 @@ export async function getAuthFlowRedirect(
       // New user with verified email - show verification page for welcome
       return {
         shouldRedirect: true,
-        redirectPath: `/verify-email?email=${encodeURIComponent(user.email || '')}&verified=true`,
+        redirectPath: `/auth/verify-email?email=${encodeURIComponent(user.email || '')}&verified=true`,
         reason: 'new_user_needs_verification',
         message: 'Account created successfully!'
       };
@@ -98,7 +98,7 @@ export async function getAuthFlowRedirect(
     console.error('Error in auth flow logic:', error);
     return {
       shouldRedirect: true,
-      redirectPath: '/login?error=Authentication flow error',
+      redirectPath: '/auth/login?error=Authentication flow error',
       reason: 'error',
       message: 'Something went wrong. Please try again.'
     };

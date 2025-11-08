@@ -1,14 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/auth/supabase';
 
 /**
- * Auth Callback Page
+ * Auth Callback Page Content
  * Handles OAuth redirects using client-side session handling
  */
-export default function AuthCallbackPage() {
+function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const hasProcessed = useRef(false);
@@ -110,5 +110,28 @@ export default function AuthCallbackPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Auth Callback Page with Suspense Boundary
+ */
+export default function AuthCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto" />
+            <div className="space-y-2">
+              <p className="text-slate-600 text-lg">Initializing authentication...</p>
+              <p className="text-slate-500 text-sm">Please wait a moment.</p>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <AuthCallbackContent />
+    </Suspense>
   );
 }

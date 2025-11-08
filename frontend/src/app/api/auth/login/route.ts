@@ -1,9 +1,22 @@
+/**
+ * Login API Route - MongoDB Authentication
+ * Location: frontend/src/app/api/auth/login/route.ts
+ *
+ * Purpose: Handle user login with MongoDB
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
+import { authenticateUser } from '@/lib/auth/auth-helpers';
+import { setSessionCookie } from '@/lib/auth/mongodb-session';
+import { userToSession } from '@/lib/database/models/User';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password } = await request.json();
+    // Parse request body
+    const body = await request.json();
+    const { email, password } = body;
 
+    // Validate input
     if (!email || !password) {
       return NextResponse.json(
         { error: 'Email and password are required' },
@@ -11,28 +24,46 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // In production, this would authenticate with your auth service
-    // For now, return a mock successful login
-    const mockUser = {
-      id: 'user_123',
-      email,
-      name: email.split('@')[0],
-      role: 'user'
-    };
+    // Authenticate user with MongoDB
+    const user = await authenticateUser(email, password);
 
-    const mockToken = 'mock_jwt_token_' + Date.now();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Invalid email or password' },
+        { status: 401 }
+      );
+    }
 
+    // Create session
+    const session = userToSession(user);
+    await setSessionCookie(session);
+
+    // Return user data (without password)
     return NextResponse.json({
       success: true,
-      user: mockUser,
-      token: mockToken,
-      expiresIn: 3600 // 1 hour
+      user: {
+        id: user._id?.toString(),
+        email: user.email,
+        name: user.name,
+        emailVerified: user.emailVerified,
+        role: user.role,
+        isActive: user.isActive
+      }
     });
 
   } catch (error: any) {
     console.error('Login error:', error);
+
+    // Handle specific errors
+    if (error.message === 'Account is disabled') {
+      return NextResponse.json(
+        { error: 'Your account has been disabled. Please contact support.' },
+        { status: 403 }
+      );
+    }
+
     return NextResponse.json(
-      { error: 'Login failed' },
+      { error: 'An error occurred during login' },
       { status: 500 }
     );
   }

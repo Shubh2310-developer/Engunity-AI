@@ -1,21 +1,21 @@
 /**
  * Login Page for Engunity AI
  * Location: frontend/src/app/(auth)/login/page.tsx
- * 
+ *
  * Purpose: Authentication page using the comprehensive LoginForm component
  * Features: Email/password login with validation, error handling, and verification
  */
 
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import LoginForm from '@/components/auth/LoginForm';
+import MongoDBLoginForm from '@/components/auth/MongoDBLoginForm';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 
-export default function LoginPage(): React.JSX.Element {
+function LoginContent(): React.JSX.Element {
   const searchParams = useSearchParams();
   const [urlError, setUrlError] = useState<string | null>(null);
 
@@ -54,23 +54,16 @@ export default function LoginPage(): React.JSX.Element {
           </p>
         </div>
 
-        {/* Login Form Component */}
-        <LoginForm
+        {/* MongoDB Login Form Component */}
+        <MongoDBLoginForm
           redirectTo="/dashboard"
           title="Welcome back"
           description="Sign in to access your AI workspace"
-          requireEmailVerification={true}
-          showRegisterLink={true}
-          showForgotPasswordLink={true}
           onSuccess={(user) => {
             console.log('User successfully logged in:', user.email);
-            // Optional: Add analytics tracking here
-            // analytics.track('user_login', { userId: user.id, email: user.email });
           }}
           onError={(error) => {
             console.error('Login error:', error);
-            // Optional: Add error tracking here
-            // analytics.track('login_error', { error });
           }}
         />
 
@@ -100,5 +93,22 @@ export default function LoginPage(): React.JSX.Element {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage(): React.JSX.Element {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            <p className="text-sm text-gray-600 dark:text-gray-400">Loading login page...</p>
+          </div>
+        </div>
+      }
+    >
+      <LoginContent />
+    </Suspense>
   );
 }

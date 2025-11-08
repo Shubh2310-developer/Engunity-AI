@@ -1,5 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from typing import Dict, List, Optional, Any, Union
 import pandas as pd
@@ -19,9 +20,27 @@ import shutil
 from pathlib import Path
 import traceback
 
+# OPTIMIZATION: Thread limiting for memory efficiency
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+
+# Set torch threads if torch is used
+try:
+    import torch
+    threads = int(os.getenv("TORCH_NUM_THREADS", "1"))
+    torch.set_num_threads(threads)
+    torch.set_num_interop_threads(threads)
+except ImportError:
+    pass
+
 load_dotenv()
 
 app = FastAPI(title="Engunity AI Data Analysis API", version="1.0.0")
+
+# OPTIMIZATION: Add GZip compression middleware (responses >1KB)
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 # Add CORS middleware
 app.add_middleware(
@@ -35,15 +54,29 @@ app.add_middleware(
 # Database connections
 supabase_url = os.getenv("SUPABASE_URL")
 supabase_key = os.getenv("SUPABASE_KEY")
-mongo_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/engunity-ai")
 
-# MongoDB setup
+# OPTIMIZATION: MongoDB with connection pooling, compression, and timeouts
+mongo_base_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/engunity-ai")
+
+# Add optimized connection parameters if not already in URI
+if "?" not in mongo_base_uri:
+    mongo_uri = f"{mongo_base_uri}?maxPoolSize=50&minPoolSize=5&serverSelectionTimeoutMS=5000&connectTimeoutMS=3000&socketTimeoutMS=10000&compressors=zstd,snappy&retryWrites=true&w=majority"
+else:
+    mongo_uri = mongo_base_uri
+
+# MongoDB setup with optimized client options
 try:
-    mongo_client = MongoClient(mongo_uri)
+    mongo_client = MongoClient(
+        mongo_uri,
+        appname="engunity-backend",
+        serverSelectionTimeoutMS=5000,
+        connectTimeoutMS=3000,
+        socketTimeoutMS=10000
+    )
     db = mongo_client["engunity-ai"]
     # Test connection
     mongo_client.admin.command('ping')
-    print("✅ MongoDB connected successfully")
+    print("✅ MongoDB connected successfully (optimized connection pool)")
 except Exception as e:
     print(f"❌ MongoDB connection failed: {e}")
     db = None
@@ -52,10 +85,21 @@ except Exception as e:
 groq_client = None
 if os.getenv("GROQ_API_KEY"):
     try:
-        groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        # Initialize Groq client with explicit parameters to avoid conflicts
+        groq_client = Groq(
+            api_key=os.getenv("GROQ_API_KEY")
+        )
         print("✅ Groq client initialized")
+        # Test the client with a simple request
+        test_response = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": "test"}],
+            model="llama-3.3-70b-versatile",
+            max_tokens=5
+        )
+        print("✅ Groq API connection verified")
     except Exception as e:
         print(f"❌ Groq client initialization failed: {e}")
+        groq_client = None
 
 # In-memory storage for datasets (with DuckDB backend)
 datasets = {}
@@ -3178,9 +3222,9 @@ async def rag_question_answer(request: dict):
         # Send to Enhanced RAG server (port 8002) with document content
         async with httpx.AsyncClient(timeout=60.0) as client:
             try:
-                # Try Ultimate RAG v4.0 server
+                # Try Enhanced RAG server first
                 rag_response = await client.post(
-                    "http://localhost:8003/query",
+                    "http://localhost:8002/query",
                     json={
                         "query": question,
                         "document_text": document_text,

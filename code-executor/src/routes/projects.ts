@@ -154,7 +154,7 @@ router.post('/:id/files', authenticate, async (req: AuthRequest, res: Response) 
     }
 
     // Check if file exists
-    const fileIndex = project.files.findIndex((f: any) => f.path === path);
+    const fileIndex = project.files.findIndex((f) => f.path === path);
 
     if (fileIndex >= 0) {
       // Update existing file
@@ -164,6 +164,7 @@ router.post('/:id/files', authenticate, async (req: AuthRequest, res: Response) 
     } else {
       // Add new file
       project.files.push({
+        name: path.split('/').pop() || path,
         path,
         content,
         language: language || project.language,

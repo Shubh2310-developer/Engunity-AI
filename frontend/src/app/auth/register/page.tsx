@@ -15,7 +15,7 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 
 // Auth Components
-import RegisterForm from '@/components/auth/RegisterForm';
+import MongoDBRegisterForm from '@/components/auth/MongoDBRegisterForm';
 
 // ================================
 // 🎨 Register Page Component
@@ -48,22 +48,16 @@ export default function RegisterPage(): React.JSX.Element {
           </p>
         </div>
 
-        {/* Registration Form Component */}
-        <RegisterForm
+        {/* MongoDB Registration Form Component */}
+        <MongoDBRegisterForm
           redirectTo="/dashboard"
           title="Create your account"
           description="Get started in less than 2 minutes"
-          showOAuth={true}
-          requireEmailVerification={true}
           onSuccess={(user) => {
             console.log('User successfully registered:', user.email);
-            // Optional: Add analytics tracking here
-            // analytics.track('user_registration', { userId: user.id, email: user.email });
           }}
           onError={(error) => {
             console.error('Registration error:', error);
-            // Optional: Add error tracking here
-            // analytics.track('registration_error', { error });
           }}
         />
 

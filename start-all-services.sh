@@ -1,11 +1,16 @@
 #!/bin/bash
 
-# Get the script directory
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR"
+cd "$(dirname "$0")"
 
 echo "🚀 Starting All Engunity AI Services (Optimized)"
 echo "================================================="
+
+# Load NVM if available
+export NVM_DIR="$HOME/.nvm"
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+    \. "$NVM_DIR/nvm.sh"
+    echo "✅ Node.js $(node --version) loaded via NVM"
+fi
 
 # Set aggressive resource limits to prevent RAM overload
 export MALLOC_ARENA_MAX=2
@@ -72,9 +77,9 @@ check_port() {
 # Function to kill existing processes
 cleanup_existing() {
     echo "🧹 Cleaning up existing processes..."
-
-    # Kill processes by port (including frontend port 3000)
-    for port in 3000 8000 8001 8002 8003 4001; do
+    
+    # Kill processes by port
+    for port in 8000 8001 8002 8003 4001; do
         lsof -ti:$port | xargs -r kill -9 2>/dev/null || true
     done
 
@@ -112,7 +117,7 @@ echo ""
 echo "🚀 Starting Main Backend Server (Port 8000) - ESSENTIAL..."
 if ! check_port 8000; then
     # Start with nice priority and memory limit
-    nice -n 5 /home/ghost/anaconda3/envs/engunity/bin/python -u main.py > main_backend.log 2>&1 &
+    nice -n 5 /home/shahs/miniconda3/envs/engunity/bin/python -u main.py > main_backend.log 2>&1 &
     MAIN_BACKEND_PID=$!
     echo "📝 Main Backend PID: $MAIN_BACKEND_PID"
 
@@ -132,7 +137,7 @@ else
     echo "🔥 Starting Hybrid RAG v3 Server (Port 8002) - LAZY LOADING..."
     if ! check_port 8002; then
         # Start with lower priority and lazy model loading
-        nice -n 10 /home/ghost/anaconda3/envs/engunity/bin/python -u servers/hybrid_rag_v3_server.py > hybrid_rag_v3_server.log 2>&1 &
+        nice -n 10 /home/shahs/miniconda3/envs/engunity/bin/python -u servers/hybrid_rag_v3_server.py > hybrid_rag_v3_server.log 2>&1 &
         HYBRID_RAG_PID=$!
         echo "📝 Hybrid RAG v3 PID: $HYBRID_RAG_PID (models load on first request)"
 
@@ -160,7 +165,7 @@ if [ "$LIGHTWEIGHT_MODE" = false ]; then
 cd "$(dirname "$0")"
 if ! ss -tulpn | grep -q ":8001 "; then
     echo "🤖 Starting Agentic RAG on-demand..."
-    nice -n 15 /home/ghost/anaconda3/envs/engunity/bin/python -u backend/agentic_rag_server.py > backend/agentic_rag_server.log 2>&1 &
+    nice -n 15 /home/shahs/miniconda3/envs/engunity/bin/python -u backend/agentic_rag_server.py > backend/agentic_rag_server.log 2>&1 &
     echo "Started with PID $!"
 fi
 EOF
@@ -171,7 +176,7 @@ EOF
 cd "$(dirname "$0")"
 if ! ss -tulpn | grep -q ":8003 "; then
     echo "🧠 Starting Citation Classifier on-demand..."
-    nice -n 15 /home/ghost/anaconda3/envs/engunity/bin/python -u backend/servers/citation_classification_server.py > backend/citation_classification_server.log 2>&1 &
+    nice -n 15 /home/shahs/miniconda3/envs/engunity/bin/python -u backend/servers/citation_classification_server.py > backend/citation_classification_server.log 2>&1 &
     echo "Started with PID $!"
 fi
 EOF
@@ -182,7 +187,7 @@ else
 fi
 
 # Go back to root directory to start code executor
-cd "$SCRIPT_DIR"
+cd ..
 
 echo ""
 echo "💻 Starting Code Executor Service (Port 4001)..."
@@ -195,7 +200,7 @@ if ! check_port 4001; then
             npm install --silent --prefer-offline --no-audit > /dev/null 2>&1
         fi
         # Start with aggressive memory limits and lower priority
-        NODE_OPTIONS="--max-old-space-size=256" nice -n 10 nohup npm run dev > code-executor.log 2>&1 &
+        nice -n 10 NODE_OPTIONS="--max-old-space-size=256 --gc-interval=100" nohup npm run dev > code-executor.log 2>&1 &
         CODE_EXECUTOR_PID=$!
         echo "📝 Code Executor PID: $CODE_EXECUTOR_PID"
 
@@ -203,7 +208,7 @@ if ! check_port 4001; then
         taskset -cp 0-1 $CODE_EXECUTOR_PID 2>/dev/null || true
 
         sleep 1
-        cd "$SCRIPT_DIR"
+        cd ..
     else
         echo "⚠️  code-executor directory not found - skipping"
     fi
@@ -211,35 +216,8 @@ else
     echo "✅ Code Executor Service already running on port 4001"
 fi
 
-# Go back to root directory
-cd "$SCRIPT_DIR"
-
-echo ""
-echo "🎨 Starting Frontend (Next.js) on Port 3000..."
-if ! check_port 3000; then
-    if [ -d "frontend" ]; then
-        cd frontend
-        # Check if node_modules exists
-        if [ ! -d "node_modules" ]; then
-            echo "📦 Installing frontend dependencies..."
-            npm install --silent --prefer-offline --no-audit > /dev/null 2>&1
-        fi
-        # Start frontend with memory limit and lower priority
-        NODE_OPTIONS="--max-old-space-size=512" nice -n 5 nohup npm run dev > frontend.log 2>&1 &
-        FRONTEND_PID=$!
-        echo "📝 Frontend PID: $FRONTEND_PID"
-
-        # Set CPU affinity
-        taskset -cp 0-1 $FRONTEND_PID 2>/dev/null || true
-
-        sleep 1
-        cd "$SCRIPT_DIR"
-    else
-        echo "⚠️  frontend directory not found - skipping"
-    fi
-else
-    echo "✅ Frontend already running on port 3000"
-fi
+# Go back to backend directory for remaining operations
+cd backend
 
 # Brief wait for processes to stabilize
 sleep 1
@@ -255,7 +233,7 @@ else
 fi
 
 # Go back to root directory before testing
-cd "$SCRIPT_DIR"
+cd ..
 
 echo ""
 echo "🧪 Waiting for services to be ready..."
@@ -298,7 +276,6 @@ if [ "$LIGHTWEIGHT_MODE" = false ]; then
 fi
 
 wait_for_service "Code Executor" 4001 "/health"
-wait_for_service "Frontend" 3000 "/"
 
 # ML-heavy services may take longer - check but don't block
 if [ "$LIGHTWEIGHT_MODE" = false ]; then
@@ -321,7 +298,6 @@ fi
 
 echo ""
 echo "🎯 Active Services:"
-echo "   ✅ Frontend: http://localhost:3000 (Next.js UI)"
 echo "   ✅ Main Backend: http://localhost:8000 (Essential)"
 if [ "$LIGHTWEIGHT_MODE" = false ]; then
     echo "   ✅ Hybrid RAG v3: http://localhost:8002 (BGE + ChromaDB + Groq)"
@@ -336,7 +312,6 @@ echo "   ✅ Code Executor: http://localhost:4001 (Docker ready)"
 echo "   ✅ MongoDB: Running (Port 27017)"
 echo ""
 echo "📊 Service Logs:"
-echo "   - Frontend: frontend/frontend.log"
 echo "   - Main Backend: backend/main_backend.log"
 if [ "$LIGHTWEIGHT_MODE" = false ]; then
     echo "   - Hybrid RAG v3: backend/hybrid_rag_v3_server.log"
@@ -351,14 +326,9 @@ USED_RAM=$((AVAILABLE_RAM - NEW_AVAILABLE_RAM))
 echo "   - RAM Used by Services: ~${USED_RAM}MB"
 echo "   - RAM Available: ${NEW_AVAILABLE_RAM}MB"
 echo ""
-echo "🌐 Access your application:"
-echo "   👉 Frontend: http://localhost:3000"
-echo "   👉 Backend API: http://localhost:8000/api"
-echo "   👉 Code Executor: http://localhost:4001/api"
-echo ""
 echo "🛑 To stop all services: ./stop-all-services.sh"
 echo ""
-echo "✅ All services started successfully!"
+echo "✅ Backend services started successfully!"
 if [ "$LIGHTWEIGHT_MODE" = true ]; then
     echo "💡 Running in LIGHTWEIGHT MODE to conserve memory"
     echo "💡 Some ML features disabled - increase available RAM for full functionality"

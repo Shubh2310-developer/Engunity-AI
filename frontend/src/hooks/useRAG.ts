@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useAuth } from './useAuth';
-import { supabase } from '@/lib/auth/integrated-auth';
+// MongoDB-only authentication - NO SUPABASE
 
 export interface RAGAnalysisResult {
   success: boolean;
@@ -69,30 +69,15 @@ export const useRAG = () => {
     setError(null);
 
     try {
-      // Get current session for authentication
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-      console.log('🔐 useRAG - Session status:', {
-        hasSession: !!session,
-        hasError: !!sessionError,
-        errorMessage: sessionError?.message,
-        hasAccessToken: !!session?.access_token,
-        userId: session?.user?.id
-      });
-
-      if (sessionError || !session) {
-        console.error('❌ useRAG - No session found:', sessionError?.message);
-        throw new Error('No active session. Please sign in again.');
-      }
-
-      console.log('📤 useRAG - Making API request with token length:', session.access_token?.length);
+      // MongoDB authentication - use cookies, no Authorization header needed
+      console.log('🔐 useRAG - Using MongoDB session from cookies');
+      console.log('📤 useRAG - Analyzing document:', documentId, 'for user:', user?.id);
 
       const response = await fetch('/api/rag/analyze', {
         method: 'POST',
-        credentials: 'include', // Important for cookies
+        credentials: 'include', // Important for MongoDB session cookies
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           documentId,
@@ -137,19 +122,14 @@ export const useRAG = () => {
     setError(null);
 
     try {
-      // Get current session for authentication
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-      if (sessionError || !session) {
-        throw new Error('No active session. Please sign in again.');
-      }
+      // MongoDB authentication - use cookies, no Authorization header needed
+      console.log('🔐 useRAG - Using MongoDB session from cookies for question');
 
       const response = await fetch('/api/rag/question', {
         method: 'POST',
-        credentials: 'include', // Important for cookies
+        credentials: 'include', // Important for MongoDB session cookies
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           documentId,
@@ -192,19 +172,14 @@ export const useRAG = () => {
     setError(null);
 
     try {
-      // Get current session for authentication
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-      if (sessionError || !session) {
-        throw new Error('No active session. Please sign in again.');
-      }
+      // MongoDB authentication - use cookies, no Authorization header needed
+      console.log('🔐 useRAG - Using MongoDB session from cookies for batch questions');
 
       const response = await fetch('/api/rag/batch-questions', {
         method: 'POST',
-        credentials: 'include', // Important for cookies
+        credentials: 'include', // Important for MongoDB session cookies
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           documentId,

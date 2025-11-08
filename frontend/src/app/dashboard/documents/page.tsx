@@ -50,7 +50,6 @@ import { useToast } from '@/components/ui/use-toast';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useRAG } from '@/hooks/useRAG';
-import { supabase } from '@/lib/auth/supabase';
 import type { SupabaseDocument } from '@/lib/supabase/document-storage-no-auth';
 import ServiceLoader from '@/components/services/ServiceLoader';
 
@@ -105,28 +104,14 @@ const DocumentsPageContent: React.FC = () => {
             userUid: user.uid,
             userEmail: user.email
           });
-          
-          // Get current session for authentication
-          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-          
-          if (sessionError) {
-            console.error('❌ Session error:', sessionError);
-            throw new Error(`Session error: ${sessionError.message}`);
-          }
 
-          if (!session || !session.access_token) {
-            console.warn('⚠️ No active session found, user might need to re-authenticate');
-            setDocuments([]);
-            return;
-          }
+          console.log('✅ Fetching documents via MongoDB API');
 
-          console.log('✅ Valid session found, fetching documents via API');
-          
-          // Fetch documents via API route (bypasses RLS issues)
+          // Fetch documents via API route with MongoDB session (from cookie)
           const response = await fetch('/api/documents/list', {
             method: 'GET',
+            credentials: 'include', // Include cookies for MongoDB session
             headers: {
-              'Authorization': `Bearer ${session.access_token}`,
               'Content-Type': 'application/json'
             }
           });
@@ -197,45 +182,25 @@ const DocumentsPageContent: React.FC = () => {
 
       try {
         console.log('Starting upload for file:', file.name);
-        
-        // Get current session for authentication
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError) {
-          throw new Error(`Authentication error: ${sessionError.message}`);
-        }
-
-        if (!session || !session.access_token) {
-          throw new Error('No valid authentication session. Please sign in again.');
-        }
 
         if (!user) {
           throw new Error('User not authenticated');
         }
 
-        if (session.user?.id !== user.id) {
-          throw new Error('User session mismatch. Please sign in again.');
-        }
-        
         const formData = new FormData();
         formData.append('file', file);
         formData.append('userId', user.id);
 
-        const headers = {
-          'Authorization': `Bearer ${session.access_token}`
-        };
-
-        console.log('Making upload request with auth header:', {
+        console.log('Making upload request with MongoDB session:', {
           fileName: file.name,
           userId: user.id,
-          hasAuthHeader: !!headers.Authorization,
-          tokenLength: session.access_token.length
+          fileSize: file.size
         });
 
         const response = await fetch('/api/documents/upload', {
           method: 'POST',
           body: formData,
-          headers: headers
+          credentials: 'include', // Include cookies for MongoDB session
         });
 
         const responseData = await response.json();
@@ -289,23 +254,12 @@ const DocumentsPageContent: React.FC = () => {
   const handleDeleteDocument = async (documentId: string) => {
     try {
       console.log('🗑️ Deleting document:', documentId);
-      
-      // Get current session for authentication
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        throw new Error(`Session error: ${sessionError.message}`);
-      }
 
-      if (!session || !session.access_token) {
-        throw new Error('No valid authentication session. Please sign in again.');
-      }
-
-      // Delete document via API route
+      // Delete document via API route with MongoDB session (from cookie)
       const response = await fetch(`/api/documents/${documentId}/delete`, {
         method: 'DELETE',
+        credentials: 'include', // Include cookies for MongoDB session
         headers: {
-          'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
         }
       });

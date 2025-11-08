@@ -1,11 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { User } from '@supabase/supabase-js';
-import { supabase } from '@/lib/auth/integrated-auth';
 
-export interface AuthUser extends User {
+export interface AuthUser {
+  id: string;
   uid: string;
+  email: string;
+  name?: string;
+  role: string;
+  isActive: boolean;
+  emailVerified: boolean;
 }
 
 interface AuthState {
@@ -24,30 +28,33 @@ export function useAuth() {
   useEffect(() => {
     let mounted = true;
 
-    // Get initial session
+    // Get initial session from MongoDB
     const getInitialSession = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          if (mounted) {
-            setAuthState({
-              user: null,
-              loading: false,
-              error: error.message,
-            });
-          }
-          return;
-        }
+        const response = await fetch('/api/auth/session');
+        const data = await response.json();
 
-        const user = session?.user ? {
-          ...session.user,
-          uid: session.user.id,
-        } as AuthUser : null;
+        if (!mounted) return;
 
-        if (mounted) {
+        if (data.authenticated && data.user) {
+          const authUser: AuthUser = {
+            id: data.user.id,
+            uid: data.user.id,
+            email: data.user.email,
+            name: data.user.name,
+            role: data.user.role,
+            isActive: data.user.isActive,
+            emailVerified: data.user.emailVerified,
+          };
+
           setAuthState({
-            user,
+            user: authUser,
+            loading: false,
+            error: null,
+          });
+        } else {
+          setAuthState({
+            user: null,
             loading: false,
             error: null,
           });
@@ -65,27 +72,8 @@ export function useAuth() {
 
     getInitialSession();
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!mounted) return;
-
-        const user = session?.user ? {
-          ...session.user,
-          uid: session.user.id,
-        } as AuthUser : null;
-
-        setAuthState({
-          user,
-          loading: false,
-          error: null,
-        });
-      }
-    );
-
     return () => {
       mounted = false;
-      subscription.unsubscribe();
     };
   }, []);
 
@@ -93,32 +81,42 @@ export function useAuth() {
     setAuthState(prev => ({ ...prev, loading: true, error: null }));
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
       });
 
-      if (error) {
+      const result = await response.json();
+
+      if (!response.ok) {
         setAuthState(prev => ({
           ...prev,
           loading: false,
-          error: error.message,
+          error: result.error || 'Login failed',
         }));
-        return { error };
+        return { error: { message: result.error || 'Login failed' } };
       }
 
-      const user = data.user ? {
-        ...data.user,
-        uid: data.user.id,
-      } as AuthUser : null;
+      const authUser: AuthUser = {
+        id: result.user.id,
+        uid: result.user.id,
+        email: result.user.email,
+        name: result.user.name,
+        role: result.user.role,
+        isActive: result.user.isActive,
+        emailVerified: result.user.emailVerified,
+      };
 
       setAuthState({
-        user,
+        user: authUser,
         loading: false,
         error: null,
       });
 
-      return { user };
+      return { user: authUser };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Sign in failed';
       setAuthState(prev => ({
@@ -134,27 +132,36 @@ export function useAuth() {
     data?: {
       first_name?: string;
       last_name?: string;
+      full_name?: string;
     };
   }) => {
     setAuthState(prev => ({ ...prev, loading: true, error: null }));
 
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options,
+      const name = options?.data?.full_name ||
+                   `${options?.data?.first_name || ''} ${options?.data?.last_name || ''}`.trim() ||
+                   undefined;
+
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password, name }),
       });
 
-      if (error) {
+      const result = await response.json();
+
+      if (!response.ok) {
         setAuthState(prev => ({
           ...prev,
           loading: false,
-          error: error.message,
+          error: result.error || 'Registration failed',
         }));
-        return { error };
+        return { error: { message: result.error || 'Registration failed' } };
       }
 
-      return { data };
+      return { data: result };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Sign up failed';
       setAuthState(prev => ({
@@ -170,16 +177,7 @@ export function useAuth() {
     setAuthState(prev => ({ ...prev, loading: true }));
 
     try {
-      const { error } = await supabase.auth.signOut();
-
-      if (error) {
-        setAuthState(prev => ({
-          ...prev,
-          loading: false,
-          error: error.message,
-        }));
-        return { error };
-      }
+      await fetch('/api/auth/logout', { method: 'POST' });
 
       setAuthState({
         user: null,
@@ -201,15 +199,9 @@ export function useAuth() {
 
   const resetPassword = async (email: string) => {
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth/reset-password`,
-      });
-
-      if (error) {
-        return { error };
-      }
-
-      return { success: true };
+      // TODO: Implement password reset with MongoDB
+      console.log('Password reset not yet implemented for MongoDB');
+      return { error: { message: 'Password reset not yet implemented' } };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Password reset failed';
       return { error: { message: errorMessage } };
@@ -224,30 +216,14 @@ export function useAuth() {
     setAuthState(prev => ({ ...prev, loading: true, error: null }));
 
     try {
-      const { data, error } = await supabase.auth.updateUser(updates);
-
-      if (error) {
-        setAuthState(prev => ({
-          ...prev,
-          loading: false,
-          error: error.message,
-        }));
-        return { error };
-      }
-
-      const user = data.user ? {
-        ...data.user,
-        uid: data.user.id,
-      } as AuthUser : null;
-
+      // TODO: Implement profile update with MongoDB
+      console.log('Profile update not yet implemented for MongoDB');
       setAuthState(prev => ({
         ...prev,
-        user,
         loading: false,
-        error: null,
+        error: 'Profile update not yet implemented',
       }));
-
-      return { user };
+      return { error: { message: 'Profile update not yet implemented' } };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Profile update failed';
       setAuthState(prev => ({

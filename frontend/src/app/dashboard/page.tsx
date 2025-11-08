@@ -58,6 +58,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import UserProfile from '@/components/dashboard/UserProfile';
 
 // Professional Animation Variants
 const containerVariants = {
@@ -113,128 +114,46 @@ export default function DashboardPage() {
   // Scroll state for Quick Actions
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   
-  // Check authentication on mount with persistent session support
+  // Check authentication on mount - MongoDB Session
   useEffect(() => {
-    let mounted = true;
-
     const checkAuth = async () => {
       try {
-        console.log('🔍 Checking authentication...');
+        // Check MongoDB session via API
+        const response = await fetch('/api/auth/session');
+        const data = await response.json();
 
-        // First check if we have a stored login time and it's within 30 days
-        const loginTime = localStorage.getItem('engunity-login-time');
-        if (loginTime) {
-          const daysSinceLogin = (Date.now() - parseInt(loginTime)) / (1000 * 60 * 60 * 24);
-          console.log(`Days since last login: ${daysSinceLogin.toFixed(1)}`);
+        if (data.authenticated && data.user) {
+          console.log('✅ MongoDB session found, user authenticated');
+          setIsAuthenticated(true);
+          setUser({
+            name: data.user.name || data.user.email?.split('@')[0] || 'User',
+            email: data.user.email,
+            avatar: null,
+            plan: 'Pro',
+            initials: (data.user.name || data.user.email || 'U').split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2),
+            role: data.user.role === 'admin' ? 'Admin' : 'Developer',
+            lastActive: 'Just now',
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+          });
 
-          if (daysSinceLogin > 30) {
-            // More than 30 days, clear everything and require re-login
-            console.log('⏰ Session expired (>30 days)');
-            localStorage.removeItem('engunity-auth-token');
-            localStorage.removeItem('engunity-login-time');
-            await supabase.auth.signOut();
-            if (mounted) {
-              setIsAuthenticated(false);
-              setDashboardLoading(false);
-              // Redirect to login
-              window.location.href = '/auth/login?error=Session expired. Please sign in again.';
-            }
-            return;
-          }
-        }
-
-        // Get current session
-        const { data: { session }, error } = await supabase.auth.getSession();
-
-        if (error) {
-          console.error('❌ Auth error:', error);
-          if (mounted) {
-            setIsAuthenticated(false);
-            setDashboardLoading(false);
-          }
-          return;
-        }
-
-        if (session?.user) {
-          console.log('✅ Valid session found, user authenticated:', session.user.email);
-          if (mounted) {
-            setIsAuthenticated(true);
-            setUser({
-              name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-              email: session.user.email,
-              avatar: session.user.user_metadata?.avatar_url,
-              plan: 'Pro',
-              initials: (session.user.user_metadata?.full_name || session.user.email || 'U').split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2),
-              role: 'Developer',
-              lastActive: 'Just now',
-              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-            });
-
-            // Ensure login time is tracked
-            if (!loginTime) {
-              localStorage.setItem('engunity-login-time', Date.now().toString());
-            }
+          // Track login time in localStorage
+          const loginTime = localStorage.getItem('engunity-login-time');
+          if (!loginTime) {
+            localStorage.setItem('engunity-login-time', Date.now().toString());
           }
         } else {
-          console.log('❌ No valid session found - user needs to sign in');
-          if (mounted) {
-            setIsAuthenticated(false);
-          }
-        }
-      } catch (error) {
-        console.error('❌ Authentication check failed:', error);
-        if (mounted) {
+          console.log('❌ No valid MongoDB session found');
           setIsAuthenticated(false);
         }
+      } catch (error) {
+        console.error('MongoDB authentication check failed:', error);
+        setIsAuthenticated(false);
       } finally {
-        if (mounted) {
-          console.log('✅ Auth check complete, setting loading to false');
-          setDashboardLoading(false);
-        }
+        setDashboardLoading(false);
       }
     };
 
     checkAuth();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!mounted) return;
-
-      console.log('🔄 Auth state changed:', event, session?.user?.email);
-
-      if (event === 'SIGNED_IN' && session?.user) {
-        console.log('✅ User signed in');
-        setIsAuthenticated(true);
-        setUser({
-          name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-          email: session.user.email,
-          avatar: session.user.user_metadata?.avatar_url,
-          plan: 'Pro',
-          initials: (session.user.user_metadata?.full_name || session.user.email || 'U').split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2),
-          role: 'Developer',
-          lastActive: 'Just now',
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-        });
-
-        // Track login time for 30-day persistence
-        localStorage.setItem('engunity-login-time', Date.now().toString());
-      } else if (event === 'SIGNED_OUT') {
-        console.log('❌ User signed out');
-        setIsAuthenticated(false);
-        setUser(null);
-        // Clear persistence tracking
-        localStorage.removeItem('engunity-login-time');
-      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-        console.log('🔄 Token refreshed');
-        // Keep user logged in on token refresh
-        setIsAuthenticated(true);
-      }
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
   }, []);
   
   useEffect(() => {
@@ -298,8 +217,9 @@ export default function DashboardPage() {
   // Handle explicit sign out
   const handleSignOut = async () => {
     try {
-      console.log('🚪 Signing out user...');
-      await supabase.auth.signOut();
+      console.log('🚪 Signing out user from MongoDB...');
+      // Call MongoDB logout API
+      await fetch('/api/auth/logout', { method: 'POST' });
       // Clear persistent session data
       localStorage.removeItem('engunity-auth-token');
       localStorage.removeItem('engunity-login-time');
@@ -307,6 +227,8 @@ export default function DashboardPage() {
       window.location.href = '/auth/login';
     } catch (error) {
       console.error('Sign out error:', error);
+      // Force redirect even if API call fails
+      window.location.href = '/auth/login';
     }
   };
 
@@ -439,6 +361,10 @@ export default function DashboardPage() {
               </div>
             </motion.section>
 
+            {/* MongoDB User Profile Section */}
+            <motion.section variants={itemVariants}>
+              <UserProfile />
+            </motion.section>
 
             {/* Executive Overview Section */}
             <motion.section variants={itemVariants} className="space-y-6">

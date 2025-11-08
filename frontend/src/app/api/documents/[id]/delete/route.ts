@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { MongoClient, ObjectId } from 'mongodb';
+import { getServerUser } from '@/lib/auth/server-session';
 
-// Initialize Supabase client for authentication and storage
+// Initialize Supabase client for storage only (not auth)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -10,16 +11,13 @@ if (!supabaseUrl || !supabaseServiceKey) {
   throw new Error('Missing Supabase environment variables');
 }
 
-// Create Supabase client with service role key for server-side operations
+// Create Supabase client with service role key for server-side storage operations
 const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false
   }
 });
-
-// Create regular Supabase client for user authentication
-const supabase = createClient(supabaseUrl, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
 // MongoDB connection
 const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/engunity-ai';
@@ -44,53 +42,26 @@ export async function DELETE(
   try {
     console.log('=== API DELETE DOCUMENT DEBUG START ===');
     console.log('API: Received delete request for document ID:', params.id);
-    
-    // Get authentication token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    console.log('API: Authorization header check:', {
-      hasAuthHeader: !!authHeader,
-      startsWithBearer: authHeader?.startsWith('Bearer ')
-    });
-    
-    if (!authHeader?.startsWith('Bearer ')) {
-      console.error('API: Missing or invalid authorization header');
+
+    // Verify MongoDB authentication
+    console.log('API: Verifying MongoDB authentication...');
+    const authenticatedUser = await getServerUser();
+
+    if (!authenticatedUser) {
+      console.error('API: No authenticated user found');
       return NextResponse.json(
-        { error: 'Authorization header required' },
+        { error: 'Authentication required. Please sign in.' },
         { status: 401 }
       );
     }
 
-    const token = authHeader.substring(7);
-    console.log('API: Extracted token length:', token.length);
+    const userId = authenticatedUser._id?.toString();
+    console.log('API: User authenticated successfully via MongoDB:', authenticatedUser.email, 'ID:', userId);
 
-    // Verify Supabase authentication token
-    let authenticatedUser;
-    try {
-      const { data: { user }, error } = await supabase.auth.getUser(token);
-      
-      if (error) {
-        console.error('API: Token verification error:', error);
-        return NextResponse.json(
-          { error: 'Invalid authentication token' },
-          { status: 401 }
-        );
-      }
-
-      if (!user) {
-        console.error('API: No user found from token');
-        return NextResponse.json(
-          { error: 'User not found' },
-          { status: 401 }
-        );
-      }
-
-      authenticatedUser = user;
-      console.log('API: User authenticated successfully:', user.id);
-
-    } catch (authError) {
-      console.error('API: Authentication verification failed:', authError);
+    if (!userId) {
+      console.error('API: Invalid user ID');
       return NextResponse.json(
-        { error: 'Authentication verification failed' },
+        { error: 'Invalid user ID' },
         { status: 401 }
       );
     }
@@ -114,7 +85,7 @@ export async function DELETE(
 
     const document = await documentsCollection.findOne({
       _id: documentObjectId,
-      user_id: authenticatedUser.id
+      user_id: userId
     });
 
     if (!document) {
@@ -135,7 +106,7 @@ export async function DELETE(
     console.log('API: Deleting from MongoDB...');
     const deleteResult = await documentsCollection.deleteOne({
       _id: documentObjectId,
-      user_id: authenticatedUser.id
+      user_id: userId
     });
 
     if (deleteResult.deletedCount === 0) {

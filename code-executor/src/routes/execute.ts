@@ -48,7 +48,7 @@ router.post('/', optionalAuth, async (req: AuthRequest, res: Response) => {
         memoryUsed: result.memoryUsed,
         exitCode: result.exitCode,
         status: result.status,
-      }).catch((error: any) => {
+      }).catch((error: Error) => {
         logger.error('Failed to log execution', { error: error.message });
       });
     }

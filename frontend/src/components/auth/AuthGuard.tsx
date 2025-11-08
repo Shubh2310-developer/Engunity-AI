@@ -1,79 +1,58 @@
 /**
  * AuthGuard Component for Engunity AI
  * Location: frontend/src/components/auth/AuthGuard.tsx
- * 
- * Purpose: Protect client-side routes with authentication and role-based access control
- * Uses: Supabase Auth + RBAC system
+ *
+ * Purpose: Protect client-side routes with MongoDB authentication
  */
 
 'use client';
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/lib/auth/supabase';
-import { hasRole, type UserRole, getRoleDisplayName } from '@/lib/auth/permissions';
-import { 
-  getCurrentSession, 
-  getCurrentUser, 
-  getExtendedUserProfile,
-  type ExtendedUserProfile 
-} from '@/lib/auth/session';
+import {
+  getCurrentSession,
+  getCurrentUser,
+  type MongoDBUser,
+  type UserRole,
+} from '@/lib/auth/mongo-session';
 
 // ================================
-// 🔧 Type Definitions
+// Type Definitions
 // ================================
 
-/**
- * Props for the AuthGuard component
- */
 export interface AuthGuardProps {
   /** Child components to render if access is granted */
   children: React.ReactNode;
-  
+
   /** Minimum role required to access the protected content */
   requiredRole?: UserRole;
-  
+
   /** Custom redirect path for unauthenticated users (default: '/auth/login') */
   redirectTo?: string;
-  
+
   /** Whether to show loading spinner during auth check */
   showLoading?: boolean;
-  
+
   /** Custom loading component */
   loadingComponent?: React.ReactNode;
-  
+
   /** Custom access denied component */
   accessDeniedComponent?: React.ReactNode;
-  
-  /** Whether to check for active subscription (for subscription-based features) */
-  requireActiveSubscription?: boolean;
-  
-  /** Minimum credits required to access the content */
-  requiredCredits?: number;
-  
+
   /** Custom error message for insufficient permissions */
   errorMessage?: string;
 }
 
-/**
- * Authentication state
- */
 interface AuthState {
-  session: Session | null;
-  user: User | null;
-  profile: ExtendedUserProfile | null;
+  user: MongoDBUser | null;
   loading: boolean;
   error: string | null;
 }
 
 // ================================
-// 🎨 Loading Components
+// Loading Components
 // ================================
 
-/**
- * Default loading spinner component
- */
 const DefaultLoadingSpinner: React.FC = () => (
   <div className="flex items-center justify-center min-h-screen bg-gray-50">
     <div className="flex flex-col items-center space-y-4">
@@ -83,9 +62,6 @@ const DefaultLoadingSpinner: React.FC = () => (
   </div>
 );
 
-/**
- * Compact loading spinner for smaller components
- */
 const CompactLoadingSpinner: React.FC = () => (
   <div className="flex items-center justify-center p-8">
     <div className="flex flex-col items-center space-y-2">
@@ -95,11 +71,8 @@ const CompactLoadingSpinner: React.FC = () => (
   </div>
 );
 
-/**
- * Access denied component
- */
-const DefaultAccessDenied: React.FC<{ 
-  requiredRole?: UserRole; 
+const DefaultAccessDenied: React.FC<{
+  requiredRole?: UserRole;
   userRole?: UserRole;
   errorMessage?: string;
 }> = ({ requiredRole, userRole, errorMessage }) => (
@@ -122,26 +95,25 @@ const DefaultAccessDenied: React.FC<{
           </svg>
         </div>
       </div>
-      
-      <h3 className="text-lg font-semibold text-gray-900 mb-2">
-        Access Denied
-      </h3>
-      
+
+      <h3 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h3>
+
       <p className="text-gray-600 mb-4">
-        {errorMessage || `You need ${requiredRole ? getRoleDisplayName(requiredRole) : 'higher'} privileges to access this content.`}
+        {errorMessage ||
+          `You need ${requiredRole ? requiredRole : 'higher'} privileges to access this content.`}
       </p>
-      
+
       {userRole && requiredRole && (
         <div className="bg-gray-50 rounded-lg p-4 mb-4">
           <p className="text-sm text-gray-600">
-            Your role: <span className="font-medium">{getRoleDisplayName(userRole)}</span>
+            Your role: <span className="font-medium capitalize">{userRole}</span>
           </p>
           <p className="text-sm text-gray-600">
-            Required: <span className="font-medium">{getRoleDisplayName(requiredRole)}</span>
+            Required: <span className="font-medium capitalize">{requiredRole}</span>
           </p>
         </div>
       )}
-      
+
       <div className="flex flex-col sm:flex-row gap-3">
         <button
           onClick={() => window.history.back()}
@@ -150,7 +122,7 @@ const DefaultAccessDenied: React.FC<{
           Go Back
         </button>
         <button
-          onClick={() => window.location.href = '/dashboard'}
+          onClick={() => (window.location.href = '/dashboard')}
           className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
         >
           Dashboard
@@ -161,12 +133,9 @@ const DefaultAccessDenied: React.FC<{
 );
 
 // ================================
-// 🛡️ AuthGuard Component
+// AuthGuard Component
 // ================================
 
-/**
- * AuthGuard component that protects routes with authentication and role-based access control
- */
 const AuthGuard: React.FC<AuthGuardProps> = ({
   children,
   requiredRole,
@@ -174,146 +143,99 @@ const AuthGuard: React.FC<AuthGuardProps> = ({
   showLoading = true,
   loadingComponent,
   accessDeniedComponent,
-  requireActiveSubscription = false,
-  requiredCredits,
   errorMessage,
 }) => {
   const router = useRouter();
   const [authState, setAuthState] = useState<AuthState>({
-    session: null,
     user: null,
-    profile: null,
     loading: true,
     error: null,
   });
-
-  // ================================
-  // 🔄 Authentication Check
-  // ================================
 
   useEffect(() => {
     let mounted = true;
 
     const checkAuthentication = async () => {
       try {
-        // Get current session and user
-        const [session, user] = await Promise.all([
-          getCurrentSession(),
-          getCurrentUser(),
-        ]);
+        const user = await getCurrentUser();
 
         if (!mounted) return;
 
-        // If no session or user, redirect to login
-        if (!session || !user) {
+        if (!user) {
           router.push(redirectTo);
           return;
         }
 
-        // Get extended user profile for role checking
-        const profile = await getExtendedUserProfile(user.id);
+        if (!user.isActive) {
+          setAuthState({
+            user: null,
+            loading: false,
+            error: 'Account is inactive',
+          });
+          router.push(redirectTo);
+          return;
+        }
+
+        setAuthState({
+          user,
+          loading: false,
+          error: null,
+        });
+      } catch (error) {
+        console.error('Authentication check failed:', error);
 
         if (!mounted) return;
 
         setAuthState({
-          session,
-          user,
-          profile,
-          loading: false,
-          error: null,
-        });
-
-      } catch (error) {
-        console.error('Authentication check failed:', error);
-        
-        if (!mounted) return;
-
-        setAuthState(prev => ({
-          ...prev,
+          user: null,
           loading: false,
           error: error instanceof Error ? error.message : 'Authentication failed',
-        }));
+        });
 
-        // Redirect on error
         router.push(redirectTo);
       }
     };
 
     checkAuthentication();
 
-    // Set up auth state change listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!mounted) return;
-
-        if (event === 'SIGNED_OUT' || !session) {
-          router.push(redirectTo);
-          return;
-        }
-
-        if (event === 'SIGNED_IN' && session) {
-          // Refresh the auth state when user signs in
-          await checkAuthentication();
-        }
-      }
-    );
-
     return () => {
       mounted = false;
-      subscription.unsubscribe();
     };
   }, [router, redirectTo]);
 
-  // ================================
-  // 🔍 Permission Checks
-  // ================================
-
+  // Check permissions
   const checkPermissions = (): { hasAccess: boolean; errorMessage: string } => {
-    const { profile } = authState;
+    const { user } = authState;
 
-    if (!profile) {
+    if (!user) {
       return {
         hasAccess: false,
-        errorMessage: 'User profile not found. Please try logging in again.',
+        errorMessage: 'User not found. Please try logging in again.',
       };
     }
 
-    // Check role-based access
-    if (requiredRole && !hasRole(profile.role, requiredRole)) {
-      return {
-        hasAccess: false,
-        errorMessage: errorMessage || `This feature requires ${getRoleDisplayName(requiredRole)} access or higher.`,
-      };
-    }
+    // Role hierarchy: user < premium < admin
+    const roleHierarchy: Record<UserRole, number> = {
+      user: 1,
+      premium: 2,
+      admin: 3,
+    };
 
-    // Check subscription status
-    if (requireActiveSubscription) {
-      const hasActiveSubscription = 
-        profile.subscription_status === 'active' || 
-        profile.subscription_status === 'trialing';
+    if (requiredRole) {
+      const userRoleLevel = roleHierarchy[user.role] || 0;
+      const requiredRoleLevel = roleHierarchy[requiredRole] || 0;
 
-      if (!hasActiveSubscription) {
+      if (userRoleLevel < requiredRoleLevel) {
         return {
           hasAccess: false,
-          errorMessage: errorMessage || 'This feature requires an active subscription.',
+          errorMessage:
+            errorMessage || `This feature requires ${requiredRole} access or higher.`,
         };
       }
     }
 
-    // Check credits requirement
-    if (requiredCredits && profile.credits_remaining < requiredCredits) {
-      return {
-        hasAccess: false,
-        errorMessage: errorMessage || `This feature requires ${requiredCredits} credits. You have ${profile.credits_remaining} remaining.`,
-      };
-    }
-
     return { hasAccess: true, errorMessage: '' };
   };
-
-  // ================================
-  // 🎨 Render Logic
-  // ================================
 
   // Show loading state
   if (authState.loading) {
@@ -325,10 +247,9 @@ const AuthGuard: React.FC<AuthGuardProps> = ({
       return <>{loadingComponent}</>;
     }
 
-    // Use compact loading for non-page components
-    const isPageLevel = typeof window !== 'undefined' && 
-                       window.location.pathname.split('/').length <= 3;
-    
+    const isPageLevel =
+      typeof window !== 'undefined' && window.location.pathname.split('/').length <= 3;
+
     return isPageLevel ? <DefaultLoadingSpinner /> : <CompactLoadingSpinner />;
   }
 
@@ -351,7 +272,7 @@ const AuthGuard: React.FC<AuthGuardProps> = ({
   }
 
   // Check permissions if user is authenticated
-  if (authState.session && authState.user) {
+  if (authState.user) {
     const { hasAccess, errorMessage: permissionError } = checkPermissions();
 
     if (!hasAccess) {
@@ -359,16 +280,11 @@ const AuthGuard: React.FC<AuthGuardProps> = ({
         return <>{accessDeniedComponent}</>;
       }
 
-      const accessDeniedProps: {
-        requiredRole?: UserRole; 
-        userRole?: UserRole;
-        errorMessage?: string;
-      } = {
+      const accessDeniedProps = {
         errorMessage: permissionError,
+        requiredRole,
+        userRole: authState.user.role,
       };
-      
-      if (requiredRole) accessDeniedProps.requiredRole = requiredRole;
-      if (authState.profile?.role) accessDeniedProps.userRole = authState.profile.role;
 
       return <DefaultAccessDenied {...accessDeniedProps} />;
     }
@@ -377,19 +293,14 @@ const AuthGuard: React.FC<AuthGuardProps> = ({
     return <>{children}</>;
   }
 
-  // Fallback - should not reach here due to redirects
+  // Fallback
   return null;
 };
 
 // ================================
-// 🎯 Higher-Order Component Wrapper
+// Higher-Order Component Wrapper
 // ================================
 
-/**
- * Higher-order component wrapper for AuthGuard
- * @param requiredRole - Minimum role required
- * @param options - Additional AuthGuard options
- */
 export function withAuthGuard<T extends object>(
   requiredRole?: UserRole,
   options?: Omit<AuthGuardProps, 'children' | 'requiredRole'>
@@ -408,19 +319,12 @@ export function withAuthGuard<T extends object>(
 }
 
 // ================================
-// 🎨 Utility Components
+// Utility Components
 // ================================
 
-/**
- * Simple authentication check hook for conditional rendering
- * @param requiredRole - Optional role requirement
- * @returns Object with authentication state and permission checks
- */
 export function useAuthGuard(requiredRole?: UserRole) {
   const [authState, setAuthState] = useState<AuthState>({
-    session: null,
     user: null,
-    profile: null,
     loading: true,
     error: null,
   });
@@ -430,35 +334,23 @@ export function useAuthGuard(requiredRole?: UserRole) {
 
     const checkAuth = async () => {
       try {
-        const [session, user] = await Promise.all([
-          getCurrentSession(),
-          getCurrentUser(),
-        ]);
-
-        if (!mounted) return;
-
-        let profile = null;
-        if (user) {
-          profile = await getExtendedUserProfile(user.id);
-        }
+        const user = await getCurrentUser();
 
         if (!mounted) return;
 
         setAuthState({
-          session,
           user,
-          profile,
           loading: false,
           error: null,
         });
       } catch (error) {
         if (!mounted) return;
-        
-        setAuthState(prev => ({
-          ...prev,
+
+        setAuthState({
+          user: null,
           loading: false,
           error: error instanceof Error ? error.message : 'Auth check failed',
-        }));
+        });
       }
     };
 
@@ -469,9 +361,18 @@ export function useAuthGuard(requiredRole?: UserRole) {
     };
   }, []);
 
-  const isAuthenticated = !!(authState.session && authState.user);
-  const hasRequiredRole = requiredRole && authState.profile ? 
-    hasRole(authState.profile.role, requiredRole) : true;
+  const isAuthenticated = !!authState.user;
+
+  const roleHierarchy: Record<UserRole, number> = {
+    user: 1,
+    premium: 2,
+    admin: 3,
+  };
+
+  const hasRequiredRole =
+    requiredRole && authState.user
+      ? roleHierarchy[authState.user.role] >= roleHierarchy[requiredRole]
+      : true;
 
   return {
     ...authState,
@@ -481,20 +382,12 @@ export function useAuthGuard(requiredRole?: UserRole) {
   };
 }
 
-/**
- * Conditional rendering component based on authentication state
- */
 export const AuthConditional: React.FC<{
   children: React.ReactNode;
   requiredRole?: UserRole;
   fallback?: React.ReactNode;
   showLoading?: boolean;
-}> = ({ 
-  children, 
-  requiredRole, 
-  fallback = null, 
-  showLoading = false 
-}) => {
+}> = ({ children, requiredRole, fallback = null, showLoading = false }) => {
   const { canAccess, loading } = useAuthGuard(requiredRole);
 
   if (loading && showLoading) {

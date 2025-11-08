@@ -206,10 +206,10 @@ function cleanResponse(text: string): string {
 }
 
 // Configuration for RAG Backends
-const HYBRID_RAG_V3_BACKEND_URL = process.env.HYBRID_RAG_V3_BACKEND_URL || 'http://localhost:8003';  // Ultimate RAG v4.0 (BGE-large + BM25 + Cross-encoder + Best-of-N + Gemini)
-const ENHANCED_FAKE_RAG_BACKEND_URL = process.env.ENHANCED_FAKE_RAG_BACKEND_URL || 'http://localhost:8003';  // Ultimate RAG v4.0
-const FAKE_RAG_BACKEND_URL = process.env.FAKE_RAG_BACKEND_URL || 'http://localhost:8003';  // Ultimate RAG v4.0
-const RAG_BACKEND_URL = process.env.RAG_BACKEND_URL || 'http://localhost:8003';  // Ultimate RAG v4.0
+const HYBRID_RAG_V3_BACKEND_URL = process.env.HYBRID_RAG_V3_BACKEND_URL || 'http://localhost:8002';  // Production Hybrid RAG v3.0 (BGE + ChromaDB + Groq)
+const ENHANCED_FAKE_RAG_BACKEND_URL = process.env.ENHANCED_FAKE_RAG_BACKEND_URL || 'http://localhost:8002';  // Deprecated - use Hybrid RAG v3
+const FAKE_RAG_BACKEND_URL = process.env.FAKE_RAG_BACKEND_URL || 'http://localhost:8001';  // Agentic RAG
+const RAG_BACKEND_URL = process.env.RAG_BACKEND_URL || 'http://localhost:8000';
 const RAG_API_KEY = process.env.RAG_API_KEY;
 
 interface CSRagRequest {
@@ -414,9 +414,9 @@ async function callHybridRagV3Backend(documentId: string, question: string, docu
     // Add document text if available
     if (documentText && documentText.length > 0) {
       requestBody.document_text = documentText;
-      console.log(`📄 Sending document text to Ultimate RAG v4.0 (${documentText.length} chars)`);
+      console.log(`📄 Sending document text to Hybrid RAG v3.0 (${documentText.length} chars)`);
     } else {
-      console.warn(`⚠️ No document text available for Ultimate RAG v4.0 analysis`);
+      console.warn(`⚠️ No document text available for Hybrid RAG v3.0 analysis`);
     }
 
     const response = await fetch(`${HYBRID_RAG_V3_BACKEND_URL}/query`, {
@@ -430,7 +430,7 @@ async function callHybridRagV3Backend(documentId: string, question: string, docu
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Ultimate RAG v4.0 Backend error: ${response.status} - ${errorData.detail || 'Unknown error'}`);
+      throw new Error(`Hybrid RAG v3.0 Backend error: ${response.status} - ${errorData.detail || 'Unknown error'}`);
     }
 
     return await response.json();
@@ -865,10 +865,13 @@ export async function POST(
       const documentText = await getDocumentContent(documentId);
       console.log(`📥 Retrieved document text: ${documentText ? documentText.length : 0} chars`);
 
-      // Use FULL document text - no truncation
-      // Hybrid RAG will chunk and embed the entire document for accurate semantic search
-      // This ensures all document content is available for answering questions
-      const truncatedDocText = documentText;
+      // Truncate document text if too large (Hybrid RAG will chunk it properly)
+      // Allow up to 500K chars (~125K tokens) - Hybrid RAG handles chunking internally
+      // This ensures full document content is available for semantic search
+      const MAX_DOC_CHARS = 500000;
+      const truncatedDocText = documentText && documentText.length > MAX_DOC_CHARS
+        ? documentText.substring(0, MAX_DOC_CHARS) + '\n\n[Document truncated due to length...]'
+        : documentText;
 
       if (truncatedDocText) {
         console.log(`✅ Sending document text to Hybrid RAG: ${truncatedDocText.length} chars`);
@@ -877,8 +880,8 @@ export async function POST(
         console.warn(`⚠️ WARNING: No document text available! Hybrid RAG will fall back to web search.`);
       }
 
-      // Use Ultimate RAG v4.0 Backend (BGE-large + BM25 + Cross-encoder + Best-of-N + Gemini)
-      console.log(`🚀 Using Ultimate RAG v4.0 Backend (BGE-large + BM25 Hybrid + Cross-encoder Re-ranking + Best-of-N + Gemini)`);
+      // Use Hybrid RAG v3.0 Backend (BGE + ChromaDB + Groq)
+      console.log(`🚀 Using Hybrid RAG v3.0 Backend (BGE Embeddings + ChromaDB + Groq)`);
       const fakeRagResponse = await callHybridRagV3Backend(documentId, question, truncatedDocText || undefined);
 
       // Transform sources for frontend compatibility from fake RAG response

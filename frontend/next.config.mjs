@@ -40,7 +40,18 @@ const nextConfig = {
 
   // Webpack optimization
   webpack: (config, { dev, isServer }) => {
-    // Production optimizations only
+    // OPTIMIZATION: Dev memory reduction (from optimization plan)
+    if (dev && !isServer) {
+      config.optimization = {
+        ...config.optimization,
+        runtimeChunk: false,
+        splitChunks: false,
+      };
+      // Reduce parallelism to save RAM
+      config.parallelism = 1;
+    }
+
+    // Production optimizations
     if (!dev) {
       config.optimization = {
         ...config.optimization,
