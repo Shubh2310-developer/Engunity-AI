@@ -60,7 +60,7 @@ mongo_base_uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/engunity-ai")
 
 # Add optimized connection parameters if not already in URI
 if "?" not in mongo_base_uri:
-    mongo_uri = f"{mongo_base_uri}?maxPoolSize=50&minPoolSize=5&serverSelectionTimeoutMS=5000&connectTimeoutMS=3000&socketTimeoutMS=10000&compressors=zstd,snappy&retryWrites=true&w=majority"
+    mongo_uri = f"{mongo_base_uri}?maxPoolSize=50&minPoolSize=5&serverSelectionTimeoutMS=5000&connectTimeoutMS=3000&socketTimeoutMS=10000&retryWrites=true&w=majority"
 else:
     mongo_uri = mongo_base_uri
 

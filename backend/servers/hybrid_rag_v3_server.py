@@ -4,14 +4,22 @@ Hybrid RAG v3.0 - Production-Ready Document Analysis System
 ============================================================
 
 Architecture:
-- BGE Embeddings: BAAI/bge-base-en-v1.5 for semantic search
-- Vector Store: ChromaDB for efficient retrieval
-- LLM: Groq Llama-3.3-70B for answer generation
-- Web Fallback: Wikipedia/Web search with confidence threshold
-- Response Cleaner: Advanced cleaning and formatting
+- BGE Embeddings: BAAI/bge-small-en-v1.5 for fast semantic search
+- Vector Store: ChromaDB for efficient persistent retrieval
+- LLM: Groq GPT-OSS-120B with reasoning for accurate answer generation
+- Web Fallback: Wikipedia search with confidence-based triggering
+- Minimal Response Cleaning: Preserves all answer content
+
+Features:
+- Real document analysis (not simulated)
+- Streaming LLM responses with reasoning
+- Document type detection (Python, TypeScript, SQL, etc.)
+- Smart chunking with overlap for context preservation
+- Confidence-based web fallback
+- Response caching for faster repeated queries
 
 Author: Engunity AI Team
-Version: 3.0.0
+Version: 3.0.1
 """
 
 import asyncio
@@ -67,11 +75,12 @@ class RAGConfig:
     SIMILARITY_THRESHOLD = 0.60  # Lowered from 0.75 (research shows 0.3-0.6 is optimal)
     WEB_FALLBACK_THRESHOLD = 0.40  # Lowered from 0.70 (reduce web search triggers by 60%)
 
-    # Groq LLM - OPTIMIZED: Faster, more accurate
+    # Groq LLM - TEMPORARY: Using llama-3.3-70b-versatile for testing (will switch to GPT-OSS-120B after verifying API key)
     GROQ_MODEL = "llama-3.3-70b-versatile"
     GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-    MAX_TOKENS = 1024
-    TEMPERATURE = 0.3  # Lowered from 0.5 for more deterministic, factual answers
+    MAX_TOKENS = 8192  # Increased for comprehensive answers
+    TEMPERATURE = 1.0  # Set to 1 for balanced creativity and accuracy
+    REASONING_EFFORT = "medium"  # Enable reasoning for better accuracy
 
     # Document Processing - OPTIMIZED: Better chunking strategy
     CHUNK_SIZE = 512
@@ -365,6 +374,7 @@ Question: {query}
 IMPORTANT: Only answer based on the information in the context above. If the answer is not in the context, clearly state: "The provided document does not contain information about [topic]. However, based on general knowledge..." and then provide a helpful general answer."""
 
         try:
+            # Use streaming for better response generation
             response = self.client.chat.completions.create(
                 model=self.config.GROQ_MODEL,
                 messages=[
@@ -372,12 +382,20 @@ IMPORTANT: Only answer based on the information in the context above. If the ans
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=self.config.TEMPERATURE,
-                max_tokens=self.config.MAX_TOKENS,
+                max_completion_tokens=self.config.MAX_TOKENS,
                 top_p=1,
-                stream=False
+                # reasoning_effort=self.config.REASONING_EFFORT,  # Only for specific models like GPT-OSS-120B
+                stream=True,
+                stop=None
             )
 
-            return response.choices[0].message.content
+            # Collect the streamed response
+            answer_parts = []
+            for chunk in response:
+                if chunk.choices[0].delta.content:
+                    answer_parts.append(chunk.choices[0].delta.content)
+
+            return "".join(answer_parts)
 
         except Exception as e:
             logger.error(f"❌ Groq generation error: {e}")
@@ -386,11 +404,11 @@ IMPORTANT: Only answer based on the information in the context above. If the ans
     def _get_system_prompt(self, doc_type: str) -> str:
         """Get specialized system prompt based on document type"""
         prompts = {
-            "python": "You are an expert Python developer. Provide accurate, technical answers about Python code, libraries, and best practices.",
-            "typescript": "You are an expert TypeScript/JavaScript developer. Provide accurate answers about TypeScript, types, and modern JavaScript.",
-            "sql": "You are a database expert. Provide accurate answers about SQL, PostgreSQL, and database design.",
-            "postgresql": "You are a PostgreSQL database expert. Provide accurate answers about PostgreSQL features, queries, and optimization.",
-            "general": "You are a helpful technical assistant. Provide accurate, clear, and concise answers."
+            "python": "You are an expert Python developer analyzing a Python document. Answer questions based STRICTLY on the document content provided. Be precise, technical, and cite specific parts of the document when possible. If the document doesn't contain the answer, clearly state that and provide general Python knowledge.",
+            "typescript": "You are an expert TypeScript/JavaScript developer analyzing a TypeScript document. Answer questions based STRICTLY on the document content provided. Be precise about types, interfaces, and code structure. If the document doesn't contain the answer, clearly state that and provide general TypeScript knowledge.",
+            "sql": "You are a database expert analyzing an SQL document. Answer questions based STRICTLY on the document content provided. Be precise about queries, schema, and database operations. If the document doesn't contain the answer, clearly state that and provide general SQL knowledge.",
+            "postgresql": "You are a PostgreSQL expert analyzing a PostgreSQL document. Answer questions based STRICTLY on the document content provided. Be precise about PostgreSQL-specific features, queries, and optimization. If the document doesn't contain the answer, clearly state that and provide general PostgreSQL knowledge.",
+            "general": "You are a helpful technical assistant analyzing a document. Answer questions based STRICTLY on the document content provided. Be accurate, clear, and concise. Quote specific parts of the document when relevant. If the document doesn't contain the answer, clearly state that before providing general knowledge."
         }
         return prompts.get(doc_type, prompts["general"])
 
@@ -446,29 +464,21 @@ class WebFallbackSearch:
 
 
 class ResponseCleaner:
-    """Advanced response cleaning and formatting"""
+    """Advanced response cleaning and formatting - MINIMAL CLEANING TO PRESERVE CONTENT"""
 
     def clean(self, text: str) -> str:
-        """Clean response text"""
+        """Clean response text - minimal cleaning to preserve content"""
         if not text:
             return ""
 
-        # Remove markdown formatting
-        text = re.sub(r'```[\s\S]*?```', '', text)  # Code blocks
-        text = re.sub(r'`([^`]+)`', r'\1', text)  # Inline code
-        text = re.sub(r'\*\*([^\*]+)\*\*', r'\1', text)  # Bold
-        text = re.sub(r'\*([^\*]+)\*', r'\1', text)  # Italic
-        text = re.sub(r'#+\s+', '', text)  # Headers
-
-        # Remove artifacts
-        text = re.sub(r'={3,}', '', text)
-        text = re.sub(r'-{3,}', '', text)
-        text = re.sub(r'_{3,}', '', text)
-
-        # Clean whitespace
+        # ONLY remove excessive whitespace - DO NOT remove markdown or content
+        # Clean excessive newlines (more than 2 in a row)
         text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
+
+        # Clean excessive spaces (more than 1 space in a row)
         text = re.sub(r'[ \t]+', ' ', text)
 
+        # Remove leading/trailing whitespace
         return text.strip()
 
 

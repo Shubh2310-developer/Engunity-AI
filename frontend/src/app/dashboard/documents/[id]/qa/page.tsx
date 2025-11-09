@@ -8,7 +8,7 @@ import { ArrowLeft, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
-import { supabase } from '@/lib/auth/supabase';
+import { useAuth } from '@/hooks/useAuth';
 
 import QAInterface from '../../components/QAInterface';
 
@@ -18,7 +18,8 @@ const DocumentQAPage: React.FC = () => {
   const { id } = useParams();
   const router = useRouter();
   const { error: showError } = useToast();
-  
+  const { user, loading: authLoading } = useAuth();
+
   const [document, setDocument] = useState<SupabaseDocument | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,22 +32,28 @@ const DocumentQAPage: React.FC = () => {
         return;
       }
 
+      // Wait for auth to finish loading before checking user
+      if (authLoading) {
+        console.log('⏳ Waiting for authentication to load...');
+        return;
+      }
+
       try {
         console.log('🔍 Fetching document for Q&A:', id);
 
-        // Get authentication token
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-        if (sessionError || !session) {
+        // MongoDB authentication - check if user is logged in
+        if (!user) {
           throw new Error('Authentication required');
         }
 
-        // Fetch document via API route with auth
+        console.log('✅ User authenticated:', user.email);
+
+        // Fetch document via API route with MongoDB session cookie
         const response = await fetch(`/api/documents/${id}`, {
           method: 'GET',
+          credentials: 'include', // Include cookies for MongoDB session
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`
+            'Content-Type': 'application/json'
           }
         });
 
@@ -118,7 +125,7 @@ const DocumentQAPage: React.FC = () => {
     };
 
     fetchDocument();
-  }, [id, showError]);
+  }, [id, user, authLoading, showError]);
 
   const handleGoBack = () => {
     router.push('/dashboard/documents');

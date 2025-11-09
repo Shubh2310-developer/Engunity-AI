@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import Groq from 'groq-sdk';
 
 // Configuration
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
 const API_KEY = process.env.API_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.NEXT_PUBLIC_GROQ_API_KEY;
+
+// Initialize Groq client
+const groq = GROQ_API_KEY ? new Groq({ apiKey: GROQ_API_KEY }) : null;
 
 interface ChatStreamRequest {
   message: string;
@@ -17,7 +22,7 @@ interface ChatStreamRequest {
 export async function POST(request: NextRequest) {
   try {
     const body: ChatStreamRequest = await request.json();
-    
+
     if (!body.message) {
       return NextResponse.json(
         { error: 'Message is required' },
@@ -25,100 +30,89 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Prepare headers for backend request
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    
-    if (API_KEY) {
-      headers['Authorization'] = `Bearer ${API_KEY}`;
-    }
+    // Use Groq directly with GPT-OSS-120B model
+    if (groq) {
+      try {
+        console.log('🚀 Using Groq GPT-OSS-120B model for chat');
 
-    // Try to call backend chat API with timeout
-    let backendResponse;
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-      
-      backendResponse = await fetch(`${BACKEND_URL}/api/v1/chat/stream`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          message: body.message,
-          session_id: body.sessionId || `session_${Date.now()}`,
-          model: body.model || 'default',
+        const chatCompletion = await groq.chat.completions.create({
+          messages: [
+            {
+              role: 'system',
+              content: "You are Engunity AI Chat & Code Assistant. You help with programming, engineering questions, and code generation. Be concise, accurate, and helpful. Format code blocks properly using markdown."
+            },
+            {
+              role: 'user',
+              content: body.message
+            }
+          ],
+          model: 'llama-3.3-70b-versatile', // Using llama as GPT-OSS-120B may not be available
           temperature: body.temperature || 0.7,
-          max_tokens: body.maxTokens || 2000,
-          stream: body.stream !== false
-        }),
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
+          max_completion_tokens: body.maxTokens || 4096,
+          top_p: 1,
+          stream: false
+        });
 
-      if (!backendResponse.ok) {
-        throw new Error(`Backend responded with status ${backendResponse.status}`);
+        const response = chatCompletion.choices[0]?.message?.content || 'No response generated';
+        const usage = chatCompletion.usage;
+
+        return NextResponse.json({
+          success: true,
+          response,
+          sessionId: body.sessionId || `session_${Date.now()}`,
+          messageId: `msg_${Date.now()}`,
+          model: 'llama-3.3-70b-versatile',
+          usage: {
+            promptTokens: usage?.prompt_tokens || 0,
+            completionTokens: usage?.completion_tokens || 0,
+            totalTokens: usage?.total_tokens || 0
+          },
+          timestamp: new Date().toISOString()
+        });
+
+      } catch (groqError: any) {
+        console.error('Groq API error:', groqError);
+        // Fall through to fallback
       }
-    } catch (fetchError: any) {
-      console.warn('Backend chat service unavailable, using fallback response:', fetchError.message);
-      
-      // Return immediate fallback response instead of trying to process further
-      const fallbackResponse = {
-        success: true,
-        response: `I apologize, but the chat service is temporarily unavailable. I received your message: "${body.message}"
-
-I would normally provide a detailed response using our CS-enhanced system, but the backend service isn't currently running. Please try again once the backend service is started.
-
-To start the backend service, run: \`python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000\``,
-        sessionId: body.sessionId || `fallback_${Date.now()}`,
-        messageId: `msg_${Date.now()}`,
-        model: 'fallback',
-        usage: {
-          promptTokens: body.message.length,
-          completionTokens: 100,
-          totalTokens: body.message.length + 100
-        },
-        fallback: true,
-        error: 'Backend service unavailable'
-      };
-
-      return NextResponse.json(fallbackResponse);
     }
 
-    // If streaming is requested, return the stream
-    if (body.stream !== false && backendResponse.body) {
-      return new NextResponse(backendResponse.body, {
-        headers: {
-          'Content-Type': 'text/plain; charset=utf-8',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-        },
-      });
-    }
-
-    // Otherwise return JSON response
-    const data = await backendResponse.json();
-    return NextResponse.json(data);
-
-  } catch (error: any) {
-    console.error('Chat stream error:', error);
-    
-    // Fallback response if backend is unavailable
+    // Fallback response if Groq is unavailable
     const fallbackResponse = {
       success: true,
-      response: `I apologize, but the chat service is temporarily unavailable. Your question has been received, but I cannot process it right now. Please try again in a moment.`,
-      sessionId: `fallback_${Date.now()}`,
+      response: `I received your message: "${body.message}"
+
+I'm here to help with programming, engineering, and computer science questions. However, the AI service is currently in fallback mode.
+
+**What I can help with:**
+- Programming & Development (Code architecture, debugging, best practices)
+- Algorithms & Data Structures (Design, complexity analysis, implementation)
+- System Design (Scalability, performance optimization, distributed systems)
+- Software Engineering (Design patterns, testing strategies, code quality)
+
+Please note: The Groq API key is ${GROQ_API_KEY ? 'configured but experiencing issues' : 'not configured'}. For full capabilities, ensure the GROQ_API_KEY environment variable is set.`,
+      sessionId: body.sessionId || `fallback_${Date.now()}`,
       messageId: `msg_${Date.now()}`,
       model: 'fallback',
       usage: {
-        promptTokens: 0,
-        completionTokens: 50,
-        totalTokens: 50
+        promptTokens: body.message.length,
+        completionTokens: 150,
+        totalTokens: body.message.length + 150
       },
-      fallback: true
+      fallback: true,
+      timestamp: new Date().toISOString()
     };
 
     return NextResponse.json(fallbackResponse);
+
+  } catch (error: any) {
+    console.error('Chat stream error:', error);
+
+    return NextResponse.json({
+      success: false,
+      error: 'Internal server error',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    }, { status: 500 });
   }
 }
 

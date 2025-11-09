@@ -8,9 +8,41 @@ if (!MONGODB_URI) {
   throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
 }
 
+// OPTIMIZATION: Add connection pooling, compression, and timeouts to MongoDB URI
+function getOptimizedMongoURI(baseUri: string): string {
+  // If URI already has query params, don't add duplicates
+  if (baseUri.includes('maxPoolSize=')) {
+    return baseUri;
+  }
+
+  const separator = baseUri.includes('?') ? '&' : '?';
+  const optimizations = [
+    'maxPoolSize=50',           // Connection pooling (max 50 connections)
+    'minPoolSize=5',            // Keep minimum 5 connections alive
+    'serverSelectionTimeoutMS=5000',  // 5s timeout for server selection
+    'connectTimeoutMS=3000',    // 3s timeout for initial connection
+    'socketTimeoutMS=10000',    // 10s timeout for socket operations
+    'retryWrites=true',         // Retry failed writes
+    'w=majority'                // Write concern: majority
+    // Note: Compression disabled (requires optional snappy/zstd packages)
+  ].join('&');
+
+  return `${baseUri}${separator}${optimizations}`;
+}
+
+const OPTIMIZED_MONGODB_URI = getOptimizedMongoURI(MONGODB_URI);
+
 // Connection singleton
 let client: MongoClient;
 let clientPromise: Promise<MongoClient>;
+
+// OPTIMIZATION: MongoDB client options with explicit timeouts and app name
+const clientOptions = {
+  appName: 'engunity-frontend',
+  serverSelectionTimeoutMS: 5000,
+  connectTimeoutMS: 3000,
+  socketTimeoutMS: 10000,
+};
 
 if (process.env.NODE_ENV === 'development') {
   // In development mode, use a global variable so that the value
@@ -20,14 +52,16 @@ if (process.env.NODE_ENV === 'development') {
   };
 
   if (!globalWithMongo._mongoClientPromise) {
-    client = new MongoClient(MONGODB_URI);
+    client = new MongoClient(OPTIMIZED_MONGODB_URI, clientOptions);
     globalWithMongo._mongoClientPromise = client.connect();
+    console.log('🔧 MongoDB: Development mode - using optimized connection with pooling');
   }
   clientPromise = globalWithMongo._mongoClientPromise;
 } else {
   // In production mode, it's best to not use a global variable.
-  client = new MongoClient(MONGODB_URI);
+  client = new MongoClient(OPTIMIZED_MONGODB_URI, clientOptions);
   clientPromise = client.connect();
+  console.log('🔧 MongoDB: Production mode - using optimized connection with pooling');
 }
 
 // Database instance

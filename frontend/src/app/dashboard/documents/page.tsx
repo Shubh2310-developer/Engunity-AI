@@ -308,20 +308,11 @@ const DocumentsPageContent: React.FC = () => {
       // Poll for status updates using MongoDB API
       const pollInterval = setInterval(async () => {
         try {
-          // Get current session for authentication
-          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-          if (sessionError || !session) {
-            console.error('Session error during polling:', sessionError);
-            clearInterval(pollInterval);
-            return;
-          }
-
-          // Fetch document status from MongoDB via API
+          // Fetch document status from MongoDB via API (uses MongoDB session cookie)
           const response = await fetch('/api/documents/list', {
             method: 'GET',
+            credentials: 'include', // Include cookies for MongoDB session
             headers: {
-              'Authorization': `Bearer ${session.access_token}`,
               'Content-Type': 'application/json'
             }
           });

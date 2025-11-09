@@ -1,86 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { cookies } from 'next/headers';
 import { ObjectId } from 'mongodb';
 import { getDatabase } from '@/lib/database/mongodb';
+import { getServerUser } from '@/lib/auth/server-session';
 
 const RAG_API_BASE = process.env.RAG_API_BASE || 'http://localhost:8000';
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = cookies();
+    console.log('🔍 RAG Question - Starting question processing');
 
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-          set(name: string, value: string, options: CookieOptions) {
-            try {
-              cookieStore.set({ name, value, ...options });
-            } catch (error) {
-              // The `set` method was called from a Server Component.
-              // This can be ignored if you have middleware refreshing
-              // user sessions.
-            }
-          },
-          remove(name: string, options: CookieOptions) {
-            try {
-              cookieStore.set({ name, value: '', ...options });
-            } catch (error) {
-              // The `delete` method was called from a Server Component.
-              // This can be ignored if you have middleware refreshing
-              // user sessions.
-            }
-          },
-        },
-      }
-    );
+    // MongoDB authentication - get user from session cookie
+    const user = await getServerUser();
 
-    // Try to get session from cookies first
-    let session = (await supabase.auth.getSession()).data.session;
-    let sessionError = (await supabase.auth.getSession()).error;
-
-    console.log('🔍 RAG Question - Cookie session check:', {
-      hasSession: !!session,
-      hasSessionError: !!sessionError,
-      userId: session?.user?.id
-    });
-
-    // If no session from cookies, try to get it from Authorization header
-    if (!session) {
-      const authHeader = request.headers.get('authorization');
-
-      if (authHeader?.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        console.log('📝 RAG Question - Verifying token from header...');
-
-        // Use the anon key client to verify the user's token
-        const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-
-        if (user && !userError) {
-          // Create a session-like object for consistency
-          session = {
-            access_token: token,
-            user: user
-          } as any;
-          console.log('✅ RAG Question - User authenticated via header:', user.id);
-        } else {
-          console.error('❌ RAG Question - Token verification failed:', userError?.message);
-        }
-      }
-    }
-
-    if (!session) {
-      console.error('❌ RAG Question - Authentication failed: No session found');
+    if (!user) {
+      console.error('❌ RAG Question - No authenticated user found');
       return NextResponse.json(
-        { error: 'Authentication required' },
+        { error: 'Authentication required. Please sign in.' },
         { status: 401 }
       );
     }
+
+    console.log('✅ RAG Question - User authenticated:', user.email);
 
     const body = await request.json();
     const {
@@ -111,9 +51,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Use authenticated user's ID
+    const effectiveUserId = user._id?.toString();
+
     const document = await documentsCollection.findOne({
       _id: documentObjectId,
-      user_id: session.user.id
+      user_id: effectiveUserId
     });
 
     if (!document) {
@@ -139,12 +82,11 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({
         document_id: documentId,
         question: question,
-        user_id: session.user.id,
+        user_id: effectiveUserId,
         response_format: responseFormat,
         max_sources: maxSources
       }),
@@ -164,7 +106,7 @@ export async function POST(request: NextRequest) {
     try {
       await db.collection('document_interactions').insertOne({
         document_id: documentObjectId,
-        user_id: session.user.id,
+        user_id: effectiveUserId,
         interaction_type: 'question_answer',
         question: question,
         confidence: result.confidence,

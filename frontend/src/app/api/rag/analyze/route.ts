@@ -1,99 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { cookies } from 'next/headers';
 import { ObjectId } from 'mongodb';
 import { getDatabase } from '@/lib/database/mongodb';
+import { getServerUser } from '@/lib/auth/server-session';
 
 const RAG_API_BASE = process.env.RAG_API_BASE || 'http://localhost:8000';
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = cookies();
+    console.log('🔍 RAG Analyze - Starting document analysis');
 
-    // Debug: Log all cookies
-    const allCookies = cookieStore.getAll();
-    console.log('🍪 RAG Analyze - Available cookies:', allCookies.map(c => c.name));
+    // MongoDB authentication - get user from session cookie
+    const user = await getServerUser();
 
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            const value = cookieStore.get(name)?.value;
-            console.log(`🍪 Cookie get: ${name} = ${value ? 'found' : 'not found'}`);
-            return value;
-          },
-          set(name: string, value: string, options: CookieOptions) {
-            try {
-              cookieStore.set({ name, value, ...options });
-            } catch (error) {
-              // The `set` method was called from a Server Component.
-              // This can be ignored if you have middleware refreshing
-              // user sessions.
-            }
-          },
-          remove(name: string, options: CookieOptions) {
-            try {
-              cookieStore.set({ name, value: '', ...options });
-            } catch (error) {
-              // The `delete` method was called from a Server Component.
-              // This can be ignored if you have middleware refreshing
-              // user sessions.
-            }
-          },
-        },
-      }
-    );
-
-    // Try to get session from cookies first
-    let session = (await supabase.auth.getSession()).data.session;
-    let sessionError = (await supabase.auth.getSession()).error;
-
-    console.log('🔍 RAG Analyze - Cookie session check:', {
-      hasSession: !!session,
-      hasSessionError: !!sessionError,
-      sessionErrorMessage: sessionError?.message,
-      userId: session?.user?.id
-    });
-
-    // If no session from cookies, try to get it from Authorization header
-    if (!session) {
-      // Try both lowercase and capitalized versions
-      const authHeader = request.headers.get('authorization') || request.headers.get('Authorization');
-
-      // Debug: Log all headers
-      const allHeaders: Record<string, string> = {};
-      request.headers.forEach((value, key) => {
-        allHeaders[key] = value.substring(0, 50); // Truncate for security
-      });
-      console.log('🔍 RAG Analyze - All headers:', allHeaders);
-
-      console.log('🔍 RAG Analyze - Checking Authorization header:', {
-        hasAuthHeader: !!authHeader,
-        startsWithBearer: authHeader?.startsWith('Bearer '),
-        headerLength: authHeader?.length
-      });
-
-      if (authHeader?.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        console.log('📝 RAG Analyze - Verifying token from header...');
-
-        // Use the anon key client to verify the user's token
-        const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-
-        if (user && !userError) {
-          // Create a session-like object for consistency
-          session = {
-            access_token: token,
-            user: user
-          } as any;
-          console.log('✅ RAG Analyze - User authenticated via header:', user.id);
-        } else {
-          console.error('❌ RAG Analyze - Token verification failed:', userError?.message);
-        }
-      }
+    if (!user) {
+      console.error('❌ RAG Analyze - No authenticated user found');
+      return NextResponse.json(
+        { error: 'Authentication required. Please sign in.' },
+        { status: 401 }
+      );
     }
+
+    console.log('✅ RAG Analyze - User authenticated:', user.email);
 
     const body = await request.json();
     const { documentId, userId, options = {} } = body;
@@ -105,8 +32,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use session user ID if available, otherwise use provided userId
-    const effectiveUserId = session?.user?.id || userId;
+    // Use authenticated user's ID
+    const effectiveUserId = user._id?.toString() || userId;
 
     console.log('🔍 RAG Analyze - Looking for document:', { documentId, userId: effectiveUserId });
 

@@ -20,9 +20,9 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def get_mongo_db():
-    """Get MongoDB database from main app"""
-    from main import db
-    return db
+    """Get MongoDB database from database module (avoids torch re-init)"""
+    from database.mongodb import get_sync_mongo_db
+    return get_sync_mongo_db()
 
 def get_current_user():
     """Extract user ID from request or use mock user for now"""
