@@ -132,14 +132,25 @@ export interface ChatSession {
   updatedAt: Date;
   messageCount: number;
   isActive: boolean;
-  
+
   // Session metadata
   documentInfo?: {
     name: string;
     type: string;
     category?: string;
   };
-  
+
+  // Uploaded documents for document chat RAG
+  uploadedDocuments?: Array<{
+    doc_id: string;
+    filename: string;
+    file_type: string;
+    size_bytes: number;
+    chunk_count: number;
+    page_count?: number;
+    upload_time: string;
+  }>;
+
   // Performance metrics
   totalTokens?: number;
   avgConfidence?: number;
@@ -218,7 +229,45 @@ export class ChatService {
     
     return session;
   }
-  
+
+  /**
+   * Create a new chat session (always creates new, never reuses)
+   * This is used for general chat where each "New Chat" should be separate
+   */
+  static async createNewSession(
+    documentId: string,
+    userId?: string,
+    documentInfo?: { name: string; type: string; category?: string }
+  ): Promise<ChatSession> {
+    const sessionCollection = await getChatSessionCollection();
+
+    // Always create a new session with unique ID
+    const sessionId = `session_${documentId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    const newSession: ChatSession = {
+      sessionId,
+      documentId,
+      userId,
+      title: documentInfo?.name ? `Chat about ${documentInfo.name}` : 'New Chat',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      messageCount: 0,
+      isActive: true,
+      documentInfo,
+      totalTokens: 0,
+      avgConfidence: 0,
+      avgProcessingTime: 0
+    };
+
+    const result = await sessionCollection.insertOne(newSession);
+    const session = { ...newSession, _id: result.insertedId };
+
+    // Update document chat mapping
+    await this.updateDocumentChatMapping(documentId, sessionId, documentInfo);
+
+    return session;
+  }
+
   /**
    * Save a chat message
    */
@@ -383,12 +432,56 @@ export class ChatService {
       }
     );
   }
-  
+
+  /**
+   * Update a session with new fields (e.g., title)
+   */
+  static async updateSession(sessionId: string, updates: Partial<ChatSession>): Promise<boolean> {
+    const sessionCollection = await getChatSessionCollection();
+
+    // Remove fields that shouldn't be directly updated
+    const { _id, sessionId: _, createdAt, ...safeUpdates } = updates as any;
+
+    const result = await sessionCollection.updateOne(
+      { sessionId },
+      {
+        $set: {
+          ...safeUpdates,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    return result.modifiedCount > 0;
+  }
+
+  /**
+   * Delete a session and all its messages
+   */
+  static async deleteSession(sessionId: string, userId?: string): Promise<boolean> {
+    const sessionCollection = await getChatSessionCollection();
+    const chatCollection = await getChatCollection();
+
+    // Build query - include userId if provided for security
+    const query: any = { sessionId };
+    if (userId) {
+      query.userId = userId;
+    }
+
+    // Delete all messages for this session
+    await chatCollection.deleteMany({ sessionId });
+
+    // Delete the session
+    const result = await sessionCollection.deleteOne(query);
+
+    return result.deletedCount > 0;
+  }
+
   /**
    * Update document chat mapping
    */
   private static async updateDocumentChatMapping(
-    documentId: string, 
+    documentId: string,
     sessionId: string,
     documentInfo?: { name: string; type: string; category?: string }
   ): Promise<void> {

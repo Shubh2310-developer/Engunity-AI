@@ -26,8 +26,15 @@ import {
   Edit3,
   Clock,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ChevronDown,
+  Check,
+  Sparkles,
+  FileText,
+  Paperclip,
+  Upload
 } from 'lucide-react';
+import { Image as ImageIcon } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -52,6 +59,16 @@ interface ChatSession {
   userId?: string;
 }
 
+interface UploadedDocument {
+  doc_id: string;
+  filename: string;
+  file_type: string;
+  size_bytes: number;
+  chunk_count: number;
+  page_count?: number;
+  upload_time: string;
+}
+
 function ChatCodePageContent() {
   // Authentication & User State
   const [user, setUser] = useState<any>(null);
@@ -68,14 +85,25 @@ function ChatCodePageContent() {
 
   // Chat State
   const [messages, setMessages] = useState<Message[]>([]);
-  
+
   const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [isImageLoading, setIsImageLoading] = useState(false);
   const [systemStatus, setSystemStatus] = useState<'live' | 'fallback' | 'offline'>('live');
+  const [selectedMode, setSelectedMode] = useState<'chat' | 'image'>('chat');
+  const [showModeDropdown, setShowModeDropdown] = useState(false);
+
+  // Document RAG State
+  const [uploadedDocuments, setUploadedDocuments] = useState<UploadedDocument[]>([]);
+  const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [showDocumentPanel, setShowDocumentPanel] = useState(false);
 
   // Refs
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Authentication check
   useEffect(() => {
@@ -118,11 +146,11 @@ function ChatCodePageContent() {
       // Get all sessions for user via API
       const response = await fetch(`/api/chat/sessions?userId=${userId}&documentId=general_chat`);
       const data = await response.json();
-      
+
       if (!data.success) {
         throw new Error(data.error || 'Failed to load sessions');
       }
-      
+
       const sessions = data.sessions || [];
       const formattedSessions: ChatSession[] = sessions.map((session: any) => ({
         sessionId: session.sessionId,
@@ -134,22 +162,38 @@ function ChatCodePageContent() {
         isActive: false,
         userId: session.userId || userId
       }));
-      
+
       setChatSessions(formattedSessions);
-      
+
       // If no sessions exist, create a new one
       if (formattedSessions.length === 0) {
         await createNewChat();
       } else {
-        // Set the first session as active and load its messages
-        const firstSession = formattedSessions[0];
-        if (firstSession) {
-          setCurrentSessionId(firstSession.sessionId);
+        // Try to restore the last active session from localStorage
+        const savedSessionId = localStorage.getItem(`chatandcode_active_session_${userId}`);
+
+        // Check if the saved session still exists in the loaded sessions
+        const savedSession = savedSessionId
+          ? formattedSessions.find(s => s.sessionId === savedSessionId)
+          : null;
+
+        // Use the saved session if it exists, otherwise use the most recent (first) session
+        const sessionToLoad = savedSession || formattedSessions[0];
+
+        if (sessionToLoad) {
+          setCurrentSessionId(sessionToLoad.sessionId);
           setChatSessions(prev => prev.map(s => ({
             ...s,
-            isActive: s.sessionId === firstSession.sessionId
+            isActive: s.sessionId === sessionToLoad.sessionId
           })));
-          await loadSessionMessages(firstSession.sessionId);
+          await loadSessionMessages(sessionToLoad.sessionId);
+
+          // Restore uploaded documents for the initial session
+          const currentSession = sessions.find((s: any) => s.sessionId === sessionToLoad.sessionId);
+          if (currentSession && currentSession.uploadedDocuments) {
+            setUploadedDocuments(currentSession.uploadedDocuments);
+            setSelectedDocuments(currentSession.uploadedDocuments.map((d: any) => d.doc_id));
+          }
         }
       }
     } catch (error) {
@@ -220,6 +264,20 @@ function ChatCodePageContent() {
     }
   }, [chatInput]);
 
+  // Click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowModeDropdown(false);
+      }
+    };
+
+    if (showModeDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showModeDropdown]);
+
   const createNewChat = async () => {
     if (!user?.id) {
       console.error('❌ Cannot create chat - no user');
@@ -268,6 +326,10 @@ function ChatCodePageContent() {
       ]);
 
       setCurrentSessionId(session.sessionId);
+
+      // Save new session as active in localStorage
+      localStorage.setItem(`chatandcode_active_session_${user.id}`, session.sessionId);
+
       setMessages([
         {
           id: 'system-welcome',
@@ -277,6 +339,10 @@ function ChatCodePageContent() {
           tokens: 42
         }
       ]);
+
+      // Clear uploaded documents for new chat
+      setUploadedDocuments([]);
+      setSelectedDocuments([]);
 
       console.log('✅ New chat session created:', session.sessionId);
       return session.sessionId;
@@ -291,29 +357,292 @@ function ChatCodePageContent() {
       isActive: s.sessionId === sessionId
     })));
     setCurrentSessionId(sessionId);
-    
+
+    // Save active session to localStorage for persistence across page reloads
+    if (user?.id) {
+      localStorage.setItem(`chatandcode_active_session_${user.id}`, sessionId);
+    }
+
     // Load messages for the selected session
     await loadSessionMessages(sessionId);
+
+    // Restore uploaded documents for this session
+    try {
+      const sessionResponse = await fetch(`/api/chat/sessions?userId=${user?.id}&documentId=general_chat`);
+      const sessionData = await sessionResponse.json();
+
+      if (sessionData.success && sessionData.sessions) {
+        const currentSession = sessionData.sessions.find((s: any) => s.sessionId === sessionId);
+        if (currentSession && currentSession.uploadedDocuments) {
+          setUploadedDocuments(currentSession.uploadedDocuments);
+          setSelectedDocuments(currentSession.uploadedDocuments.map((d: any) => d.doc_id));
+        } else {
+          // Clear documents if session has none
+          setUploadedDocuments([]);
+          setSelectedDocuments([]);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to restore documents for session:', err);
+      // Clear documents on error to avoid showing wrong documents
+      setUploadedDocuments([]);
+      setSelectedDocuments([]);
+    }
   };
 
   const deleteSession = async (sessionId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     try {
-      // Delete from MongoDB (you may want to implement this in ChatService)
-      // For now, just remove from UI
+      // Delete from MongoDB backend
+      const response = await fetch('/api/chat/sessions', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ sessionId, userId: user?.id })
+      });
+
+      if (!response.ok) {
+        console.error('Failed to delete session from backend');
+      }
+
+      // Remove from UI
       setChatSessions(prev => prev.filter(s => s.sessionId !== sessionId));
-      
+
       if (sessionId === currentSessionId) {
         const remainingSessions = chatSessions.filter(s => s.sessionId !== sessionId);
         if (remainingSessions.length > 0 && remainingSessions[0]) {
           await switchToSession(remainingSessions[0].sessionId);
         } else {
+          // Clear localStorage when deleting the last session
+          if (user?.id) {
+            localStorage.removeItem(`chatandcode_active_session_${user.id}`);
+          }
           await createNewChat();
         }
       }
     } catch (error) {
       console.error('Error deleting session:', error);
+    }
+  };
+
+  const generateImageFromPrompt = async (rawPrompt: string) => {
+    console.log('🎨 generateImageFromPrompt called with:', rawPrompt.substring(0, 100));
+
+    const prompt = rawPrompt.replace(/^\s*\/imagine\s*/i, '').trim();
+    if (!prompt) {
+      alert('Please enter a description for the image you want to generate.');
+      return;
+    }
+
+    console.log('✅ Prompt validated:', prompt.substring(0, 100));
+
+    if (!isAuthenticated || !user?.id) {
+      alert('Please sign in to generate images.');
+      return;
+    }
+
+    if (!currentSessionId) {
+      console.error('❌ No active session for image generation');
+      alert('Creating new chat session...');
+      await createNewChat();
+      if (!currentSessionId) {
+        alert('Failed to create chat session. Please refresh the page.');
+        return;
+      }
+    }
+
+    const userMessageId = `msg_${Date.now()}`;
+    const userMessage: Message = {
+      id: userMessageId,
+      type: 'user',
+      content: `🎨 Generate image: ${prompt}`,
+      timestamp: new Date(),
+      tokens: Math.floor(prompt.split(' ').length * 1.1),
+      sessionId: currentSessionId,
+      messageId: userMessageId
+    };
+    setMessages(prev => [...prev, userMessage]);
+
+    const assistantMessageId = `msg_${Date.now() + 1}`;
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      type: 'assistant',
+      content: '✨ Generating your image with Gemini Imagen 3.0...\n',
+      timestamp: new Date(),
+      isStreaming: true,
+      tokens: 0,
+      sessionId: currentSessionId,
+      messageId: assistantMessageId
+    };
+    setMessages(prev => [...prev, assistantMessage]);
+
+    setIsImageLoading(true);
+    try {
+      console.log('🎨 Calling image generation API with prompt:', prompt);
+      const res = await fetch('/api/ai/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, n: 1, aspectRatio: '16:9', quality: 'standard' })
+      });
+
+      console.log('📡 Image API response status:', res.status);
+      const data = await res.json();
+      console.log('📦 Image API response data:', data);
+
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to generate image');
+      }
+
+      if (!data.images || data.images.length === 0) {
+        throw new Error('No images returned from API');
+      }
+
+      console.log('📦 Received images:', data.images.length);
+
+      // Generate markdown for images
+      const imagesMd = data.images.map((img: any, i: number) => {
+        console.log(`🖼️ Image ${i+1} - mimeType: ${img.mimeType}, dataUrl length: ${img.dataUrl?.length || 0}`);
+        return `![${prompt} - Image ${i+1}](${img.dataUrl})
+
+**Generated Image ${i+1}**
+*Prompt: "${prompt}"*
+*Model: Gemini Imagen 3.0 Fast*`;
+      }).join('\n\n---\n\n');
+
+      console.log('📝 Generated markdown:', imagesMd.substring(0, 200));
+
+      setMessages(prev => prev.map(m => m.id === assistantMessageId ? {
+        ...m,
+        content: imagesMd,
+        isStreaming: false,
+        tokens: Math.ceil((prompt.split(' ').length + 20) * 1.1)
+      } : m));
+
+      console.log('✅ Image generation successful - message updated');
+    } catch (err: any) {
+      console.error('❌ Image generation error:', err);
+      const msg = `❌ Image generation failed: ${err?.message || 'unknown error'}\n\nPlease try again or check your API configuration.`;
+      setMessages(prev => prev.map(m => m.id === assistantMessageId ? { ...m, content: msg, isStreaming: false } : m));
+    } finally {
+      setIsImageLoading(false);
+    }
+  };
+
+  // Document RAG Functions
+  const handleDocumentUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    const allowedTypes = ['.pdf', '.docx', '.txt', '.md'];
+    const fileExt = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+
+    if (!allowedTypes.includes(fileExt)) {
+      alert(`File type ${fileExt} not supported. Please upload PDF, DOCX, TXT, or MD files.`);
+      return;
+    }
+
+    if (file.size > 50 * 1024 * 1024) {
+      alert('File too large. Maximum size is 50MB.');
+      return;
+    }
+
+    setIsUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('user_id', user?.id || 'anonymous');
+      formData.append('session_id', currentSessionId);
+
+      const response = await fetch('http://localhost:8004/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const data = await response.json();
+
+      // Update UI state
+      const newDocuments = [...uploadedDocuments, data];
+      setUploadedDocuments(newDocuments);
+      setSelectedDocuments(prev => [...prev, data.doc_id]);
+
+      // Persist documents to session in MongoDB
+      try {
+        await fetch('/api/chat/sessions', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sessionId: currentSessionId,
+            updates: {
+              uploadedDocuments: newDocuments
+            }
+          })
+        });
+      } catch (err) {
+        console.error('Failed to persist documents to session:', err);
+      }
+
+      // Add system message
+      const systemMsg: Message = {
+        id: `msg_${Date.now()}`,
+        type: 'system',
+        content: `📄 Document uploaded: **${file.name}**\n- Pages: ${data.page_count || 'N/A'}\n- Chunks: ${data.chunk_count}\n\nYou can now ask questions about this document!`,
+        timestamp: new Date(),
+        sessionId: currentSessionId
+      };
+      setMessages(prev => [...prev, systemMsg]);
+
+      alert(`✅ Document "${file.name}" uploaded successfully!`);
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      alert(`Failed to upload document: ${error.message}`);
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const fetchDocuments = async () => {
+    try {
+      const response = await fetch(`http://localhost:8004/documents?session_id=${currentSessionId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setUploadedDocuments(data.documents || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch documents:', error);
+    }
+  };
+
+  const deleteDocument = async (docId: string) => {
+    if (!confirm('Are you sure you want to delete this document?')) return;
+
+    try {
+      const response = await fetch(`http://localhost:8004/documents/${docId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        setUploadedDocuments(prev => prev.filter(d => d.doc_id !== docId));
+        setSelectedDocuments(prev => prev.filter(id => id !== docId));
+        alert('Document deleted successfully');
+      } else {
+        throw new Error('Delete failed');
+      }
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      alert(`Failed to delete document: ${error.message}`);
     }
   };
 
@@ -339,7 +668,16 @@ function ChatCodePageContent() {
       }
     }
 
-    console.log('📤 Sending message:', { message: message.substring(0, 50), sessionId: currentSessionId, userId: user.id });
+    // Check if we should use document RAG
+    const useDocumentRAG = uploadedDocuments.length > 0;
+
+    console.log('📤 Sending message:', {
+      message: message.substring(0, 50),
+      sessionId: currentSessionId,
+      userId: user.id,
+      useDocumentRAG,
+      documentCount: uploadedDocuments.length
+    });
 
     const userMessageId = `msg_${Date.now()}`;
     const userMessage: Message = {
@@ -410,24 +748,51 @@ function ChatCodePageContent() {
     setMessages(prev => [...prev, assistantMessage]);
 
     try {
-      // Call backend chat API
-      console.log('🔄 Calling /api/chat/stream...');
-      const response = await fetch('/api/chat/stream', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      let response;
+
+      if (useDocumentRAG) {
+        // Use Document RAG server
+        console.log('📚 Using Document RAG server...');
+
+        const requestBody = {
+          session_id: currentSessionId,
+          message: message,
+          user_id: user.id,
+          doc_ids: selectedDocuments,
+          mode: 'hybrid'  // Hybrid mode - documents + general knowledge
+        };
+
+        response = await fetch('http://localhost:8004/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody)
+        });
+      } else {
+        // Use regular chat API
+        console.log('🔄 Starting SSE streaming to /api/chat/stream...');
+
+        const requestBody = {
           message: message,
           sessionId: currentSessionId,
-          model: 'default',
+          userId: user.id,
+          model: 'llama-3.3-70b-versatile',
           temperature: 0.7,
-          maxTokens: 2000,
-          stream: false
-        })
-      });
+          maxTokens: 4096,
+          stream: true  // Enable streaming
+        };
 
-      console.log('📡 API Response status:', response.status);
+        response = await fetch('/api/chat/stream', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody)
+        });
+      }
+
+      console.log('📡 Response status:', response.status, 'Content-Type:', response.headers.get('Content-Type'));
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -435,53 +800,206 @@ function ChatCodePageContent() {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const data = await response.json();
-      console.log('✅ API Response:', { success: data.success, responseLength: data.response?.length, model: data.model });
+      // Check if response is SSE
+      const contentType = response.headers.get('Content-Type');
+      if (contentType?.includes('text/event-stream')) {
+        // SSE Streaming mode
+        console.log('✅ SSE stream detected - processing tokens...');
 
-      if (data.success) {
-        setMessages(prev => prev.map(msg =>
-          msg.id === assistantMessage.id
-            ? {
-                ...msg,
-                content: data.response,
-                isStreaming: false,
-                tokens: data.usage?.totalTokens || 0,
-                confidence: data.confidence
-              }
-            : msg
-        ));
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let fullText = '';
+        let tokenCount = 0;
 
-        console.log('✅ Message updated in UI');
-
-        // Save assistant message via API
-        try {
-          await fetch('/api/chat/messages', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              sessionId: currentSessionId,
-              documentId: 'general_chat',
-              userId: user.id,
-              role: 'assistant',
-              content: data.response,
-              timestamp: new Date(),
-              messageId: assistantMessageId,
-              confidence: data.confidence,
-              sources: data.sources,
-              tokenUsage: data.usage,
-              processingTime: data.response_time,
-              csEnhanced: data.cs_enhanced,
-              ragVersion: data.rag_version || '1.0.0',
-              processingMode: data.processing_mode
-            })
-          });
-        } catch (error) {
-          console.error('Error saving assistant message:', error);
+        if (!reader) {
+          throw new Error('Response body is not readable');
         }
+
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            console.log('✅ Stream complete');
+            break;
+          }
+
+          // Decode chunk and add to buffer
+          buffer += decoder.decode(value, { stream: true });
+
+          // Process all complete SSE events in buffer
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const eventData = line.slice(6); // Remove 'data: ' prefix
+
+              try {
+                const event = JSON.parse(eventData);
+
+                // Handle different event types from different servers
+                if (event.type === 'token' || event.token) {
+                  // Regular chat or document RAG token
+                  const tokenDelta = event.delta || event.token || '';
+                  fullText += tokenDelta;
+                  tokenCount = event.tokenCount || (fullText.split(' ').length * 1.3);
+
+                  // Update message in UI with new token
+                  setMessages(prev => prev.map(msg =>
+                    msg.id === assistantMessage.id
+                      ? {
+                          ...msg,
+                          content: fullText,
+                          isStreaming: true,
+                          tokens: Math.floor(tokenCount)
+                        }
+                      : msg
+                  ));
+                } else if (event.type === 'final' || event.final) {
+                  // Final event with metadata
+                  console.log('✅ Final event received:', {
+                    messageLength: event.message?.length,
+                    tokens: event.usage?.totalTokens,
+                    model: event.model
+                  });
+
+                  // Update message with final content
+                  setMessages(prev => prev.map(msg =>
+                    msg.id === assistantMessage.id
+                      ? {
+                          ...msg,
+                          content: event.message,
+                          isStreaming: false,
+                          tokens: event.usage?.totalTokens || tokenCount,
+                          sessionId: event.sessionId,
+                          messageId: event.messageId
+                        }
+                      : msg
+                  ));
+
+                  // Save assistant message to database
+                  try {
+                    await fetch('/api/chat/messages', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify({
+                        sessionId: currentSessionId,
+                        documentId: 'general_chat',
+                        userId: user.id,
+                        role: 'assistant',
+                        content: event.message,
+                        timestamp: new Date(event.timestamp),
+                        messageId: event.messageId,
+                        tokenUsage: event.usage,
+                        ragVersion: '2.0.0',
+                        processingMode: 'streaming'
+                      })
+                    });
+                  } catch (error) {
+                    console.error('Error saving assistant message:', error);
+                  }
+
+                  // Generate title for new chats (after first user message)
+                  const currentSession = chatSessions.find(s => s.sessionId === currentSessionId);
+                  if (currentSession && (currentSession.title === 'New Chat' || currentSession.title.startsWith('Chat about'))) {
+                    try {
+                      console.log('🏷️ Generating title for chat...');
+                      const titleResponse = await fetch('/api/chat/generate-title', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userMessage: message })
+                      });
+
+                      const titleData = await titleResponse.json();
+                      if (titleData.success && titleData.title) {
+                        const newTitle = titleData.title;
+                        console.log('✅ Generated title:', newTitle);
+
+                        // Update session title in database
+                        await fetch('/api/chat/sessions', {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            sessionId: currentSessionId,
+                            updates: { title: newTitle }
+                          })
+                        });
+
+                        // Update local state
+                        setChatSessions(prev => prev.map(s =>
+                          s.sessionId === currentSessionId
+                            ? { ...s, title: newTitle }
+                            : s
+                        ));
+                      }
+                    } catch (error) {
+                      console.error('Error generating chat title:', error);
+                      // Silently fail - title generation is not critical
+                    }
+                  }
+                }
+              } catch (parseError) {
+                console.error('Failed to parse SSE event:', eventData, parseError);
+              }
+            }
+          }
+        }
+
+        setSystemStatus('live');
       } else {
-        throw new Error(data.error || 'Chat API failed');
+        // Non-streaming fallback (JSON response)
+        console.log('⚠️ Non-streaming response detected');
+        const data = await response.json();
+        console.log('✅ API Response:', { success: data.success, responseLength: data.response?.length, model: data.model });
+
+        if (data.success) {
+          setMessages(prev => prev.map(msg =>
+            msg.id === assistantMessage.id
+              ? {
+                  ...msg,
+                  content: data.response,
+                  isStreaming: false,
+                  tokens: data.usage?.totalTokens || 0,
+                  confidence: data.confidence
+                }
+              : msg
+          ));
+
+          // Save assistant message via API
+          try {
+            await fetch('/api/chat/messages', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                sessionId: currentSessionId,
+                documentId: 'general_chat',
+                userId: user.id,
+                role: 'assistant',
+                content: data.response,
+                timestamp: new Date(),
+                messageId: assistantMessageId,
+                confidence: data.confidence,
+                sources: data.sources,
+                tokenUsage: data.usage,
+                processingTime: data.response_time,
+                csEnhanced: data.cs_enhanced,
+                ragVersion: data.rag_version || '1.0.0',
+                processingMode: data.processing_mode
+              })
+            });
+          } catch (error) {
+            console.error('Error saving assistant message:', error);
+          }
+
+          setSystemStatus('live');
+        } else {
+          throw new Error(data.error || 'Chat API failed');
+        }
       }
     } catch (error: any) {
       console.error('❌ Chat error:', error);
@@ -538,7 +1056,12 @@ function ChatCodePageContent() {
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendChatMessage(chatInput);
+      if (selectedMode === 'image') {
+        generateImageFromPrompt(chatInput);
+        setChatInput('');
+      } else {
+        sendChatMessage(chatInput);
+      }
     }
   };
 
@@ -869,42 +1392,198 @@ function ChatCodePageContent() {
             )}
           </div>
 
-          {/* Input Area */}
-          <div className="border-t border-slate-200 bg-white p-6">
-            <div className="flex gap-4">
-              <div className="flex-1 relative">
-                <textarea
-                  ref={chatInputRef}
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  onKeyDown={handleKeyPress}
-                  placeholder="Ask me anything about programming, engineering, or request code help..."
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none max-h-32 text-slate-900 placeholder-slate-500 bg-white"
-                  rows={1}
-                  disabled={isChatLoading}
-                />
+          {/* Input Area - Gemini Style */}
+          <div className="border-t border-slate-200 bg-gradient-to-b from-white to-slate-50 p-6">
+            <div className="max-w-4xl mx-auto">
+              {/* Main Input Container */}
+              <div className="relative bg-white rounded-2xl shadow-lg border border-slate-200 hover:border-slate-300 transition-all duration-200">
+                <div className="flex items-end gap-3 p-4">
+                  {/* Mode Selector Dropdown */}
+                  <div className="relative" ref={dropdownRef}>
+                    <button
+                      onClick={() => setShowModeDropdown(!showModeDropdown)}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 border border-blue-200 transition-all duration-200 group"
+                    >
+                      {selectedMode === 'chat' ? (
+                        <>
+                          <MessageCircle className="w-5 h-5 text-blue-600" />
+                          <span className="font-medium text-blue-900 text-sm">Chat</span>
+                        </>
+                      ) : (
+                        <>
+                          <ImageIcon className="w-5 h-5 text-purple-600" />
+                          <span className="font-medium text-purple-900 text-sm">Image</span>
+                        </>
+                      )}
+                      <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showModeDropdown ? 'rotate-180' : ''} ${selectedMode === 'chat' ? 'text-blue-600' : 'text-purple-600'}`} />
+                    </button>
+
+                    {/* Dropdown Menu */}
+                    {showModeDropdown && (
+                      <div className="absolute bottom-full left-0 mb-2 w-72 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                        {/* Chat Mode */}
+                        <button
+                          onClick={() => {
+                            setSelectedMode('chat');
+                            setShowModeDropdown(false);
+                          }}
+                          className="w-full px-4 py-3 flex items-start gap-3 hover:bg-blue-50 transition-colors group"
+                        >
+                          <div className="p-2 rounded-lg bg-blue-100 group-hover:bg-blue-200 transition-colors">
+                            <MessageCircle className="w-5 h-5 text-blue-600" />
+                          </div>
+                          <div className="flex-1 text-left">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-900">Chat Mode</span>
+                              {selectedMode === 'chat' && <Check className="w-4 h-4 text-blue-600" />}
+                            </div>
+                            <p className="text-xs text-slate-600 mt-0.5">Conversational AI powered by Groq</p>
+                          </div>
+                        </button>
+
+                        <div className="h-px bg-slate-200" />
+
+                        {/* Image Mode */}
+                        <button
+                          onClick={() => {
+                            setSelectedMode('image');
+                            setShowModeDropdown(false);
+                          }}
+                          className="w-full px-4 py-3 flex items-start gap-3 hover:bg-purple-50 transition-colors group"
+                        >
+                          <div className="p-2 rounded-lg bg-purple-100 group-hover:bg-purple-200 transition-colors">
+                            <ImageIcon className="w-5 h-5 text-purple-600" />
+                          </div>
+                          <div className="flex-1 text-left">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-900">Image Generation</span>
+                              {selectedMode === 'image' && <Check className="w-4 h-4 text-purple-600" />}
+                            </div>
+                            <p className="text-xs text-slate-600 mt-0.5">Create images with Gemini Imagen 3.0</p>
+                          </div>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Document Upload Button */}
+                  {selectedMode === 'chat' && (
+                    <>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".pdf,.docx,.txt,.md"
+                        onChange={handleDocumentUpload}
+                        className="hidden"
+                      />
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploading}
+                        className="p-3 rounded-xl bg-gradient-to-r from-green-50 to-emerald-50 hover:from-green-100 hover:to-emerald-100 border border-green-200 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed relative group"
+                        title="Upload document (PDF, DOCX, TXT, MD)"
+                      >
+                        {isUploading ? (
+                          <RefreshCw className="w-5 h-5 text-green-600 animate-spin" />
+                        ) : (
+                          <Paperclip className="w-5 h-5 text-green-600" />
+                        )}
+                        {uploadedDocuments.length > 0 && (
+                          <span className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                            {uploadedDocuments.length}
+                          </span>
+                        )}
+                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-slate-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                          Upload Document
+                        </div>
+                      </button>
+                    </>
+                  )}
+
+                  {/* Text Input */}
+                  <div className="flex-1 min-w-0">
+                    <textarea
+                      ref={chatInputRef}
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={handleKeyPress}
+                      placeholder={selectedMode === 'chat'
+                        ? uploadedDocuments.length > 0
+                          ? "Ask questions about your documents or anything else..."
+                          : "Ask me anything about programming, engineering, or request code help..."
+                        : "Describe the image you want to generate..."}
+                      className="w-full px-2 py-2 bg-transparent focus:outline-none resize-none max-h-32 text-slate-900 placeholder-slate-400 text-base"
+                      rows={1}
+                      disabled={isChatLoading || isImageLoading}
+                    />
+                  </div>
+
+                  {/* Send Button */}
+                  <button
+                    onClick={() => {
+                      console.log('🎯 Send button clicked - Mode:', selectedMode, 'Input:', chatInput.substring(0, 50));
+
+                      if (!chatInput.trim()) {
+                        console.log('❌ Empty input');
+                        return;
+                      }
+
+                      if (selectedMode === 'image') {
+                        console.log('🎨 Routing to image generation');
+                        generateImageFromPrompt(chatInput);
+                        setChatInput('');
+                      } else {
+                        console.log('💬 Routing to chat');
+                        sendChatMessage(chatInput);
+                        setChatInput('');
+                      }
+                    }}
+                    disabled={!chatInput.trim() || isChatLoading || isImageLoading}
+                    className={`p-3 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      selectedMode === 'chat'
+                        ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg shadow-blue-500/30'
+                        : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg shadow-purple-500/30'
+                    }`}
+                  >
+                    {isChatLoading || isImageLoading ? (
+                      <RefreshCw className="w-5 h-5 animate-spin" />
+                    ) : selectedMode === 'image' ? (
+                      <Sparkles className="w-5 h-5" />
+                    ) : (
+                      <Send className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+
+                {/* Bottom Info Bar */}
+                <div className="px-4 pb-3 pt-1 flex items-center justify-between text-xs text-slate-500">
+                  <div className="flex items-center gap-2">
+                    <kbd className="px-2 py-1 bg-slate-100 rounded text-xs border border-slate-200">Enter</kbd>
+                    <span>to send</span>
+                    <span className="text-slate-300">•</span>
+                    <kbd className="px-2 py-1 bg-slate-100 rounded text-xs border border-slate-200">Shift + Enter</kbd>
+                    <span>for new line</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span>{chatInput.length} chars</span>
+                    <span className="text-slate-300">•</span>
+                    <span>~{Math.ceil(chatInput.split(' ').length * 1.3)} tokens</span>
+                  </div>
+                </div>
               </div>
-              <button
-                onClick={() => sendChatMessage(chatInput)}
-                disabled={!chatInput.trim() || isChatLoading}
-                className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
-              >
-                {isChatLoading ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
+
+              {/* Mode Indicator */}
+              <div className="mt-3 text-center">
+                {selectedMode === 'chat' ? (
+                  <p className="text-xs text-slate-500 flex items-center justify-center gap-1">
+                    <Wifi className="w-3 h-3" />
+                    Chat mode active • Powered by llama-3.3-70b-versatile
+                  </p>
                 ) : (
-                  <Send className="w-4 h-4" />
+                  <p className="text-xs text-slate-500 flex items-center justify-center gap-1">
+                    <Sparkles className="w-3 h-3" />
+                    Image generation mode • Powered by Gemini Imagen 3.0 Fast
+                  </p>
                 )}
-                Send
-              </button>
-            </div>
-            
-            <div className="flex items-center justify-between mt-3 text-sm text-slate-500">
-              <div>
-                Press <kbd className="px-2 py-1 bg-slate-100 rounded border text-xs">Enter</kbd> to send, 
-                <kbd className="px-2 py-1 bg-slate-100 rounded border ml-1 text-xs">Shift + Enter</kbd> for new line
-              </div>
-              <div>
-                {chatInput.length} characters • ~{Math.ceil(chatInput.split(' ').length * 1.3)} tokens
               </div>
             </div>
           </div>

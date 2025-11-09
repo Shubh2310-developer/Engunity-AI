@@ -30,11 +30,93 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use Groq directly with GPT-OSS-120B model
+    // Use Groq with streaming enabled
+    if (groq && body.stream !== false) {
+      try {
+        console.log('🚀 Using Groq with STREAMING enabled');
+
+        const stream = await groq.chat.completions.create({
+          messages: [
+            {
+              role: 'system',
+              content: "You are Engunity AI Chat & Code Assistant - an expert in programming, software engineering, algorithms, and system design. Provide clear, concise answers with properly formatted code blocks using markdown. Break down complex topics step-by-step."
+            },
+            {
+              role: 'user',
+              content: body.message
+            }
+          ],
+          model: 'llama-3.3-70b-versatile',
+          temperature: body.temperature || 0.7,
+          max_completion_tokens: body.maxTokens || 4096,
+          top_p: 1,
+          stream: true
+        });
+
+        // Create a TransformStream to convert Groq stream to SSE format
+        const encoder = new TextEncoder();
+        const customStream = new ReadableStream({
+          async start(controller) {
+            try {
+              let fullText = '';
+              let tokenCount = 0;
+
+              for await (const chunk of stream) {
+                const delta = chunk.choices[0]?.delta?.content || '';
+                if (delta) {
+                  fullText += delta;
+                  tokenCount++;
+
+                  // Send token event
+                  const event = `data: ${JSON.stringify({
+                    type: 'token',
+                    delta,
+                    tokenCount
+                  })}\n\n`;
+                  controller.enqueue(encoder.encode(event));
+                }
+              }
+
+              // Send final event with metadata
+              const finalEvent = `data: ${JSON.stringify({
+                type: 'final',
+                message: fullText,
+                sessionId: body.sessionId || `session_${Date.now()}`,
+                messageId: `msg_${Date.now()}`,
+                model: 'llama-3.3-70b-versatile',
+                usage: {
+                  completionTokens: tokenCount,
+                  promptTokens: Math.ceil(body.message.length / 4),
+                  totalTokens: tokenCount + Math.ceil(body.message.length / 4)
+                },
+                timestamp: new Date().toISOString()
+              })}\n\n`;
+              controller.enqueue(encoder.encode(finalEvent));
+              controller.close();
+            } catch (error) {
+              console.error('Stream error:', error);
+              controller.error(error);
+            }
+          }
+        });
+
+        return new Response(customStream, {
+          headers: {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          },
+        });
+
+      } catch (groqError: any) {
+        console.error('Groq API error:', groqError);
+        // Fall through to fallback
+      }
+    }
+
+    // Non-streaming fallback
     if (groq) {
       try {
-        console.log('🚀 Using Groq GPT-OSS-120B model for chat');
-
         const chatCompletion = await groq.chat.completions.create({
           messages: [
             {
@@ -46,7 +128,7 @@ export async function POST(request: NextRequest) {
               content: body.message
             }
           ],
-          model: 'llama-3.3-70b-versatile', // Using llama as GPT-OSS-120B may not be available
+          model: 'llama-3.3-70b-versatile',
           temperature: body.temperature || 0.7,
           max_completion_tokens: body.maxTokens || 4096,
           top_p: 1,

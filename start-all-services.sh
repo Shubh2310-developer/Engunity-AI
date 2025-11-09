@@ -77,9 +77,9 @@ check_port() {
 # Function to kill existing processes
 cleanup_existing() {
     echo "🧹 Cleaning up existing processes..."
-    
-    # Kill processes by port
-    for port in 8000 8001 8002 8003 4001; do
+
+    # Kill processes by port (added 8004 - Document Chat RAG port)
+    for port in 8000 8002 8003 8004 4001; do
         lsof -ti:$port | xargs -r kill -9 2>/dev/null || true
     done
 
@@ -87,13 +87,13 @@ cleanup_existing() {
     pkill -f "run_server.py" 2>/dev/null || true
     pkill -f "enhanced_fake_rag_server.py" 2>/dev/null || true
     pkill -f "hybrid_rag_v3_server.py" 2>/dev/null || true
-    pkill -f "agentic_rag_server.py" 2>/dev/null || true
     pkill -f "fake_rag_server.py" 2>/dev/null || true
     pkill -f "simple_server.py" 2>/dev/null || true
     pkill -f "citation_classification_server.py" 2>/dev/null || true
+    pkill -f "document_chat_rag.py" 2>/dev/null || true
     pkill -f "code-executor" 2>/dev/null || true
     pkill -f "ts-node src/index.ts" 2>/dev/null || true
-    
+
     # Wait a moment for processes to terminate
     sleep 3
 }
@@ -150,27 +150,31 @@ else
     fi
 fi
 
+# Priority 2.5: Document Chat RAG (NEW - Always enabled)
+echo ""
+echo "📄 Starting Document Chat RAG Server (Port 8004)..."
+if ! check_port 8004; then
+    nice -n 8 /home/shahs/miniconda3/envs/engunity/bin/python -u servers/document_chat_rag.py > document_chat_rag.log 2>&1 &
+    DOC_RAG_PID=$!
+    echo "📝 Document Chat RAG PID: $DOC_RAG_PID"
+
+    # Set CPU affinity
+    taskset -cp 0-1 $DOC_RAG_PID 2>/dev/null || true
+
+    sleep 1
+else
+    echo "✅ Document Chat RAG Server already running on port 8004"
+fi
+
 # Priority 3: Optional services (START ON-DEMAND ONLY)
 if [ "$LIGHTWEIGHT_MODE" = false ]; then
     echo ""
-    echo "💡 ML Services will start ON-DEMAND to save memory:"
-    echo "   🤖 Agentic RAG (Port 8001): Starts on first use"
+    echo "💡 Citation Classifier will start ON-DEMAND to save memory:"
     echo "   🧠 Citation Classifier (Port 8003): Starts on first use"
     echo ""
-    echo "💾 This saves ~1.5GB RAM at startup!"
+    echo "💾 This saves ~800MB RAM at startup!"
 
-    # Create placeholder scripts for on-demand startup
-    cat > /tmp/start_agentic_rag.sh <<'EOF'
-#!/bin/bash
-cd "$(dirname "$0")"
-if ! ss -tulpn | grep -q ":8001 "; then
-    echo "🤖 Starting Agentic RAG on-demand..."
-    nice -n 15 /home/shahs/miniconda3/envs/engunity/bin/python -u backend/agentic_rag_server.py > backend/agentic_rag_server.log 2>&1 &
-    echo "Started with PID $!"
-fi
-EOF
-    chmod +x /tmp/start_agentic_rag.sh
-
+    # Create placeholder script for on-demand citation classifier startup
     cat > /tmp/start_citation.sh <<'EOF'
 #!/bin/bash
 cd "$(dirname "$0")"
@@ -275,24 +279,18 @@ if [ "$LIGHTWEIGHT_MODE" = false ]; then
     wait_for_service "Hybrid RAG v3" 8002 "/health"
 fi
 
+wait_for_service "Document Chat RAG" 8004 "/health"
 wait_for_service "Code Executor" 4001 "/health"
 
 # ML-heavy services may take longer - check but don't block
 if [ "$LIGHTWEIGHT_MODE" = false ]; then
     echo ""
     echo "📊 ML Services Status (loading in background):"
-    echo -n "   Agentic RAG (8001): "
-    if curl -s --max-time 2 http://localhost:8001/health > /dev/null 2>&1; then
-        echo "✅ Ready"
-    else
-        echo "⏳ Loading models... (check backend/agentic_rag_server.log)"
-    fi
-
     echo -n "   Citation Classifier (8003): "
     if curl -s --max-time 2 http://localhost:8003/health > /dev/null 2>&1; then
         echo "✅ Ready"
     else
-        echo "⏳ Loading models... (check backend/citation_classification_server.log)"
+        echo "⏳ On-demand startup (will load when needed)"
     fi
 fi
 
@@ -300,14 +298,13 @@ echo ""
 echo "🎯 Active Services:"
 echo "   ✅ Main Backend: http://localhost:8000 (Essential)"
 if [ "$LIGHTWEIGHT_MODE" = false ]; then
-    echo "   ✅ Hybrid RAG v3: http://localhost:8002 (BGE + ChromaDB + Groq)"
-    echo "   ⚙️  Agentic RAG: http://localhost:8001 (Loading...)"
-    echo "   ⚙️  Citation Classifier: http://localhost:8003 (Loading...)"
+    echo "   ✅ Hybrid RAG v3: http://localhost:8002 (BGE + ChromaDB + Groq) - ONLY RAG ENABLED"
+    echo "   ⚙️  Citation Classifier: http://localhost:8003 (On-demand)"
 else
     echo "   ⏸️  Hybrid RAG v3: Disabled (lightweight mode)"
-    echo "   ⏸️  Agentic RAG: Disabled (lightweight mode)"
     echo "   ⏸️  Citation Classifier: Disabled (lightweight mode)"
 fi
+echo "   ✅ Document Chat RAG: http://localhost:8004 (BGE + ChromaDB + Groq) - NEW!"
 echo "   ✅ Code Executor: http://localhost:4001 (Docker ready)"
 echo "   ✅ MongoDB: Running (Port 27017)"
 echo ""
@@ -315,9 +312,9 @@ echo "📊 Service Logs:"
 echo "   - Main Backend: backend/main_backend.log"
 if [ "$LIGHTWEIGHT_MODE" = false ]; then
     echo "   - Hybrid RAG v3: backend/hybrid_rag_v3_server.log"
-    echo "   - Agentic RAG: backend/agentic_rag_server.log"
     echo "   - Citation Classifier: backend/citation_classification_server.log"
 fi
+echo "   - Document Chat RAG: backend/document_chat_rag.log"
 echo "   - Code Executor: code-executor/code-executor.log"
 echo ""
 echo "💾 Memory Status:"
@@ -333,6 +330,8 @@ if [ "$LIGHTWEIGHT_MODE" = true ]; then
     echo "💡 Running in LIGHTWEIGHT MODE to conserve memory"
     echo "💡 Some ML features disabled - increase available RAM for full functionality"
 else
-    echo "🚀 All services running - ML models loading in background"
-    echo "💡 Agentic RAG and Citation Classifier may need 1-2 more minutes"
+    echo "🚀 All services running - Hybrid RAG v3 + Document Chat RAG enabled"
+    echo "💡 Agentic RAG has been disabled - Hybrid RAG v3 handles code/general queries"
+    echo "💡 Document Chat RAG handles uploaded document conversations (NEW!)"
+    echo "💡 Citation Classifier starts on-demand when needed"
 fi
