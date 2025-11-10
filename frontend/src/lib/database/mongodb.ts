@@ -151,6 +151,16 @@ export interface ChatSession {
     upload_time: string;
   }>;
 
+  // Session settings for document RAG
+  settings?: {
+    mode: 'hybrid' | 'document-only';
+    topK: number;
+    threshold: number;
+    temperature: number;
+    model: string;
+    selectedDocIds: string[];
+  };
+
   // Performance metrics
   totalTokens?: number;
   avgConfidence?: number;

@@ -32,7 +32,12 @@ import {
   Sparkles,
   FileText,
   Paperclip,
-  Upload
+  Upload,
+  Sliders,
+  Zap,
+  Target,
+  Thermometer,
+  Layers
 } from 'lucide-react';
 import { Image as ImageIcon } from 'lucide-react';
 
@@ -98,6 +103,14 @@ function ChatCodePageContent() {
   const [selectedDocuments, setSelectedDocuments] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [showDocumentPanel, setShowDocumentPanel] = useState(false);
+
+  // Document RAG Settings
+  const [ragMode, setRagMode] = useState<'hybrid' | 'document-only'>('hybrid');
+  const [topK, setTopK] = useState<number>(6);
+  const [similarityThreshold, setSimilarityThreshold] = useState<number>(0.5);
+  const [temperature, setTemperature] = useState<number>(0.7);
+  const [model, setModel] = useState<string>('llama-3.3-70b-versatile');
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
 
   // Refs
   const chatScrollRef = useRef<HTMLDivElement>(null);
@@ -752,14 +765,24 @@ function ChatCodePageContent() {
 
       if (useDocumentRAG) {
         // Use Document RAG server
-        console.log('📚 Using Document RAG server...');
+        console.log('📚 Using Document RAG server with settings:', {
+          mode: ragMode,
+          topK,
+          threshold: similarityThreshold,
+          temperature,
+          model
+        });
 
         const requestBody = {
           session_id: currentSessionId,
           message: message,
           user_id: user.id,
           doc_ids: selectedDocuments,
-          mode: 'hybrid'  // Hybrid mode - documents + general knowledge
+          mode: ragMode,  // Use configured mode
+          top_k: topK,
+          threshold: similarityThreshold,
+          temperature: temperature,
+          model: model
         };
 
         response = await fetch('http://localhost:8004/chat', {
@@ -1392,6 +1415,185 @@ function ChatCodePageContent() {
             )}
           </div>
 
+          {/* Document RAG Settings Panel */}
+          {showSettingsPanel && uploadedDocuments.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="border-t border-slate-200 bg-gradient-to-b from-slate-50 to-white p-6"
+            >
+              <div className="max-w-4xl mx-auto">
+                <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-blue-100">
+                        <Sliders className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-slate-900">Document RAG Settings</h3>
+                        <p className="text-xs text-slate-500 mt-0.5">Fine-tune retrieval and generation parameters</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowSettingsPanel(false)}
+                      className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
+                    >
+                      <X className="w-5 h-5 text-slate-400" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Mode Toggle */}
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-slate-700 mb-3">
+                        <div className="flex items-center gap-2">
+                          <Target className="w-4 h-4" />
+                          Response Mode
+                        </div>
+                      </label>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => setRagMode('hybrid')}
+                          className={`flex-1 px-4 py-3 rounded-xl font-medium transition-all duration-200 ${
+                            ragMode === 'hybrid'
+                              ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-center gap-2">
+                            <Zap className="w-4 h-4" />
+                            Hybrid Mode
+                          </div>
+                          <p className="text-xs mt-1 opacity-80">Documents + General Knowledge</p>
+                        </button>
+                        <button
+                          onClick={() => setRagMode('document-only')}
+                          className={`flex-1 px-4 py-3 rounded-xl font-medium transition-all duration-200 ${
+                            ragMode === 'document-only'
+                              ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-center gap-2">
+                            <FileText className="w-4 h-4" />
+                            Document Only
+                          </div>
+                          <p className="text-xs mt-1 opacity-80">Strict document grounding</p>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Top-K Slider */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Layers className="w-4 h-4" />
+                            Chunks to Retrieve (Top-K)
+                          </div>
+                          <span className="text-blue-600 font-semibold">{topK}</span>
+                        </div>
+                      </label>
+                      <input
+                        type="range"
+                        min="3"
+                        max="15"
+                        step="1"
+                        value={topK}
+                        onChange={(e) => setTopK(parseInt(e.target.value))}
+                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                      />
+                      <div className="flex justify-between text-xs text-slate-500 mt-1">
+                        <span>3 (Fast)</span>
+                        <span>15 (Thorough)</span>
+                      </div>
+                    </div>
+
+                    {/* Similarity Threshold Slider */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Target className="w-4 h-4" />
+                            Similarity Threshold
+                          </div>
+                          <span className="text-blue-600 font-semibold">{similarityThreshold.toFixed(2)}</span>
+                        </div>
+                      </label>
+                      <input
+                        type="range"
+                        min="0.3"
+                        max="0.9"
+                        step="0.05"
+                        value={similarityThreshold}
+                        onChange={(e) => setSimilarityThreshold(parseFloat(e.target.value))}
+                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                      />
+                      <div className="flex justify-between text-xs text-slate-500 mt-1">
+                        <span>0.3 (Loose)</span>
+                        <span>0.9 (Strict)</span>
+                      </div>
+                    </div>
+
+                    {/* Temperature Slider */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Thermometer className="w-4 h-4" />
+                            Temperature (Creativity)
+                          </div>
+                          <span className="text-blue-600 font-semibold">{temperature.toFixed(2)}</span>
+                        </div>
+                      </label>
+                      <input
+                        type="range"
+                        min="0.0"
+                        max="1.0"
+                        step="0.1"
+                        value={temperature}
+                        onChange={(e) => setTemperature(parseFloat(e.target.value))}
+                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                      />
+                      <div className="flex justify-between text-xs text-slate-500 mt-1">
+                        <span>0.0 (Focused)</span>
+                        <span>1.0 (Creative)</span>
+                      </div>
+                    </div>
+
+                    {/* Model Selector */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="w-4 h-4" />
+                          LLM Model
+                        </div>
+                      </label>
+                      <select
+                        value={model}
+                        onChange={(e) => setModel(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
+                      >
+                        <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Recommended)</option>
+                        <option value="llama-3.1-70b-versatile">Llama 3.1 70B</option>
+                        <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
+                        <option value="gemma2-9b-it">Gemma 2 9B</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 pt-6 border-t border-slate-200">
+                    <div className="flex items-center gap-2 text-xs text-slate-500">
+                      <Sparkles className="w-4 h-4" />
+                      <span>Settings are auto-saved and persist per session</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {/* Input Area - Gemini Style */}
           <div className="border-t border-slate-200 bg-gradient-to-b from-white to-slate-50 p-6">
             <div className="max-w-4xl mx-auto">
@@ -1496,6 +1698,24 @@ function ChatCodePageContent() {
                           Upload Document
                         </div>
                       </button>
+
+                      {/* Settings Button (only show when documents are uploaded) */}
+                      {uploadedDocuments.length > 0 && (
+                        <button
+                          onClick={() => setShowSettingsPanel(!showSettingsPanel)}
+                          className={`p-3 rounded-xl transition-all duration-200 ${
+                            showSettingsPanel
+                              ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white'
+                              : 'bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 border border-blue-200'
+                          }`}
+                          title="Document RAG Settings"
+                        >
+                          <Sliders className={`w-5 h-5 ${showSettingsPanel ? 'text-white' : 'text-blue-600'}`} />
+                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-slate-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                            RAG Settings
+                          </div>
+                        </button>
+                      )}
                     </>
                   )}
 

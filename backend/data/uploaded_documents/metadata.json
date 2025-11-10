@@ -31,5 +31,27 @@
     "session_id": "session_general_chat_1762713773216_dmfrm5xby",
     "chunk_count": 7,
     "page_count": 1
+  },
+  "4697211c629a9662": {
+    "doc_id": "4697211c629a9662",
+    "filename": "DA_2026_Syllabus.pdf",
+    "file_type": ".pdf",
+    "size_bytes": 535659,
+    "upload_time": "2025-11-10T06:01:48.481434",
+    "user_id": "690ec8a854bcb389d0f983a9",
+    "session_id": "session_general_chat_1762754498324_oss0te9q2",
+    "chunk_count": 7,
+    "page_count": 1
+  },
+  "c8b8e927c7e8de94": {
+    "doc_id": "c8b8e927c7e8de94",
+    "filename": "Honours_2025-26.pdf",
+    "file_type": ".pdf",
+    "size_bytes": 5156409,
+    "upload_time": "2025-11-10T06:04:19.740547",
+    "user_id": "690ec8a854bcb389d0f983a9",
+    "session_id": "session_general_chat_1762754498324_oss0te9q2",
+    "chunk_count": 1645,
+    "page_count": 187
   }
 }

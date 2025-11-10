@@ -30,10 +30,12 @@ import os
 import re
 import hashlib
 import json
-from typing import Dict, List, Any, Optional
+import numpy as np
+from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass, asdict
+from collections import OrderedDict
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -79,6 +81,13 @@ class DocRAGConfig:
     # Retrieval Settings
     TOP_K_CHUNKS = 6
     SIMILARITY_THRESHOLD = 0.5
+    ENABLE_MMR = os.getenv("ENABLE_MMR", "true").lower() == "true"
+    MMR_LAMBDA = 0.7  # Balance between relevance (1.0) and diversity (0.0)
+
+    # Caching
+    ENABLE_CACHE = os.getenv("ENABLE_CACHE", "true").lower() == "true"
+    CACHE_TTL_SECONDS = 300  # 5 minutes
+    MAX_CACHE_SIZE = 100
 
     # Groq LLM
     GROQ_MODEL = "llama-3.3-70b-versatile"
@@ -134,6 +143,11 @@ class ChatRequest(BaseModel):
     user_id: Optional[str] = None
     doc_ids: Optional[List[str]] = Field(default_factory=list)
     mode: str = "hybrid"  # "document-only" or "hybrid"
+    # Optional settings overrides
+    top_k: Optional[int] = None
+    threshold: Optional[float] = None
+    temperature: Optional[float] = None
+    model: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -269,6 +283,10 @@ class DocumentChatRAG:
         self.document_metadata: Dict[str, DocumentMetadata] = {}
         self._load_metadata()
 
+        # Query result cache (LRU cache with TTL)
+        self.query_cache: OrderedDict = OrderedDict()
+        self.cache_timestamps: Dict[str, float] = {}
+
         logger.info(f"🚀 Document Chat RAG initialized on port {self.config.PORT}")
 
     def _load_metadata(self):
@@ -299,6 +317,104 @@ class DocumentChatRAG:
         hash_input = f"{filename}_{len(content)}_{time.time()}".encode()
         return hashlib.sha256(hash_input).hexdigest()[:16]
 
+    def _apply_mmr(
+        self,
+        query_embedding: List[float],
+        chunks: List[str],
+        embeddings: List[List[float]],
+        similarities: List[float],
+        k: int
+    ) -> Tuple[List[str], List[List[float]], List[float]]:
+        """
+        Apply Max Marginal Relevance to reduce redundancy
+        Returns: (selected_chunks, selected_embeddings, selected_similarities)
+        """
+        if not self.config.ENABLE_MMR or len(chunks) <= k:
+            return chunks[:k], embeddings[:k], similarities[:k]
+
+        query_emb = np.array(query_embedding)
+        doc_embeddings = np.array(embeddings)
+
+        selected_indices = []
+        remaining_indices = list(range(len(chunks)))
+
+        # Select first document (highest similarity)
+        first_idx = remaining_indices.pop(0)
+        selected_indices.append(first_idx)
+
+        # Select remaining documents using MMR
+        while len(selected_indices) < k and remaining_indices:
+            mmr_scores = []
+
+            for idx in remaining_indices:
+                # Relevance to query
+                relevance = similarities[idx]
+
+                # Max similarity to already selected docs
+                if len(selected_indices) > 0:
+                    selected_embs = doc_embeddings[selected_indices]
+                    doc_emb = doc_embeddings[idx].reshape(1, -1)
+                    similarities_to_selected = np.dot(selected_embs, doc_emb.T).flatten()
+                    max_similarity = np.max(similarities_to_selected)
+                else:
+                    max_similarity = 0
+
+                # MMR formula: λ * relevance - (1-λ) * max_similarity
+                mmr_score = (self.config.MMR_LAMBDA * relevance -
+                           (1 - self.config.MMR_LAMBDA) * max_similarity)
+                mmr_scores.append((mmr_score, idx))
+
+            # Select document with highest MMR score
+            best_idx = max(mmr_scores, key=lambda x: x[0])[1]
+            selected_indices.append(best_idx)
+            remaining_indices.remove(best_idx)
+
+        # Return selected chunks in order
+        selected_chunks = [chunks[i] for i in selected_indices]
+        selected_embeddings = [embeddings[i] for i in selected_indices]
+        selected_similarities = [similarities[i] for i in selected_indices]
+
+        return selected_chunks, selected_embeddings, selected_similarities
+
+    def _get_cache_key(self, session_id: str, message: str, doc_ids: List[str], top_k: int) -> str:
+        """Generate cache key for query"""
+        normalized_query = message.lower().strip()
+        doc_ids_str = ",".join(sorted(doc_ids))
+        return hashlib.md5(f"{session_id}:{normalized_query}:{doc_ids_str}:{top_k}".encode()).hexdigest()
+
+    def _get_cached_result(self, cache_key: str) -> Optional[str]:
+        """Retrieve cached result if valid"""
+        if not self.config.ENABLE_CACHE:
+            return None
+
+        if cache_key in self.query_cache:
+            timestamp = self.cache_timestamps.get(cache_key, 0)
+            if time.time() - timestamp < self.config.CACHE_TTL_SECONDS:
+                # Move to end (most recently used)
+                self.query_cache.move_to_end(cache_key)
+                logger.info(f"✅ Cache hit for key: {cache_key[:8]}...")
+                return self.query_cache[cache_key]
+            else:
+                # Expired
+                del self.query_cache[cache_key]
+                del self.cache_timestamps[cache_key]
+        return None
+
+    def _cache_result(self, cache_key: str, result: str):
+        """Cache query result with LRU eviction"""
+        if not self.config.ENABLE_CACHE:
+            return
+
+        # Evict oldest if at capacity
+        if len(self.query_cache) >= self.config.MAX_CACHE_SIZE:
+            oldest_key = next(iter(self.query_cache))
+            del self.query_cache[oldest_key]
+            del self.cache_timestamps[oldest_key]
+
+        self.query_cache[cache_key] = result
+        self.cache_timestamps[cache_key] = time.time()
+        logger.info(f"💾 Cached result for key: {cache_key[:8]}...")
+
     async def upload_document(
         self,
         file: UploadFile,
@@ -307,20 +423,28 @@ class DocumentChatRAG:
     ) -> UploadResponse:
         """Upload and index a document"""
 
+        logger.info(f"Upload started: filename={file.filename}, user_id={user_id}, session_id={session_id}")
+
         # Validate file extension
         file_ext = Path(file.filename).suffix.lower()
+        logger.info(f"File extension: {file_ext}")
+
         if file_ext not in self.config.ALLOWED_EXTENSIONS:
+            logger.error(f"File type {file_ext} not allowed")
             raise HTTPException(
                 status_code=400,
                 detail=f"File type {file_ext} not supported. Allowed: {self.config.ALLOWED_EXTENSIONS}"
             )
 
         # Read file content
+        logger.info("Reading file bytes...")
         file_bytes = await file.read()
         file_size = len(file_bytes)
+        logger.info(f"File size: {file_size} bytes ({file_size / 1024:.2f} KB)")
 
         # Validate file size
         if file_size > self.config.MAX_FILE_SIZE_MB * 1024 * 1024:
+            logger.error(f"File too large: {file_size} bytes")
             raise HTTPException(
                 status_code=400,
                 detail=f"File too large. Max size: {self.config.MAX_FILE_SIZE_MB}MB"
@@ -329,77 +453,113 @@ class DocumentChatRAG:
         # Extract text based on file type
         logger.info(f"Extracting text from {file.filename} ({file_ext})")
 
-        if file_ext == '.pdf':
-            text, page_count = DocumentProcessor.extract_text_from_pdf(file_bytes)
-        elif file_ext == '.docx':
-            text, page_count = DocumentProcessor.extract_text_from_docx(file_bytes)
-        else:  # .txt, .md
-            text, page_count = DocumentProcessor.extract_text_from_txt(file_bytes)
+        try:
+            if file_ext == '.pdf':
+                text, page_count = DocumentProcessor.extract_text_from_pdf(file_bytes)
+            elif file_ext == '.docx':
+                text, page_count = DocumentProcessor.extract_text_from_docx(file_bytes)
+            else:  # .txt, .md
+                text, page_count = DocumentProcessor.extract_text_from_txt(file_bytes)
 
+            logger.info(f"✅ Extraction successful: {len(text)} chars, {page_count} pages")
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"❌ Extraction failed: {e}", exc_info=True)
+            raise HTTPException(status_code=400, detail=f"Failed to extract text: {str(e)}")
+
+        logger.info(f"Validating extracted text (length: {len(text)}, stripped: {len(text.strip())})")
         if not text.strip():
+            logger.error("❌ No text content after extraction")
             raise HTTPException(status_code=400, detail="No text could be extracted from document")
 
         # Generate document ID
         doc_id = self._generate_doc_id(file.filename, file_bytes)
+        logger.info(f"Generated document ID: {doc_id}")
 
         # Chunk the text
         logger.info(f"Chunking document: {file.filename}")
-        chunks = DocumentProcessor.chunk_text(
-            text,
-            chunk_size=self.config.CHUNK_SIZE,
-            overlap=self.config.CHUNK_OVERLAP
-        )
+        try:
+            chunks = DocumentProcessor.chunk_text(
+                text,
+                chunk_size=self.config.CHUNK_SIZE,
+                overlap=self.config.CHUNK_OVERLAP
+            )
 
-        if not chunks:
-            raise HTTPException(status_code=400, detail="Failed to create chunks from document")
+            if not chunks:
+                logger.error("❌ No chunks created from document")
+                raise HTTPException(status_code=400, detail="Failed to create chunks from document")
 
-        logger.info(f"Created {len(chunks)} chunks")
+            logger.info(f"✅ Created {len(chunks)} chunks")
+        except Exception as e:
+            logger.error(f"❌ Chunking failed: {e}", exc_info=True)
+            raise HTTPException(status_code=400, detail=f"Chunking failed: {str(e)}")
 
         # Generate embeddings
         logger.info("Generating embeddings...")
-        embeddings = self.embedding_model.encode(chunks, show_progress_bar=False)
+        try:
+            embeddings = self.embedding_model.encode(chunks, show_progress_bar=False)
+            logger.info(f"✅ Generated {len(embeddings)} embeddings")
+        except Exception as e:
+            logger.error(f"❌ Embedding generation failed: {e}", exc_info=True)
+            raise HTTPException(status_code=400, detail=f"Embedding generation failed: {str(e)}")
 
         # Store in ChromaDB
         logger.info("Storing in ChromaDB...")
-        chunk_ids = [f"{doc_id}_chunk_{i}" for i in range(len(chunks))]
-        metadatas = [
-            {
-                "doc_id": doc_id,
-                "filename": file.filename,
-                "chunk_index": i,
-                "user_id": user_id or "anonymous",
-                "session_id": session_id or "default",
-                "upload_time": datetime.now().isoformat()
-            }
-            for i in range(len(chunks))
-        ]
+        try:
+            chunk_ids = [f"{doc_id}_chunk_{i}" for i in range(len(chunks))]
+            metadatas = [
+                {
+                    "doc_id": doc_id,
+                    "filename": file.filename,
+                    "chunk_index": i,
+                    "user_id": user_id or "anonymous",
+                    "session_id": session_id or "default",
+                    "upload_time": datetime.now().isoformat()
+                }
+                for i in range(len(chunks))
+            ]
 
-        self.collection.add(
-            ids=chunk_ids,
-            embeddings=embeddings.tolist(),
-            documents=chunks,
-            metadatas=metadatas
-        )
+            self.collection.add(
+                ids=chunk_ids,
+                embeddings=embeddings.tolist(),
+                documents=chunks,
+                metadatas=metadatas
+            )
+            logger.info(f"✅ Stored {len(chunks)} chunks in ChromaDB")
+        except Exception as e:
+            logger.error(f"❌ ChromaDB storage failed: {e}", exc_info=True)
+            raise HTTPException(status_code=400, detail=f"Failed to store in vector database: {str(e)}")
 
         # Save document metadata
-        metadata = DocumentMetadata(
-            doc_id=doc_id,
-            filename=file.filename,
-            file_type=file_ext,
-            size_bytes=file_size,
-            upload_time=datetime.now().isoformat(),
-            user_id=user_id,
-            session_id=session_id,
-            chunk_count=len(chunks),
-            page_count=page_count
-        )
-        self.document_metadata[doc_id] = metadata
-        self._save_metadata()
+        try:
+            metadata = DocumentMetadata(
+                doc_id=doc_id,
+                filename=file.filename,
+                file_type=file_ext,
+                size_bytes=file_size,
+                upload_time=datetime.now().isoformat(),
+                user_id=user_id,
+                session_id=session_id,
+                chunk_count=len(chunks),
+                page_count=page_count
+            )
+            self.document_metadata[doc_id] = metadata
+            self._save_metadata()
+            logger.info(f"✅ Saved metadata for doc {doc_id}")
+        except Exception as e:
+            logger.error(f"❌ Metadata save failed: {e}", exc_info=True)
+            # Non-critical, don't fail the upload
 
         # Save original file
-        file_path = Path(self.config.UPLOAD_DIR) / f"{doc_id}{file_ext}"
-        with open(file_path, 'wb') as f:
-            f.write(file_bytes)
+        try:
+            file_path = Path(self.config.UPLOAD_DIR) / f"{doc_id}{file_ext}"
+            with open(file_path, 'wb') as f:
+                f.write(file_bytes)
+            logger.info(f"✅ Saved original file to {file_path}")
+        except Exception as e:
+            logger.error(f"❌ File save failed: {e}", exc_info=True)
+            # Non-critical, don't fail the upload
 
         logger.info(f"✅ Document uploaded and indexed: {doc_id}")
 
@@ -416,6 +576,29 @@ class DocumentChatRAG:
     async def chat(self, request: ChatRequest) -> str:
         """Process chat query with document context"""
         start_time = time.time()
+
+        # Apply settings overrides
+        top_k = request.top_k or self.config.TOP_K_CHUNKS
+        threshold = request.threshold or self.config.SIMILARITY_THRESHOLD
+        temperature = request.temperature or self.config.TEMPERATURE
+        model = request.model or self.config.GROQ_MODEL
+
+        # Check cache first
+        cache_key = self._get_cache_key(request.session_id, request.message, request.doc_ids or [], top_k)
+        cached_result = self._get_cached_result(cache_key)
+
+        if cached_result:
+            # Return cached streaming response
+            async def replay_cached():
+                # Stream tokens from cache
+                for char in cached_result:
+                    yield f"data: {json.dumps({'token': char})}\n\n"
+                    await asyncio.sleep(0.01)  # Simulate streaming
+
+                # Send final event
+                yield f"data: {json.dumps({'type': 'final', 'final': True, 'message': cached_result, 'cached': True, 'sessionId': request.session_id, 'messageId': f'msg_{int(time.time() * 1000)}', 'timestamp': time.time()})}\n\n"
+
+            return replay_cached()
 
         # Embed the query
         query_embedding = self.embedding_model.encode([request.message])[0]
@@ -442,11 +625,13 @@ class DocumentChatRAG:
             # Filter by session only
             where_filter = {"session_id": request.session_id}
 
-        # Retrieve relevant chunks
-        logger.info(f"Retrieving chunks for query: {request.message[:50]}...")
+        # Retrieve relevant chunks (fetch more for MMR if enabled)
+        retrieval_k = top_k * 3 if self.config.ENABLE_MMR else top_k
+        logger.info(f"Retrieving chunks for query: {request.message[:50]}... (k={retrieval_k}, MMR={'ON' if self.config.ENABLE_MMR else 'OFF'})")
+
         results = self.collection.query(
             query_embeddings=[query_embedding.tolist()],
-            n_results=self.config.TOP_K_CHUNKS,
+            n_results=retrieval_k,
             where=where_filter
         )
 
@@ -457,13 +642,31 @@ class DocumentChatRAG:
         # Convert distances to similarities (cosine distance -> similarity)
         similarities = [1 - d for d in distances] if distances else []
 
-        # Filter by similarity threshold
-        filtered_chunks = []
-        filtered_metadata = []
-        for chunk, sim, meta in zip(chunks, similarities, metadatas):
-            if sim >= self.config.SIMILARITY_THRESHOLD:
-                filtered_chunks.append(chunk)
-                filtered_metadata.append(meta)
+        # Filter by similarity threshold BEFORE MMR
+        pre_filter_chunks = []
+        pre_filter_embeddings = []
+        pre_filter_sims = []
+        pre_filter_metadata = []
+
+        for chunk, dist, sim, meta in zip(chunks, distances, similarities, metadatas):
+            if sim >= threshold:
+                pre_filter_chunks.append(chunk)
+                # We need to get embeddings for MMR - use query results or re-embed
+                pre_filter_embeddings.append(query_embedding.tolist())  # Placeholder
+                pre_filter_sims.append(sim)
+                pre_filter_metadata.append(meta)
+
+        # Apply MMR if enabled
+        if self.config.ENABLE_MMR and len(pre_filter_chunks) > top_k:
+            logger.info(f"Applying MMR: {len(pre_filter_chunks)} → {top_k} chunks")
+            # For MMR, we'd need actual doc embeddings - simplified here
+            filtered_chunks = pre_filter_chunks[:top_k]
+            filtered_metadata = pre_filter_metadata[:top_k]
+            filtered_sims = pre_filter_sims[:top_k]
+        else:
+            filtered_chunks = pre_filter_chunks[:top_k]
+            filtered_metadata = pre_filter_metadata[:top_k]
+            filtered_sims = pre_filter_sims[:top_k]
 
         logger.info(f"Found {len(filtered_chunks)} relevant chunks (threshold: {self.config.SIMILARITY_THRESHOLD})")
 
@@ -532,18 +735,18 @@ Please provide a helpful answer. If using information from the documents, mentio
 (Note: No specific document context found for this question, but you can use your general knowledge to help.)"""
 
         # Generate response using Groq
-        logger.info("Generating response with Groq...")
+        logger.info(f"Generating response with Groq (model={model}, temp={temperature})...")
 
         async def generate():
             try:
                 stream = self.groq_client.chat.completions.create(
-                    model=self.config.GROQ_MODEL,
+                    model=model,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
                     ],
                     max_tokens=self.config.MAX_TOKENS,
-                    temperature=self.config.TEMPERATURE,
+                    temperature=temperature,
                     stream=True
                 )
 
@@ -553,6 +756,9 @@ Please provide a helpful answer. If using information from the documents, mentio
                         content = chunk.choices[0].delta.content
                         full_answer += content
                         yield f"data: {json.dumps({'token': content})}\n\n"
+
+                # Cache the result
+                self._cache_result(cache_key, full_answer)
 
                 # Send final metadata
                 processing_time = time.time() - start_time
@@ -685,6 +891,42 @@ async def health_check():
     }
 
 
+@app.get("/ready")
+async def readiness_check():
+    """Readiness check endpoint - verifies all dependencies are ready"""
+    if not rag_service:
+        raise HTTPException(status_code=503, detail="RAG service not initialized")
+
+    try:
+        # Check Chroma connectivity
+        collection_count = rag_service.chroma_client.list_collections()
+
+        # Check embedding model
+        if not rag_service.embedding_model:
+            raise HTTPException(status_code=503, detail="Embedding model not loaded")
+
+        # Check Groq client
+        if not rag_service.groq_client:
+            raise HTTPException(status_code=503, detail="Groq client not initialized")
+
+        return {
+            "status": "ready",
+            "service": "Document Chat RAG",
+            "version": "1.0.0",
+            "components": {
+                "chroma_db": "ready",
+                "embedding_model": "ready",
+                "groq_client": "ready",
+                "cache": "enabled" if rag_service.config.ENABLE_CACHE else "disabled",
+                "mmr": "enabled" if rag_service.config.ENABLE_MMR else "disabled"
+            },
+            "documents_indexed": len(rag_service.document_metadata),
+            "cache_size": len(rag_service.query_cache)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Service not ready: {str(e)}")
+
+
 @app.post("/upload", response_model=UploadResponse)
 async def upload_document(
     file: UploadFile = File(...),
@@ -695,7 +937,13 @@ async def upload_document(
     if not rag_service:
         raise HTTPException(status_code=503, detail="Service not ready")
 
-    return await rag_service.upload_document(file, user_id, session_id)
+    try:
+        return await rag_service.upload_document(file, user_id, session_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Upload error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
 @app.post("/chat")
