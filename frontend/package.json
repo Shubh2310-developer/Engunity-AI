@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.850.0",
-    "@aws-sdk/s3-request-presigner": "^3.850.0",
+    "@aws-sdk/s3-request-presigner": "^3.927.0",
     "@hookform/resolvers": "^3.3.2",
     "@monaco-editor/react": "^4.6.0",
     "@mongodb-js/zstd": "^2.0.1",
