@@ -77,6 +77,15 @@ from chromadb.config import Settings
 # LLM Integration
 from groq import Groq
 
+# MongoDB & GridFS for file storage
+from pymongo import MongoClient
+import gridfs
+
+# Cloudinary for document storage
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
+
 # Load environment
 load_dotenv()
 
@@ -149,7 +158,18 @@ class DocRAGConfig:
 
     # Storage
     CHROMA_PERSIST_DIR = "./data/document_chat_chroma"
-    UPLOAD_DIR = "./data/uploaded_documents"
+    UPLOAD_DIR = "./data/uploaded_documents"  # Legacy - keeping for backward compatibility
+
+    # MongoDB & GridFS for document storage (fallback)
+    MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017/engunity-ai")
+    MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "engunity-ai")
+    GRIDFS_COLLECTION = "document_files"  # GridFS bucket name
+
+    # Cloudinary Configuration (Primary storage)
+    CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", "")
+    CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY", "951885258259715")
+    CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", "5-ysLySh-CF0Zu_OEsXO5Fw5WgY")
+    CLOUDINARY_FOLDER = os.getenv("CLOUDINARY_FOLDER", "engunity-documents")
 
     # Server
     PORT = 8004
@@ -339,6 +359,41 @@ class DocumentChatRAG:
             raise ValueError("GROQ_API_KEY not found in environment")
         self.groq_client = Groq(api_key=self.config.GROQ_API_KEY)
         logger.info("✅ Groq client initialized")
+
+        # Initialize Cloudinary for document storage
+        logger.info("Initializing Cloudinary...")
+        self.cloudinary_enabled = False
+        if self.config.CLOUDINARY_API_KEY and self.config.CLOUDINARY_API_SECRET:
+            try:
+                cloudinary.config(
+                    cloud_name=self.config.CLOUDINARY_CLOUD_NAME or "engunity",
+                    api_key=self.config.CLOUDINARY_API_KEY,
+                    api_secret=self.config.CLOUDINARY_API_SECRET,
+                    secure=True
+                )
+                # Test connection by getting account details
+                cloudinary.api.ping()
+                self.cloudinary_enabled = True
+                logger.info("✅ Cloudinary initialized successfully")
+            except Exception as e:
+                logger.error(f"❌ Cloudinary initialization failed: {e}")
+                logger.warning("Cloudinary will be disabled")
+
+        # Initialize MongoDB and GridFS for document storage (fallback)
+        logger.info("Initializing MongoDB and GridFS as fallback...")
+        try:
+            self.mongo_client = MongoClient(self.config.MONGODB_URI)
+            self.mongo_db = self.mongo_client[self.config.MONGODB_DB_NAME]
+            self.gridfs = gridfs.GridFS(self.mongo_db, collection=self.config.GRIDFS_COLLECTION)
+            # Test connection
+            self.mongo_client.admin.command('ping')
+            logger.info("✅ MongoDB and GridFS initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ MongoDB connection failed: {e}")
+            logger.warning("Falling back to local filesystem storage")
+            self.mongo_client = None
+            self.mongo_db = None
+            self.gridfs = None
 
         # Document metadata cache
         self.document_metadata: Dict[str, DocumentMetadata] = {}
@@ -1262,6 +1317,9 @@ JSON only:"""
             logger.error(f"❌ ChromaDB storage failed: {e}", exc_info=True)
             raise HTTPException(status_code=400, detail=f"Failed to store in vector database: {str(e)}")
 
+        # Generate upload timestamp (used for metadata and storage)
+        upload_time = datetime.now().isoformat()
+
         # Save document metadata
         try:
             metadata = DocumentMetadata(
@@ -1269,7 +1327,7 @@ JSON only:"""
                 filename=file.filename,
                 file_type=file_ext,
                 size_bytes=file_size,
-                upload_time=datetime.now().isoformat(),
+                upload_time=upload_time,
                 user_id=user_id,
                 session_id=session_id,
                 chunk_count=len(chunks),
@@ -1282,15 +1340,56 @@ JSON only:"""
             logger.error(f"❌ Metadata save failed: {e}", exc_info=True)
             # Non-critical, don't fail the upload
 
-        # Save original file
+        # Save original file - Priority: Cloudinary > GridFS > Local filesystem
+        cloudinary_url = None
         try:
-            file_path = Path(self.config.UPLOAD_DIR) / f"{doc_id}{file_ext}"
-            with open(file_path, 'wb') as f:
-                f.write(file_bytes)
-            logger.info(f"✅ Saved original file to {file_path}")
+            if self.cloudinary_enabled:
+                # Primary: Upload to Cloudinary
+                logger.info(f"📤 Uploading to Cloudinary...")
+                upload_result = cloudinary.uploader.upload(
+                    file_bytes,
+                    resource_type="raw",  # For PDFs and other documents
+                    public_id=f"{self.config.CLOUDINARY_FOLDER}/{doc_id}",
+                    folder=self.config.CLOUDINARY_FOLDER,
+                    context=f"filename={file.filename}|user_id={user_id}|session_id={session_id}|upload_time={upload_time}",
+                    tags=[file_ext.replace('.', ''), 'document', 'engunity']
+                )
+                cloudinary_url = upload_result.get('secure_url')
+                logger.info(f"✅ Saved to Cloudinary: {cloudinary_url}")
+
+            elif self.gridfs is not None:
+                # Fallback 1: MongoDB GridFS
+                file_id = self.gridfs.put(
+                    file_bytes,
+                    filename=file.filename,
+                    doc_id=doc_id,
+                    file_type=file_ext,
+                    upload_time=upload_time,
+                    user_id=user_id,
+                    session_id=session_id,
+                    size_bytes=file_size,
+                    chunk_count=len(chunks),
+                    page_count=page_count
+                )
+                logger.info(f"✅ Saved to MongoDB GridFS (file_id: {file_id})")
+
+            else:
+                # Fallback 2: Local filesystem
+                file_path = Path(self.config.UPLOAD_DIR) / f"{doc_id}{file_ext}"
+                with open(file_path, 'wb') as f:
+                    f.write(file_bytes)
+                logger.info(f"✅ Saved to local filesystem: {file_path}")
+
         except Exception as e:
-            logger.error(f"❌ File save failed: {e}", exc_info=True)
-            # Non-critical, don't fail the upload
+            logger.error(f"❌ Primary storage failed: {e}", exc_info=True)
+            # Try fallback to filesystem
+            try:
+                file_path = Path(self.config.UPLOAD_DIR) / f"{doc_id}{file_ext}"
+                with open(file_path, 'wb') as f:
+                    f.write(file_bytes)
+                logger.info(f"✅ Fallback: Saved to local filesystem: {file_path}")
+            except Exception as fallback_error:
+                logger.error(f"❌ Fallback save also failed: {fallback_error}")
 
         logger.info(f"✅ Document uploaded and indexed: {doc_id}")
 
@@ -1766,8 +1865,39 @@ Please provide a helpful answer. If using information from the documents, mentio
                 })
         return docs
 
+    def get_document_file(self, doc_id: str) -> Optional[bytes]:
+        """Retrieve document file from GridFS or filesystem"""
+        if doc_id not in self.document_metadata:
+            logger.warning(f"Document not found: {doc_id}")
+            return None
+
+        metadata = self.document_metadata[doc_id]
+
+        # Try GridFS first
+        if self.gridfs is not None:
+            try:
+                grid_file = self.gridfs.find_one({"doc_id": doc_id})
+                if grid_file:
+                    logger.info(f"✅ Retrieved file from GridFS: {doc_id}")
+                    return grid_file.read()
+            except Exception as e:
+                logger.error(f"❌ GridFS retrieval failed: {e}")
+
+        # Fallback to filesystem
+        file_path = Path(self.config.UPLOAD_DIR) / f"{doc_id}{metadata.file_type}"
+        if file_path.exists():
+            try:
+                with open(file_path, 'rb') as f:
+                    logger.info(f"✅ Retrieved file from filesystem: {file_path}")
+                    return f.read()
+            except Exception as e:
+                logger.error(f"❌ Filesystem retrieval failed: {e}")
+
+        logger.error(f"❌ File not found in GridFS or filesystem: {doc_id}")
+        return None
+
     def delete_document(self, doc_id: str) -> bool:
-        """Delete a document and its vectors"""
+        """Delete a document and its vectors from ChromaDB and GridFS/filesystem"""
         if doc_id not in self.document_metadata:
             return False
 
@@ -1776,11 +1906,37 @@ Please provide a helpful answer. If using information from the documents, mentio
             chunk_ids = [f"{doc_id}_chunk_{i}" for i in range(self.document_metadata[doc_id].chunk_count)]
             self.collection.delete(ids=chunk_ids)
 
-            # Delete file
+            # Delete file from all storage locations
             metadata = self.document_metadata[doc_id]
+            deleted = False
+
+            # Try Cloudinary first
+            if self.cloudinary_enabled:
+                try:
+                    public_id = f"{self.config.CLOUDINARY_FOLDER}/{doc_id}"
+                    cloudinary.uploader.destroy(public_id, resource_type="raw")
+                    logger.info(f"✅ Deleted file from Cloudinary: {public_id}")
+                    deleted = True
+                except Exception as e:
+                    logger.error(f"❌ Cloudinary delete failed: {e}")
+
+            # Try GridFS
+            if self.gridfs is not None:
+                try:
+                    grid_file = self.gridfs.find_one({"doc_id": doc_id})
+                    if grid_file:
+                        self.gridfs.delete(grid_file._id)
+                        logger.info(f"✅ Deleted file from GridFS: {doc_id}")
+                        deleted = True
+                except Exception as e:
+                    logger.error(f"❌ GridFS delete failed: {e}")
+
+            # Try local filesystem
             file_path = Path(self.config.UPLOAD_DIR) / f"{doc_id}{metadata.file_type}"
             if file_path.exists():
                 file_path.unlink()
+                logger.info(f"✅ Deleted file from filesystem: {file_path}")
+                deleted = True
 
             # Remove metadata
             del self.document_metadata[doc_id]

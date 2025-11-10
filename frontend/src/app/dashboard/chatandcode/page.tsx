@@ -4,7 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/auth/supabase';
 import MessageRenderer from '@/components/chat/MessageRenderer';
+import EnhancedMessageRenderer from '@/components/chat/EnhancedMessageRenderer';
 import ServiceLoader from '@/components/services/ServiceLoader';
+import { ProseMessage, SourcesPanel, ChatBubble, StreamingIndicator, useTokenRate } from '@/components/chat';
 import {
   Send,
   Bot,
@@ -53,6 +55,14 @@ interface Message {
   sessionId?: string;
   messageId?: string;
   confidence?: number;
+  sources?: Array<{
+    filename: string;
+    page?: number;
+    section?: string;
+    confidence?: number;
+    chunk_text?: string;
+    metadata?: Record<string, any>;
+  }>;
 }
 
 interface ChatSession {
@@ -619,7 +629,17 @@ function ChatCodePageContent() {
       const systemMsg: Message = {
         id: `msg_${Date.now()}`,
         type: 'system',
-        content: `📄 Document uploaded: **${file.name}**\n- Pages: ${data.page_count || 'N/A'}\n- Chunks: ${data.chunk_count}\n\nYou can now ask questions about this document!`,
+        content: `📄 **Document Uploaded Successfully**
+
+**Filename:** ${data.filename || file.name}
+
+**Document Details:**
+- 📄 Pages: ${data.page_count || 'N/A'}
+- 🧩 Chunks: ${data.chunk_count}
+- 📊 File Size: ${(data.size_bytes / 1024).toFixed(2)} KB
+- 🆔 Document ID: \`${data.doc_id}\`
+
+✅ You can now ask questions about this document!`,
         timestamp: new Date(),
         sessionId: currentSessionId
       };
@@ -1367,102 +1387,84 @@ function ChatCodePageContent() {
                 key={message.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className={`flex gap-4 ${message.type === 'user' ? 'justify-end' : ''}`}
+                transition={{ delay: index * 0.05 }}
               >
-                {message.type !== 'user' && (
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    message.type === 'system' 
-                      ? 'bg-emerald-100 text-emerald-600' 
-                      : 'bg-blue-100 text-blue-600'
-                  }`}>
-                    {message.type === 'system' ? (
-                      <Terminal className="w-4 h-4" />
-                    ) : (
-                      <Bot className="w-4 h-4" />
-                    )}
-                  </div>
-                )}
-                
-                <div className={`max-w-[80%] ${message.type === 'user' ? 'order-2' : ''}`}>
-                  <div className={`rounded-2xl px-4 py-3 ${
-                    message.type === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : message.type === 'system'
-                      ? 'bg-slate-100 text-slate-700'
-                      : 'bg-white border border-slate-200 text-slate-700 shadow-sm'
-                  }`}>
-                    {message.type === 'user' ? (
-                      <div className="whitespace-pre-wrap text-white">
-                        {message.content}
-                        {message.isStreaming && (
-                          <span className="inline-block w-1 h-4 bg-current ml-1 animate-pulse" />
-                        )}
-                      </div>
-                    ) : (
-                      <MessageRenderer
+                <ChatBubble
+                  role={message.type === 'user' ? 'user' : 'assistant'}
+                  timestamp={message.timestamp}
+                  isStreaming={message.isStreaming}
+                >
+                  {message.type === 'user' ? (
+                    <div className="whitespace-pre-wrap">
+                      {message.content}
+                      {message.isStreaming && <StreamingIndicator className="ml-1" />}
+                    </div>
+                  ) : (
+                    <>
+                      {/* Message Content - Enhanced with visual improvements */}
+                      <EnhancedMessageRenderer
                         content={stripCitations(message.content)}
                         type={message.type}
+                        confidence={message.confidence}
+                        sourceName={message.sources && message.sources.length > 0 ? message.sources[0].filename : undefined}
+                        keywords={chatInput.split(' ').filter(w => w.length > 3)}
                       />
-                    )}
-                  </div>
 
-                  <div className={`flex items-center gap-2 mt-1 text-xs text-slate-500 ${
-                    message.type === 'user' ? 'justify-end' : ''
-                  }`}>
-                    <span>{message.timestamp.toLocaleTimeString()}</span>
-                    {message.tokens && (
-                      <>
-                        <span>•</span>
-                        <span>{message.tokens} tokens</span>
-                      </>
-                    )}
-                    {message.confidence && (
-                      <>
-                        <span>•</span>
-                        <span>{(message.confidence * 100).toFixed(0)}% confidence</span>
-                      </>
-                    )}
+                      {message.sources && message.sources.length > 0 && (
+                        <SourcesPanel sources={message.sources} />
+                      )}
 
-                    {/* Copy and Edit Buttons for Assistant Messages */}
-                    {message.type === 'assistant' && !message.isStreaming && (
-                      <>
-                        <span>•</span>
-                        <button
-                          onClick={() => copyToClipboard(message.content, message.id)}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-100 transition-colors group"
-                          title="Copy message"
-                        >
-                          {copiedMessageId === message.id ? (
-                            <>
-                              <CheckCheck className="w-3 h-3 text-green-600" />
-                              <span className="text-green-600">Copied!</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3 h-3 text-slate-400 group-hover:text-slate-600" />
-                              <span className="group-hover:text-slate-700">Copy</span>
-                            </>
+                      {/* Metadata Footer */}
+                      {!message.isStreaming && (
+                        <div className="flex items-center gap-3 mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-700 text-xs text-zinc-500 dark:text-zinc-400">
+                          {message.tokens && (
+                            <span className="flex items-center gap-1">
+                              <Sparkles className="w-3 h-3" />
+                              {message.tokens} tokens
+                            </span>
                           )}
-                        </button>
-                        <button
-                          onClick={() => handleEditMessage(stripCitations(message.content))}
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-100 transition-colors group"
-                          title="Edit message"
-                        >
-                          <Edit3 className="w-3 h-3 text-slate-400 group-hover:text-slate-600" />
-                          <span className="group-hover:text-slate-700">Edit</span>
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
+                          {message.confidence && (
+                            <span className="flex items-center gap-1">
+                              <Target className="w-3 h-3" />
+                              {(message.confidence * 100).toFixed(0)}% confidence
+                            </span>
+                          )}
+                          <span>•</span>
+                          <button
+                            onClick={() => copyToClipboard(message.content, message.id)}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                          >
+                            {copiedMessageId === message.id ? (
+                              <>
+                                <CheckCheck className="w-3 h-3 text-green-600" />
+                                <span className="text-green-600">Copied!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3" />
+                                <span>Copy</span>
+                              </>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleEditMessage(stripCitations(message.content))}
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                          >
+                            <Edit3 className="w-3 h-3" />
+                            <span>Edit</span>
+                          </button>
+                        </div>
+                      )}
 
-                {message.type === 'user' && (
-                  <div className="w-8 h-8 bg-slate-600 rounded-full flex items-center justify-center flex-shrink-0 order-1">
-                    <User className="w-4 h-4 text-white" />
-                  </div>
-                )}
+                      {/* Streaming Indicator */}
+                      {message.isStreaming && (
+                        <div className="mt-2">
+                          <StreamingIndicator />
+                        </div>
+                      )}
+                    </>
+                  )}
+                </ChatBubble>
               </motion.div>
             ))}
 

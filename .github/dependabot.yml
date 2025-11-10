@@ -1,0 +1,61 @@
+version: 2
+updates:
+  # Keep GitHub Actions up to date
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "03:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 10
+
+  # Update npm dependencies in root (if any)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "03:10"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 10
+
+  # Update npm dependencies in frontend app
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "03:20"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 10
+
+  # Update npm dependencies in code-executor service
+  - package-ecosystem: "npm"
+    directory: "/code-executor"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "03:30"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 10
+
+  # Update npm dependencies in blockchain workspace
+  - package-ecosystem: "npm"
+    directory: "/blockchain"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "03:40"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 10
+
+  # Update Python dependencies in backend
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "03:50"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 10

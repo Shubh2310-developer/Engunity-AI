@@ -1,0 +1,14 @@
+name: Backend Deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Placeholder Deploy Step
+        run: |
+          echo "Implement backend deployment here. This job is manual only (workflow_dispatch)."
