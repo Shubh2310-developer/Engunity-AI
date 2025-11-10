@@ -203,7 +203,7 @@ storage3==0.7.7
 StrEnum==0.4.15
 supabase==2.1.0
 supafunc==0.3.3
-systemd-python==234
+systemd-python==235
 textstat==0.7.8
 thinc==8.3.6
 threadpoolctl==3.6.0
