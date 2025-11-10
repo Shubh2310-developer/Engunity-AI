@@ -20,7 +20,7 @@ aiofiles==23.2.0
 # Security essentials
 pyjwt==2.8.0
 cryptography==41.0.7
-python-dotenv==1.0.0
+python-dotenv==1.2.1
 
 # Basic utilities
 tqdm==4.66.1
