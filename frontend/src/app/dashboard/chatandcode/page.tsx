@@ -37,7 +37,9 @@ import {
   Zap,
   Target,
   Thermometer,
-  Layers
+  Layers,
+  Copy,
+  CheckCheck
 } from 'lucide-react';
 import { Image as ImageIcon } from 'lucide-react';
 
@@ -117,6 +119,9 @@ function ChatCodePageContent() {
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Copy state
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
   // Authentication check
   useEffect(() => {
@@ -221,21 +226,16 @@ function ChatCodePageContent() {
     try {
       const response = await fetch(`/api/chat/messages?sessionId=${sessionId}&limit=50`);
       const data = await response.json();
-      
+
       if (!data.success) {
         throw new Error(data.error || 'Failed to load messages');
       }
-      
+
       const history = data.messages || [];
-      const loadedMessages: Message[] = [
-        {
-          id: 'system-welcome',
-          type: 'system',
-          content: "Welcome to Engunity AI Chat & Code Assistant! I'm here to help you with programming, engineering questions, and code generation. How can I assist you today?",
-          timestamp: new Date(),
-          tokens: 42
-        },
-        ...history.map((msg: any) => ({
+
+      // Convert and sort messages by timestamp (ascending - oldest first)
+      const sortedHistory = history
+        .map((msg: any) => ({
           id: msg.messageId,
           type: msg.role as 'user' | 'assistant',
           content: msg.content,
@@ -245,6 +245,17 @@ function ChatCodePageContent() {
           messageId: msg.messageId,
           confidence: msg.confidence
         }))
+        .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+      const loadedMessages: Message[] = [
+        {
+          id: 'system-welcome',
+          type: 'system',
+          content: "Welcome to Engunity AI Chat & Code Assistant! I'm here to help you with programming, engineering questions, and code generation. How can I assist you today?",
+          timestamp: new Date(),
+          tokens: 42
+        },
+        ...sortedHistory
       ];
       setMessages(loadedMessages);
     } catch (error) {
@@ -692,12 +703,14 @@ function ChatCodePageContent() {
       documentCount: uploadedDocuments.length
     });
 
+    // Capture timestamp ONCE for proper message ordering
+    const messageTimestamp = new Date();
     const userMessageId = `msg_${Date.now()}`;
     const userMessage: Message = {
       id: userMessageId,
       type: 'user',
       content: message,
-      timestamp: new Date(),
+      timestamp: messageTimestamp,
       tokens: Math.floor(message.split(' ').length * 1.3),
       sessionId: currentSessionId,
       messageId: userMessageId
@@ -720,7 +733,7 @@ function ChatCodePageContent() {
           userId: user.id,
           role: 'user',
           content: message,
-          timestamp: new Date(),
+          timestamp: messageTimestamp,
           messageId: userMessageId,
           tokenUsage: {
             promptTokens: Math.floor(message.split(' ').length * 1.3),
@@ -734,24 +747,26 @@ function ChatCodePageContent() {
     }
 
     // Update session with new message
-    setChatSessions(prev => prev.map(s => 
-      s.sessionId === currentSessionId 
-        ? { 
-            ...s, 
+    setChatSessions(prev => prev.map(s =>
+      s.sessionId === currentSessionId
+        ? {
+            ...s,
             lastMessage: message.length > 50 ? message.substring(0, 50) + '...' : message,
-            timestamp: new Date(),
+            timestamp: messageTimestamp,
             messageCount: s.messageCount + 1,
             title: s.title === 'New Chat' ? (message.length > 30 ? message.substring(0, 30) + '...' : message) : s.title
           }
         : s
     ));
 
+    // Assistant message timestamp should be AFTER user message
     const assistantMessageId = `msg_${Date.now() + 1}`;
+    const assistantTimestamp = new Date(messageTimestamp.getTime() + 1); // 1ms after user message
     const assistantMessage: Message = {
       id: assistantMessageId,
       type: 'assistant',
       content: '',
-      timestamp: new Date(),
+      timestamp: assistantTimestamp,
       isStreaming: true,
       tokens: 0,
       sessionId: currentSessionId,
@@ -914,7 +929,7 @@ function ChatCodePageContent() {
                         userId: user.id,
                         role: 'assistant',
                         content: event.message,
-                        timestamp: new Date(event.timestamp),
+                        timestamp: assistantTimestamp, // Use pre-calculated timestamp from line 759
                         messageId: event.messageId,
                         tokenUsage: event.usage,
                         ragVersion: '2.0.0',
@@ -1004,7 +1019,7 @@ function ChatCodePageContent() {
                 userId: user.id,
                 role: 'assistant',
                 content: data.response,
-                timestamp: new Date(),
+                timestamp: assistantTimestamp, // Use consistent timestamp
                 messageId: assistantMessageId,
                 confidence: data.confidence,
                 sources: data.sources,
@@ -1157,19 +1172,45 @@ function ChatCodePageContent() {
     const now = new Date();
     const diff = now.getTime() - timestamp.getTime();
     const hours = diff / (1000 * 60 * 60);
-    
+
     if (hours < 1) return 'Just now';
     if (hours < 24) return `${Math.floor(hours)}h ago`;
     if (hours < 48) return 'Yesterday';
     return timestamp.toLocaleDateString();
   };
 
+  // Strip citation numbers [1][2][3] from text
+  const stripCitations = (text: string): string => {
+    return text.replace(/\[\d+\]/g, '');
+  };
+
+  // Copy message to clipboard
+  const copyToClipboard = async (content: string, messageId: string) => {
+    try {
+      const cleanContent = stripCitations(content);
+      await navigator.clipboard.writeText(cleanContent);
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    } catch (error) {
+      console.error('Failed to copy:', error);
+      alert('Failed to copy to clipboard');
+    }
+  };
+
+  // Edit/regenerate message
+  const handleEditMessage = (content: string) => {
+    setChatInput(content);
+    if (chatInputRef.current) {
+      chatInputRef.current.focus();
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 flex">
-      {/* Sidebar */}
-      <div className={`${sidebarOpen ? 'w-80' : 'w-0'} transition-all duration-300 bg-white border-r border-slate-200 flex flex-col overflow-hidden`}>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 flex h-screen overflow-hidden">
+      {/* Sidebar - FIXED, NO SCROLLING */}
+      <div className={`${sidebarOpen ? 'w-80' : 'w-0'} transition-all duration-300 bg-white border-r border-slate-200 flex flex-col overflow-hidden h-screen`}>
         {/* Sidebar Header */}
-        <div className="p-4 border-b border-slate-200">
+        <div className="p-4 border-b border-slate-200 flex-shrink-0">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-slate-900">Chat History</h2>
             <button
@@ -1179,7 +1220,7 @@ function ChatCodePageContent() {
               <X className="w-4 h-4" />
             </button>
           </div>
-          
+
           <button
             onClick={createNewChat}
             className="w-full flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -1190,7 +1231,7 @@ function ChatCodePageContent() {
         </div>
 
         {/* Search */}
-        <div className="p-4 border-b border-slate-200">
+        <div className="p-4 border-b border-slate-200 flex-shrink-0">
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" />
             <input
@@ -1203,7 +1244,7 @@ function ChatCodePageContent() {
           </div>
         </div>
 
-        {/* Chat Sessions List */}
+        {/* Chat Sessions List - SCROLLABLE */}
         <div className="flex-1 overflow-y-auto">
           {filteredSessions.length === 0 ? (
             <div className="p-4 text-center text-slate-500">
@@ -1217,8 +1258,8 @@ function ChatCodePageContent() {
                   key={session.sessionId}
                   onClick={() => switchToSession(session.sessionId)}
                   className={`group relative p-3 rounded-lg cursor-pointer transition-colors ${
-                    session.isActive 
-                      ? 'bg-blue-50 border border-blue-200' 
+                    session.isActive
+                      ? 'bg-blue-50 border border-blue-200'
                       : 'hover:bg-slate-50'
                   }`}
                 >
@@ -1239,7 +1280,7 @@ function ChatCodePageContent() {
                         <span>{session.messageCount} messages</span>
                       </div>
                     </div>
-                    
+
                     <button
                       onClick={(e) => deleteSession(session.sessionId, e)}
                       className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-all"
@@ -1254,7 +1295,7 @@ function ChatCodePageContent() {
         </div>
 
         {/* User Profile */}
-        <div className="p-4 border-t border-slate-200">
+        <div className="p-4 border-t border-slate-200 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
               <User className="w-4 h-4 text-white" />
@@ -1270,10 +1311,10 @@ function ChatCodePageContent() {
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        {/* Header */}
-        <div className="bg-white border-b border-slate-200 px-6 py-4">
+      {/* Main Content - FIXED HEIGHT */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+        {/* Header - FIXED */}
+        <div className="bg-white border-b border-slate-200 px-6 py-4 flex-shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
@@ -1315,9 +1356,9 @@ function ChatCodePageContent() {
           </div>
         </div>
 
-        {/* Messages */}
-        <div className="flex-1 flex flex-col">
-          <div 
+        {/* Messages - SCROLLABLE SECTION */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div
             ref={chatScrollRef}
             className="flex-1 overflow-y-auto p-6 space-y-6"
           >
@@ -1360,7 +1401,7 @@ function ChatCodePageContent() {
                       </div>
                     ) : (
                       <MessageRenderer
-                        content={message.content}
+                        content={stripCitations(message.content)}
                         type={message.type}
                       />
                     )}
@@ -1380,6 +1421,38 @@ function ChatCodePageContent() {
                       <>
                         <span>•</span>
                         <span>{(message.confidence * 100).toFixed(0)}% confidence</span>
+                      </>
+                    )}
+
+                    {/* Copy and Edit Buttons for Assistant Messages */}
+                    {message.type === 'assistant' && !message.isStreaming && (
+                      <>
+                        <span>•</span>
+                        <button
+                          onClick={() => copyToClipboard(message.content, message.id)}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-100 transition-colors group"
+                          title="Copy message"
+                        >
+                          {copiedMessageId === message.id ? (
+                            <>
+                              <CheckCheck className="w-3 h-3 text-green-600" />
+                              <span className="text-green-600">Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3 h-3 text-slate-400 group-hover:text-slate-600" />
+                              <span className="group-hover:text-slate-700">Copy</span>
+                            </>
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handleEditMessage(stripCitations(message.content))}
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-slate-100 transition-colors group"
+                          title="Edit message"
+                        >
+                          <Edit3 className="w-3 h-3 text-slate-400 group-hover:text-slate-600" />
+                          <span className="group-hover:text-slate-700">Edit</span>
+                        </button>
                       </>
                     )}
                   </div>
@@ -1678,26 +1751,92 @@ function ChatCodePageContent() {
                         onChange={handleDocumentUpload}
                         className="hidden"
                       />
-                      <button
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={isUploading}
-                        className="p-3 rounded-xl bg-gradient-to-r from-green-50 to-emerald-50 hover:from-green-100 hover:to-emerald-100 border border-green-200 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed relative group"
-                        title="Upload document (PDF, DOCX, TXT, MD)"
-                      >
-                        {isUploading ? (
-                          <RefreshCw className="w-5 h-5 text-green-600 animate-spin" />
-                        ) : (
-                          <Paperclip className="w-5 h-5 text-green-600" />
-                        )}
+                      <div className="relative group">
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={isUploading}
+                          className="p-3 rounded-xl bg-gradient-to-r from-green-50 to-emerald-50 hover:from-green-100 hover:to-emerald-100 border border-green-200 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed relative"
+                          title="Upload document (PDF, DOCX, TXT, MD)"
+                        >
+                          {isUploading ? (
+                            <RefreshCw className="w-5 h-5 text-green-600 animate-spin" />
+                          ) : (
+                            <Paperclip className="w-5 h-5 text-green-600" />
+                          )}
+                          {uploadedDocuments.length > 0 && (
+                            <span className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                              {uploadedDocuments.length}
+                            </span>
+                          )}
+                        </button>
+
+                        {/* Document Preview Popup on Hover */}
                         {uploadedDocuments.length > 0 && (
-                          <span className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
-                            {uploadedDocuments.length}
-                          </span>
+                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-3 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none group-hover:pointer-events-auto z-50">
+                            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 w-80 max-h-96 overflow-y-auto">
+                              <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-200">
+                                <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                                  <FileText className="w-4 h-4 text-green-600" />
+                                  Uploaded Documents ({uploadedDocuments.length})
+                                </h3>
+                              </div>
+
+                              <div className="space-y-2">
+                                {uploadedDocuments.map((doc, index) => (
+                                  <div
+                                    key={doc.doc_id}
+                                    className="flex items-start gap-3 p-3 rounded-xl bg-gradient-to-r from-green-50 to-emerald-50 hover:from-green-100 hover:to-emerald-100 transition-all duration-200 border border-green-200"
+                                  >
+                                    <div className="p-2 rounded-lg bg-white shadow-sm">
+                                      <FileText className="w-4 h-4 text-green-600" />
+                                    </div>
+
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium text-slate-900 truncate">
+                                        {doc.filename}
+                                      </p>
+                                      <div className="flex items-center gap-2 mt-1 text-xs text-slate-500">
+                                        <span>{doc.file_type.toUpperCase()}</span>
+                                        <span>•</span>
+                                        <span>{(doc.size_bytes / 1024).toFixed(1)} KB</span>
+                                        <span>•</span>
+                                        <span>{doc.chunk_count} chunks</span>
+                                      </div>
+                                      {doc.page_count && (
+                                        <div className="text-xs text-slate-500 mt-1">
+                                          {doc.page_count} pages
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        deleteDocument(doc.doc_id);
+                                      }}
+                                      className="p-1.5 rounded-lg hover:bg-red-100 text-slate-400 hover:text-red-600 transition-colors"
+                                      title="Delete document"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="mt-3 pt-3 border-t border-slate-200 text-center">
+                                <p className="text-xs text-slate-500">
+                                  Click the button to upload more documents
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Arrow pointer */}
+                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                              <div className="w-3 h-3 bg-white border-r border-b border-slate-200 transform rotate-45"></div>
+                            </div>
+                          </div>
                         )}
-                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-slate-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                          Upload Document
-                        </div>
-                      </button>
+                      </div>
 
                       {/* Settings Button (only show when documents are uploaded) */}
                       {uploadedDocuments.length > 0 && (

@@ -159,6 +159,12 @@ export interface ChatSession {
     temperature: number;
     model: string;
     selectedDocIds: string[];
+    // Phase 2/3 settings
+    taskType?: 'qa' | 'syllabus' | 'summary' | 'analysis';
+    enableCitations?: boolean;
+    enableSlotExtraction?: boolean;
+    enableConflictDetection?: boolean;
+    enableValidation?: boolean;
   };
 
   // Performance metrics

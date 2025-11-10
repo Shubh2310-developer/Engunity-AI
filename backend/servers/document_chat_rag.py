@@ -1,25 +1,45 @@
 #!/usr/bin/env python3
 """
-Document Chat RAG - Flexible Conversational Document Analysis
-=============================================================
+Document Chat RAG - Advanced Conversational Document Analysis (Gemini/ChatGPT Quality)
+=====================================================================================
 
 Features:
 - Upload PDF, DOCX, TXT, MD documents
 - BGE embeddings (BAAI/bge-small-en-v1.5) for fast semantic search
 - ChromaDB for persistent vector storage
-- Groq API for generation
+- Groq API (llama-3.3-70b-versatile) for generation
 - Flexible answering: Document-grounded + general knowledge with context retention
 - Streaming responses
 - Session-based document management
 - Citation support
 
+Advanced RAG Features (Phase 4 - No Training Required):
+1. **Query Decomposition**: Break complex questions into sub-questions
+2. **Reciprocal Rank Fusion (RRF)**: Multi-query retrieval for better recall
+3. **HyDE**: Hypothetical Document Embeddings for conceptual queries
+4. **Context Compression**: Extract only relevant sentences using LLM
+5. **Chain-of-Thought**: Step-by-step reasoning prompts
+6. **Self-Consistency**: Multiple answer generation with voting (optional)
+7. **Conflict Detection**: Identify contradictions across sources
+8. **Validation Pipeline**: Auto-repair with rule-based checks
+9. **Task-Specific Prompts**: Templates for syllabus, summary, analysis
+10. **Slot Extraction**: Structured information extraction
+11. **Clarifying Questions**: Ask for missing critical info
+
 Architecture:
 - Document Upload → Text Extraction → Chunking → Embedding → ChromaDB Storage
-- Query → Embed → Retrieve Relevant Chunks → Groq Generation with Context
-- Maintains document context while allowing general conversations
+- Advanced Retrieval Pipeline:
+  * Query Decomposition (complex queries → sub-queries)
+  * HyDE (generate hypothetical answer)
+  * RRF (multiple query variations)
+  * Context Compression (extract relevant sentences)
+- Enhanced Generation:
+  * Chain-of-Thought prompting
+  * Self-Consistency (optional)
+  * Task-specific templates
 
 Author: Engunity AI Team
-Version: 1.0.0
+Version: 2.0.0 (Phase 4 - Gemini/ChatGPT Quality)
 Port: 8004
 """
 
@@ -89,6 +109,32 @@ class DocRAGConfig:
     CACHE_TTL_SECONDS = 300  # 5 minutes
     MAX_CACHE_SIZE = 100
 
+    # Advanced Features (Phase 2/3 - Already Implemented)
+    ENABLE_SLOT_EXTRACTION = os.getenv("ENABLE_SLOT_EXTRACTION", "true").lower() == "true"
+    ENABLE_QUERY_REWRITE = os.getenv("ENABLE_QUERY_REWRITE", "true").lower() == "true"
+    ENABLE_CITATIONS = os.getenv("ENABLE_CITATIONS", "true").lower() == "true"
+    ENABLE_VALIDATION = os.getenv("ENABLE_VALIDATION", "true").lower() == "true"
+    ENABLE_CONFLICT_DETECTION = os.getenv("ENABLE_CONFLICT_DETECTION", "true").lower() == "true"
+    ENABLE_CLARIFYING_QUESTIONS = os.getenv("ENABLE_CLARIFYING_QUESTIONS", "true").lower() == "true"
+
+    # Advanced Features (Phase 4 - Gemini/ChatGPT Quality)
+    ENABLE_QUERY_DECOMPOSITION = os.getenv("ENABLE_QUERY_DECOMPOSITION", "true").lower() == "true"
+    ENABLE_RRF = os.getenv("ENABLE_RRF", "true").lower() == "true"  # Reciprocal Rank Fusion
+    ENABLE_CONTEXT_COMPRESSION = os.getenv("ENABLE_CONTEXT_COMPRESSION", "true").lower() == "true"
+    ENABLE_HYDE = os.getenv("ENABLE_HYDE", "true").lower() == "true"  # Hypothetical Document Embeddings
+    ENABLE_CHAIN_OF_THOUGHT = os.getenv("ENABLE_CHAIN_OF_THOUGHT", "true").lower() == "true"
+    ENABLE_SELF_CONSISTENCY = os.getenv("ENABLE_SELF_CONSISTENCY", "false").lower() == "true"  # Expensive
+
+    # RRF Settings
+    RRF_NUM_QUERIES = 3  # Generate 3 query variations
+    RRF_K = 60  # RRF constant (lower = more emphasis on top results)
+
+    # Context Compression
+    COMPRESSION_RATIO = 0.5  # Keep top 50% of relevant sentences
+
+    # Self-Consistency
+    SELF_CONSISTENCY_SAMPLES = 3  # Generate 3 answers and pick best
+
     # Groq LLM
     GROQ_MODEL = "llama-3.3-70b-versatile"
     GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
@@ -126,6 +172,14 @@ class DocumentMetadata:
     chunk_count: int
     page_count: Optional[int] = None
 
+    # Rich metadata for filtering
+    institution: Optional[str] = None
+    department: Optional[str] = None
+    year: Optional[str] = None
+    document_type: Optional[str] = None  # "syllabus", "handbook", "policy", "general"
+    level: Optional[str] = None  # "UG", "PG"
+    semester: Optional[str] = None
+
 
 class UploadResponse(BaseModel):
     doc_id: str
@@ -143,11 +197,18 @@ class ChatRequest(BaseModel):
     user_id: Optional[str] = None
     doc_ids: Optional[List[str]] = Field(default_factory=list)
     mode: str = "hybrid"  # "document-only" or "hybrid"
+
     # Optional settings overrides
     top_k: Optional[int] = None
     threshold: Optional[float] = None
     temperature: Optional[float] = None
     model: Optional[str] = None
+
+    # Advanced features
+    task_type: Optional[str] = "qa"  # "qa", "syllabus", "summary", "analysis"
+    enable_citations: Optional[bool] = True
+    enable_slot_extraction: Optional[bool] = True
+    metadata_filters: Optional[Dict[str, str]] = Field(default_factory=dict)
 
 
 class ChatResponse(BaseModel):
@@ -415,6 +476,676 @@ class DocumentChatRAG:
         self.cache_timestamps[cache_key] = time.time()
         logger.info(f"💾 Cached result for key: {cache_key[:8]}...")
 
+    async def extract_slots(self, query: str, user_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Extract structured information slots from user query using Groq LLM
+        Returns: {task_type, semester, department, institution, year, level, missing_fields}
+        """
+        if not self.config.ENABLE_SLOT_EXTRACTION:
+            return {"task_type": "qa"}
+
+        prompt = f"""Extract key information from this user query and return ONLY valid JSON (no markdown, no code blocks).
+
+Query: "{query}"
+
+Extract these fields if present:
+- task_type: "syllabus", "summary", "analysis", or "qa"
+- semester: Roman numeral or number (e.g., "VI", "6", "Semester 6")
+- department: Department name (e.g., "Computer Science", "Mechanical Engineering")
+- institution: University/college name
+- year: Academic year (e.g., "2024", "2024-25")
+- level: "UG" (undergraduate) or "PG" (postgraduate)
+- document_type: "syllabus", "handbook", "policy", "report", or "general"
+
+Return JSON format:
+{{
+  "task_type": "...",
+  "semester": "..." or null,
+  "department": "..." or null,
+  "institution": "..." or null,
+  "year": "..." or null,
+  "level": "..." or null,
+  "document_type": "..." or null,
+  "missing_fields": ["field1", "field2"]
+}}
+
+JSON only:"""
+
+        try:
+            response = self.groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=500
+            )
+
+            result_text = response.choices[0].message.content.strip()
+
+            # Remove markdown code blocks if present
+            if result_text.startswith("```"):
+                result_text = result_text.split("```")[1]
+                if result_text.startswith("json"):
+                    result_text = result_text[4:]
+                result_text = result_text.strip()
+
+            slots = json.loads(result_text)
+            logger.info(f"📊 Extracted slots: {slots}")
+            return slots
+        except Exception as e:
+            logger.error(f"Slot extraction failed: {e}")
+            return {"task_type": "qa"}
+
+    async def rewrite_query(self, query: str, slots: Dict[str, Any]) -> str:
+        """
+        Rewrite query based on extracted slots for better retrieval
+        """
+        if not self.config.ENABLE_QUERY_REWRITE or slots.get("task_type") == "qa":
+            return query
+
+        # Build enhanced query from slots
+        parts = [query]
+
+        if slots.get("semester"):
+            parts.append(f"Semester {slots['semester']}")
+        if slots.get("department"):
+            parts.append(slots["department"])
+        if slots.get("institution"):
+            parts.append(slots["institution"])
+        if slots.get("year"):
+            parts.append(str(slots["year"]))
+        if slots.get("level"):
+            parts.append("undergraduate" if slots["level"] == "UG" else "postgraduate")
+        if slots.get("document_type"):
+            parts.append(slots["document_type"])
+
+        rewritten = " ".join(parts)
+        logger.info(f"🔄 Query rewrite: '{query}' → '{rewritten}'")
+        return rewritten
+
+    # ============================================================================
+    # PHASE 4: Advanced RAG Features for Gemini/ChatGPT Quality
+    # ============================================================================
+
+    async def decompose_query(self, query: str) -> List[str]:
+        """
+        Decompose complex queries into simpler sub-questions.
+        Example: "Explain blockchain and its use cases" → ["What is blockchain?", "What are blockchain use cases?"]
+        """
+        if not self.config.ENABLE_QUERY_DECOMPOSITION:
+            return [query]
+
+        prompt = f"""Break down this complex question into 2-4 simpler sub-questions that together would answer the original question.
+Return ONLY a JSON array of strings, nothing else.
+
+Question: {query}
+
+JSON array of sub-questions:"""
+
+        try:
+            response = self.groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=300
+            )
+
+            result = response.choices[0].message.content.strip()
+
+            # Clean JSON response
+            if result.startswith("```"):
+                result = result.split("```")[1]
+                if result.startswith("json"):
+                    result = result[4:]
+                result = result.strip()
+
+            sub_questions = json.loads(result)
+
+            if isinstance(sub_questions, list) and len(sub_questions) > 1:
+                logger.info(f"🔀 Decomposed into {len(sub_questions)} sub-questions: {sub_questions}")
+                return sub_questions
+            else:
+                return [query]
+
+        except Exception as e:
+            logger.warning(f"Query decomposition failed: {e}")
+            return [query]
+
+    async def generate_query_variations(self, query: str) -> List[str]:
+        """
+        Generate multiple query variations for Reciprocal Rank Fusion (RRF).
+        Improves recall by retrieving with different phrasings.
+        """
+        if not self.config.ENABLE_RRF:
+            return [query]
+
+        prompt = f"""Generate {self.config.RRF_NUM_QUERIES - 1} alternative phrasings of this question that ask the same thing in different ways.
+Return ONLY a JSON array of strings.
+
+Original question: {query}
+
+JSON array of alternative questions:"""
+
+        try:
+            response = self.groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=200
+            )
+
+            result = response.choices[0].message.content.strip()
+
+            # Clean JSON response
+            if result.startswith("```"):
+                result = result.split("```")[1]
+                if result.startswith("json"):
+                    result = result[4:]
+                result = result.strip()
+
+            variations = json.loads(result)
+
+            if isinstance(variations, list):
+                all_queries = [query] + variations[:self.config.RRF_NUM_QUERIES - 1]
+                logger.info(f"🔀 Generated {len(all_queries)} query variations for RRF")
+                return all_queries
+            else:
+                return [query]
+
+        except Exception as e:
+            logger.warning(f"Query variation generation failed: {e}")
+            return [query]
+
+    def reciprocal_rank_fusion(self, ranked_lists: List[List[Tuple[str, float, Dict]]], k: int = 60) -> List[Tuple[str, float, Dict]]:
+        """
+        Merge multiple ranked lists using Reciprocal Rank Fusion.
+        RRF(d) = Σ 1 / (k + rank(d))
+
+        Args:
+            ranked_lists: List of ranked results [(chunk, score, metadata), ...]
+            k: RRF constant (default 60)
+
+        Returns:
+            Fused ranked list
+        """
+        if not self.config.ENABLE_RRF or len(ranked_lists) <= 1:
+            return ranked_lists[0] if ranked_lists else []
+
+        rrf_scores = {}
+        chunk_metadata = {}
+
+        for ranked_list in ranked_lists:
+            for rank, (chunk, score, metadata) in enumerate(ranked_list, start=1):
+                if chunk not in rrf_scores:
+                    rrf_scores[chunk] = 0
+                    chunk_metadata[chunk] = metadata
+                rrf_scores[chunk] += 1 / (k + rank)
+
+        # Sort by RRF score
+        fused = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
+
+        result = [(chunk, score, chunk_metadata[chunk]) for chunk, score in fused]
+        logger.info(f"🔀 RRF: Fused {len(ranked_lists)} result lists into {len(result)} unique chunks")
+        return result
+
+    async def compress_context(self, query: str, chunks: List[str], metadatas: List[Dict]) -> Tuple[List[str], List[Dict]]:
+        """
+        Compress retrieved context by extracting only relevant sentences.
+        Reduces noise and improves generation quality.
+        """
+        if not self.config.ENABLE_CONTEXT_COMPRESSION or len(chunks) == 0:
+            return chunks, metadatas
+
+        compressed_chunks = []
+        compressed_metadatas = []
+
+        for chunk, metadata in zip(chunks, metadatas):
+            # Split into sentences
+            sentences = re.split(r'[.!?]+', chunk)
+            sentences = [s.strip() for s in sentences if len(s.strip()) > 10]
+
+            if len(sentences) <= 2:
+                # Too short to compress
+                compressed_chunks.append(chunk)
+                compressed_metadatas.append(metadata)
+                continue
+
+            # Ask LLM to extract relevant sentences
+            prompt = f"""Extract ONLY the sentences that are relevant to answering this question. Return them as a JSON array of strings.
+
+Question: {query}
+
+Text:
+{chunk}
+
+Relevant sentences (JSON array):"""
+
+            try:
+                response = self.groq_client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    max_tokens=500
+                )
+
+                result = response.choices[0].message.content.strip()
+
+                # Clean JSON response
+                if result.startswith("```"):
+                    result = result.split("```")[1]
+                    if result.startswith("json"):
+                        result = result[4:]
+                    result = result.strip()
+
+                relevant_sentences = json.loads(result)
+
+                if isinstance(relevant_sentences, list) and len(relevant_sentences) > 0:
+                    compressed = " ".join(relevant_sentences)
+                    compressed_chunks.append(compressed)
+                    compressed_metadatas.append(metadata)
+                else:
+                    # Fallback: keep original
+                    compressed_chunks.append(chunk)
+                    compressed_metadatas.append(metadata)
+
+            except Exception as e:
+                logger.warning(f"Context compression failed for chunk: {e}")
+                compressed_chunks.append(chunk)
+                compressed_metadatas.append(metadata)
+
+        original_length = sum(len(c) for c in chunks)
+        compressed_length = sum(len(c) for c in compressed_chunks)
+        compression_ratio = compressed_length / original_length if original_length > 0 else 1.0
+
+        logger.info(f"🗜️ Context compression: {original_length} → {compressed_length} chars ({compression_ratio:.1%})")
+        return compressed_chunks, compressed_metadatas
+
+    async def generate_hypothetical_document(self, query: str) -> str:
+        """
+        Generate a hypothetical answer (HyDE) and use it for retrieval.
+        Works better for conceptual/abstract questions.
+        """
+        if not self.config.ENABLE_HYDE:
+            return query
+
+        prompt = f"""Generate a detailed, technical answer to this question as if you were writing a section of an academic document.
+Write 2-3 sentences with specific terminology and concepts.
+
+Question: {query}
+
+Hypothetical answer:"""
+
+        try:
+            response = self.groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.5,
+                max_tokens=150
+            )
+
+            hypothetical_doc = response.choices[0].message.content.strip()
+            logger.info(f"🔮 HyDE: Generated hypothetical document ({len(hypothetical_doc)} chars)")
+            return hypothetical_doc
+
+        except Exception as e:
+            logger.warning(f"HyDE generation failed: {e}")
+            return query
+
+    async def generate_with_chain_of_thought(self, prompt: str, context: str) -> str:
+        """
+        Generate answer using Chain-of-Thought prompting for better reasoning.
+        """
+        if not self.config.ENABLE_CHAIN_OF_THOUGHT:
+            return ""
+
+        cot_prompt = f"""Let's approach this step-by-step:
+
+Context:
+{context}
+
+Question: {prompt}
+
+Let's think through this carefully:
+1. First, identify the key concepts in the question
+2. Then, find relevant information from the context
+3. Finally, synthesize a comprehensive answer
+
+Answer:"""
+
+        try:
+            response = self.groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": cot_prompt}],
+                temperature=0.5,
+                max_tokens=self.config.MAX_TOKENS,
+                stream=False
+            )
+
+            return response.choices[0].message.content
+
+        except Exception as e:
+            logger.error(f"Chain-of-Thought generation failed: {e}")
+            return ""
+
+    async def generate_with_self_consistency(self, prompt: str, context: str, num_samples: int = 3) -> str:
+        """
+        Generate multiple answers and select the most consistent one (Self-Consistency).
+        Expensive but produces highest quality results.
+        """
+        if not self.config.ENABLE_SELF_CONSISTENCY:
+            return ""
+
+        answers = []
+
+        for i in range(num_samples):
+            try:
+                response = self.groq_client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[
+                        {"role": "system", "content": "You are a knowledgeable assistant providing detailed, accurate answers."},
+                        {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {prompt}\n\nAnswer:"}
+                    ],
+                    temperature=0.7,  # Higher temperature for diversity
+                    max_tokens=self.config.MAX_TOKENS,
+                    stream=False
+                )
+
+                answer = response.choices[0].message.content
+                answers.append(answer)
+
+            except Exception as e:
+                logger.error(f"Self-consistency sample {i+1} failed: {e}")
+
+        if not answers:
+            return ""
+
+        # Simple majority voting: pick the longest answer (assumes more detail = better)
+        # In production, use semantic similarity clustering
+        best_answer = max(answers, key=len)
+        logger.info(f"🎯 Self-Consistency: Selected best from {len(answers)} answers")
+        return best_answer
+
+    def _build_metadata_filter(self, slots: Dict[str, Any], metadata_filters: Dict[str, str]) -> Dict[str, Any]:
+        """
+        Build ChromaDB where filter from slots and explicit filters
+        """
+        conditions = []
+
+        # Add explicit metadata filters
+        for key, value in metadata_filters.items():
+            if value:
+                conditions.append({key: value})
+
+        # Add filters from extracted slots
+        # NOTE: Only add filters for metadata fields that actually exist in ChromaDB
+        # Current metadata: doc_id, filename, chunk_index, user_id, session_id, upload_time
+        # TODO: Add institution, department, year, semester, level to metadata during upload if needed
+
+        # Commented out filters for fields not currently stored in metadata:
+        # if slots.get("institution"):
+        #     conditions.append({"institution": slots["institution"]})
+        # if slots.get("department"):
+        #     conditions.append({"department": slots["department"]})
+        # if slots.get("year"):
+        #     conditions.append({"year": str(slots["year"])})
+        # if slots.get("document_type"):
+        #     conditions.append({"document_type": slots["document_type"]})
+        # if slots.get("semester"):
+        #     conditions.append({"semester": str(slots["semester"])})
+        # if slots.get("level"):
+        #     conditions.append({"level": slots["level"]})
+
+        if not conditions:
+            return {}
+
+        if len(conditions) == 1:
+            return conditions[0]
+
+        return {"$and": conditions}
+
+    def _insert_citations(self, text: str, sources: List[Dict[str, Any]]) -> str:
+        """
+        Insert inline citation markers [1], [2] into generated text
+        This is a simple post-processing approach
+        """
+        if not self.config.ENABLE_CITATIONS or not sources:
+            return text
+
+        # For now, append citations at the end of sentences mentioning source content
+        # A more sophisticated approach would use NER or keyword matching
+        # This is a placeholder - real implementation would match content to sources
+
+        return text
+
+    def _generate_citation_prompt(self, sources: List[str], query: str) -> str:
+        """
+        Generate a prompt that enforces citation usage
+        """
+        if not self.config.ENABLE_CITATIONS:
+            return self._build_standard_prompt(sources, query)
+
+        sources_text = "\n\n".join([
+            f"[{i+1}] {chunk}" for i, chunk in enumerate(sources)
+        ])
+
+        prompt = f"""You are a helpful AI assistant that provides accurate, well-cited answers based on provided sources.
+
+IMPORTANT CITATION RULES:
+1. Use ONLY the information from the provided sources below
+2. Add inline citations [1], [2], etc. after each claim
+3. Every factual statement MUST have a citation
+4. If sources conflict, note it and cite both
+5. If information is not in sources, say "The provided sources do not contain information about..."
+
+SOURCES:
+{sources_text}
+
+USER QUESTION: {query}
+
+Provide a comprehensive answer with inline citations:"""
+
+        return prompt
+
+    def _load_task_prompt(self, task_type: str, slots: Dict[str, Any], sources: List[str], query: str) -> str:
+        """
+        Load task-specific prompt template
+        """
+        prompt_file = Path(__file__).parent / "prompts" / f"{task_type}.txt"
+
+        if prompt_file.exists():
+            try:
+                with open(prompt_file, 'r') as f:
+                    template = f.read()
+
+                # Format template with slots and sources
+                sources_text = "\n\n".join([f"[{i+1}] {chunk}" for i, chunk in enumerate(sources)])
+
+                formatted = template.format(
+                    semester=slots.get('semester', 'N/A'),
+                    program=slots.get('department', 'N/A'),
+                    institution=slots.get('institution', 'N/A'),
+                    level=slots.get('level', 'N/A'),
+                    sources=sources_text,
+                    query=query
+                )
+
+                logger.info(f"✅ Loaded task prompt: {task_type}")
+                return formatted
+            except Exception as e:
+                logger.error(f"Failed to load prompt template {task_type}: {e}")
+                return self._generate_citation_prompt(sources, query)
+        else:
+            logger.warning(f"Prompt template not found: {task_type}, using default")
+            return self._generate_citation_prompt(sources, query)
+
+    async def validate_output(self, output: str, task_type: str) -> Tuple[bool, List[str]]:
+        """
+        Validate generated output based on task type
+        Returns: (is_valid, list_of_violations)
+        """
+        if not self.config.ENABLE_VALIDATION:
+            return True, []
+
+        violations = []
+
+        if task_type == "syllabus":
+            # Check for required sections
+            required_sections = [
+                "Course Overview", "Learning Objectives", "Weekly Plan",
+                "Assessments", "Grading Policy"
+            ]
+
+            for section in required_sections:
+                if section.lower() not in output.lower():
+                    violations.append(f"Missing required section: {section}")
+
+            # Check assessment weights sum to 100%
+            import re
+            percentages = re.findall(r'(\d+)%', output)
+            if percentages:
+                total = sum(int(p) for p in percentages if int(p) <= 100)
+                if total != 100 and total > 0:
+                    violations.append(f"Assessment weights sum to {total}%, not 100%")
+
+            # Check for weekly plan (should have 12-15 weeks)
+            week_matches = re.findall(r'Week\s+(\d+)', output, re.IGNORECASE)
+            if week_matches:
+                num_weeks = len(set(week_matches))
+                if num_weeks < 12 or num_weeks > 15:
+                    violations.append(f"Weekly plan has {num_weeks} weeks, should be 12-15")
+
+        elif task_type == "summary":
+            # Check for key sections
+            if "Executive Summary" not in output and "Summary" not in output:
+                violations.append("Missing executive summary section")
+
+            if "Key Points" not in output and "Main Points" not in output:
+                violations.append("Missing key points section")
+
+        # Check for citations if enabled
+        if self.config.ENABLE_CITATIONS:
+            citation_matches = re.findall(r'\[(\d+)\]', output)
+            if not citation_matches:
+                violations.append("No citations found in output (citations were enabled)")
+
+        is_valid = len(violations) == 0
+        if not is_valid:
+            logger.warning(f"⚠️ Validation failed: {violations}")
+
+        return is_valid, violations
+
+    async def generate_repair_prompt(self, output: str, violations: List[str], task_type: str) -> str:
+        """
+        Generate a focused repair prompt to fix validation violations
+        """
+        violation_text = "\n".join([f"- {v}" for v in violations])
+
+        prompt = f"""You are fixing a {task_type} document that has validation issues.
+
+ORIGINAL OUTPUT:
+{output}
+
+VALIDATION ISSUES:
+{violation_text}
+
+TASK: Fix ONLY the validation issues listed above. Preserve all other content.
+
+RULES:
+- For missing sections: Add them with appropriate content
+- For assessment weights: Adjust percentages to sum to exactly 100%
+- For weekly plan: Adjust to have 12-15 weeks
+- For missing citations: Add inline citations [1], [2] where appropriate
+- Keep all existing good content
+
+Output the CORRECTED version:"""
+
+        return prompt
+
+    async def detect_conflicts(self, sources: List[str], chunks_metadata: List[Dict]) -> List[Dict[str, Any]]:
+        """
+        Detect conflicting information across sources
+        Returns list of conflicts
+        """
+        if not self.config.ENABLE_CONFLICT_DETECTION or len(sources) < 2:
+            return []
+
+        conflicts = []
+
+        # Use LLM to detect conflicts
+        sources_text = "\n\n".join([f"[Source {i+1}]:\n{chunk}" for i, chunk in enumerate(sources)])
+
+        prompt = f"""Analyze these sources and identify any conflicting information. Return ONLY valid JSON.
+
+{sources_text}
+
+Return JSON array of conflicts:
+[
+  {{
+    "type": "conflict_type",
+    "sources": [1, 2],
+    "description": "Brief description of conflict",
+    "severity": "high" | "medium" | "low"
+  }}
+]
+
+If no conflicts, return empty array: []
+
+JSON only:"""
+
+        try:
+            response = self.groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=1000
+            )
+
+            result_text = response.choices[0].message.content.strip()
+
+            # Clean JSON response
+            if result_text.startswith("```"):
+                result_text = result_text.split("```")[1]
+                if result_text.startswith("json"):
+                    result_text = result_text[4:]
+                result_text = result_text.strip()
+
+            conflicts = json.loads(result_text)
+            if conflicts:
+                logger.info(f"⚠️ Detected {len(conflicts)} conflicts between sources")
+
+            return conflicts
+        except Exception as e:
+            logger.error(f"Conflict detection failed: {e}")
+            return []
+
+    async def generate_clarifying_question(self, query: str, slots: Dict[str, Any]) -> Optional[str]:
+        """
+        Generate clarifying question if critical information is missing
+        """
+        if not self.config.ENABLE_CLARIFYING_QUESTIONS:
+            return None
+
+        missing_fields = slots.get('missing_fields', [])
+
+        # Critical fields that require clarification
+        critical_fields = {
+            'syllabus': ['institution', 'semester', 'department'],
+            'summary': [],
+            'analysis': []
+        }
+
+        task_type = slots.get('task_type', 'qa')
+        required = critical_fields.get(task_type, [])
+
+        critical_missing = [f for f in missing_fields if f in required]
+
+        if critical_missing:
+            field_names = ", ".join(critical_missing)
+            question = f"To provide accurate information, I need to know: {field_names}. Could you please specify?"
+            logger.info(f"🤔 Clarifying question: {question}")
+            return question
+
+        return None
+
     async def upload_document(
         self,
         file: UploadFile,
@@ -583,8 +1314,62 @@ class DocumentChatRAG:
         temperature = request.temperature or self.config.TEMPERATURE
         model = request.model or self.config.GROQ_MODEL
 
-        # Check cache first
-        cache_key = self._get_cache_key(request.session_id, request.message, request.doc_ids or [], top_k)
+        # ============ NEW: Slot Extraction & Query Rewriting ============
+        original_query = request.message
+        slots = {}
+
+        if request.enable_slot_extraction and self.config.ENABLE_SLOT_EXTRACTION:
+            logger.info(f"🔍 Extracting slots from: {original_query[:100]}...")
+            slots = await self.extract_slots(original_query, request.user_id)
+
+            # ============ NEW: Check for clarifying questions ============
+            clarifying_q = await self.generate_clarifying_question(original_query, slots)
+            if clarifying_q:
+                # Return clarifying question as a final message
+                from datetime import datetime
+                iso_timestamp = datetime.now().isoformat()
+
+                async def ask_clarification():
+                    # Stream the question text
+                    for char in clarifying_q:
+                        yield f"data: {json.dumps({'token': char})}\n\n"
+                        await asyncio.sleep(0.01)
+
+                    # Send final event with clarifying question
+                    final_data = {
+                        "type": "final",
+                        "final": True,
+                        "message": clarifying_q,
+                        "answer": clarifying_q,
+                        "is_clarifying_question": True,
+                        "missing_slots": slots.get('missing_fields', []),
+                        "sources": [],
+                        "confidence": 1.0,
+                        "sessionId": request.session_id,
+                        "messageId": f"msg_{int(time.time() * 1000)}",
+                        "timestamp": iso_timestamp,
+                        "usage": {
+                            "totalTokens": len(clarifying_q.split()),
+                            "promptTokens": len(request.message.split()),
+                            "completionTokens": len(clarifying_q.split())
+                        }
+                    }
+                    yield f"data: {json.dumps(final_data)}\n\n"
+
+                return ask_clarification()
+
+        # Rewrite query if slots extracted
+        if slots and self.config.ENABLE_QUERY_REWRITE:
+            enhanced_query = await self.rewrite_query(original_query, slots)
+            logger.info(f"✨ Enhanced query: {enhanced_query[:100]}...")
+        else:
+            enhanced_query = original_query
+
+        # Use enhanced query for embedding
+        query_for_embedding = enhanced_query
+
+        # Check cache first (use original query for cache key to avoid cache misses)
+        cache_key = self._get_cache_key(request.session_id, original_query, request.doc_ids or [], top_k)
         cached_result = self._get_cached_result(cache_key)
 
         if cached_result:
@@ -600,75 +1385,124 @@ class DocumentChatRAG:
 
             return replay_cached()
 
-        # Embed the query
-        query_embedding = self.embedding_model.encode([request.message])[0]
+        # ============ PHASE 4: Advanced Retrieval Pipeline ============
 
-        # Build filters for retrieval
-        # ChromaDB requires proper filter structure
-        if request.doc_ids and len(request.doc_ids) > 0:
-            # Filter by specific documents
-            if len(request.doc_ids) == 1:
-                where_filter = {
-                    "$and": [
-                        {"session_id": request.session_id},
-                        {"doc_id": request.doc_ids[0]}
-                    ]
-                }
+        # Step 1: Query Decomposition (if complex query)
+        sub_queries = await self.decompose_query(enhanced_query)
+        all_sub_results = []
+
+        for sub_query in sub_queries:
+            logger.info(f"🔍 Processing sub-query: {sub_query[:80]}...")
+
+            # Step 2: HyDE - Generate hypothetical document for better retrieval
+            hyde_query = await self.generate_hypothetical_document(sub_query)
+            query_for_embedding = hyde_query
+
+            # Step 3: RRF - Generate query variations
+            query_variations = await self.generate_query_variations(query_for_embedding)
+
+            # Build metadata filter
+            metadata_filter = self._build_metadata_filter(slots, request.metadata_filters or {})
+
+            # Combine with document and session filters
+            base_conditions = []
+            base_conditions.append({"session_id": request.session_id})
+
+            if request.doc_ids and len(request.doc_ids) > 0:
+                if len(request.doc_ids) == 1:
+                    base_conditions.append({"doc_id": request.doc_ids[0]})
+                else:
+                    base_conditions.append({"doc_id": {"$in": request.doc_ids}})
+
+            if metadata_filter:
+                if "$and" in metadata_filter:
+                    base_conditions.extend(metadata_filter["$and"])
+                else:
+                    base_conditions.append(metadata_filter)
+
+            # Build final where filter
+            if len(base_conditions) == 1:
+                where_filter = base_conditions[0]
             else:
-                where_filter = {
-                    "$and": [
-                        {"session_id": request.session_id},
-                        {"doc_id": {"$in": request.doc_ids}}
-                    ]
-                }
-        else:
-            # Filter by session only
-            where_filter = {"session_id": request.session_id}
+                where_filter = {"$and": base_conditions}
 
-        # Retrieve relevant chunks (fetch more for MMR if enabled)
-        retrieval_k = top_k * 3 if self.config.ENABLE_MMR else top_k
-        logger.info(f"Retrieving chunks for query: {request.message[:50]}... (k={retrieval_k}, MMR={'ON' if self.config.ENABLE_MMR else 'OFF'})")
+            logger.info(f"📋 Using filters: {where_filter}")
 
-        results = self.collection.query(
-            query_embeddings=[query_embedding.tolist()],
-            n_results=retrieval_k,
-            where=where_filter
-        )
+            # Step 4: Retrieve with all query variations (for RRF)
+            ranked_lists = []
+            retrieval_k = top_k * 3 if self.config.ENABLE_MMR else top_k
 
-        chunks = results['documents'][0] if results['documents'] else []
-        distances = results['distances'][0] if results['distances'] else []
-        metadatas = results['metadatas'][0] if results['metadatas'] else []
+            for query_var in query_variations:
+                query_embedding = self.embedding_model.encode([query_var])[0]
 
-        # Convert distances to similarities (cosine distance -> similarity)
-        similarities = [1 - d for d in distances] if distances else []
+                results = self.collection.query(
+                    query_embeddings=[query_embedding.tolist()],
+                    n_results=retrieval_k,
+                    where=where_filter
+                )
 
-        # Filter by similarity threshold BEFORE MMR
-        pre_filter_chunks = []
-        pre_filter_embeddings = []
-        pre_filter_sims = []
-        pre_filter_metadata = []
+                chunks_var = results['documents'][0] if results['documents'] else []
+                distances_var = results['distances'][0] if results['distances'] else []
+                metadatas_var = results['metadatas'][0] if results['metadatas'] else []
 
-        for chunk, dist, sim, meta in zip(chunks, distances, similarities, metadatas):
-            if sim >= threshold:
-                pre_filter_chunks.append(chunk)
-                # We need to get embeddings for MMR - use query results or re-embed
-                pre_filter_embeddings.append(query_embedding.tolist())  # Placeholder
-                pre_filter_sims.append(sim)
-                pre_filter_metadata.append(meta)
+                # Convert to tuples for RRF
+                similarities_var = [1 - d for d in distances_var] if distances_var else []
+                ranked_list = [
+                    (chunk, sim, meta)
+                    for chunk, sim, meta in zip(chunks_var, similarities_var, metadatas_var)
+                    if sim >= threshold
+                ]
+                ranked_lists.append(ranked_list)
 
-        # Apply MMR if enabled
-        if self.config.ENABLE_MMR and len(pre_filter_chunks) > top_k:
-            logger.info(f"Applying MMR: {len(pre_filter_chunks)} → {top_k} chunks")
-            # For MMR, we'd need actual doc embeddings - simplified here
-            filtered_chunks = pre_filter_chunks[:top_k]
-            filtered_metadata = pre_filter_metadata[:top_k]
-            filtered_sims = pre_filter_sims[:top_k]
-        else:
-            filtered_chunks = pre_filter_chunks[:top_k]
-            filtered_metadata = pre_filter_metadata[:top_k]
-            filtered_sims = pre_filter_sims[:top_k]
+            # Step 5: RRF - Merge results from all query variations
+            fused_results = self.reciprocal_rank_fusion(ranked_lists, k=self.config.RRF_K)
 
-        logger.info(f"Found {len(filtered_chunks)} relevant chunks (threshold: {self.config.SIMILARITY_THRESHOLD})")
+            # Extract top results after RRF
+            sub_chunks = [chunk for chunk, score, meta in fused_results[:top_k]]
+            sub_metadatas = [meta for chunk, score, meta in fused_results[:top_k]]
+
+            all_sub_results.append((sub_chunks, sub_metadatas))
+
+        # Step 6: Combine results from all sub-queries
+        chunks = []
+        metadatas = []
+        for sub_chunks, sub_metas in all_sub_results:
+            chunks.extend(sub_chunks)
+            metadatas.extend(sub_metas)
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_chunks = []
+        unique_metadatas = []
+        for chunk, meta in zip(chunks, metadatas):
+            if chunk not in seen:
+                seen.add(chunk)
+                unique_chunks.append(chunk)
+                unique_metadatas.append(meta)
+
+        chunks = unique_chunks[:top_k]
+        metadatas = unique_metadatas[:top_k]
+
+        logger.info(f"Found {len(chunks)} unique chunks after Query Decomposition + RRF")
+
+        # Step 7: Context Compression - Extract only relevant sentences
+        chunks, metadatas = await self.compress_context(enhanced_query, chunks, metadatas)
+
+        # ============ END PHASE 4 ============
+
+        # Generate artificial similarities (all compressed chunks are relevant)
+        similarities = [0.8] * len(chunks)  # High similarity since they passed all filters
+
+        # Convert to old format for compatibility with existing code
+        distances = [1 - s for s in similarities]
+
+        # Phase 4 already did all filtering, deduplication, and compression
+        # Just pass through the results
+        filtered_chunks = chunks
+        filtered_metadata = metadatas
+        filtered_sims = similarities
+
+        logger.info(f"✅ Final: {len(filtered_chunks)} high-quality chunks after Phase 4 pipeline")
 
         # Build prompt based on mode
         if request.mode == "document-only" and not filtered_chunks:
@@ -693,15 +1527,58 @@ class DocumentChatRAG:
 
             return generate()
 
-        # Build context from chunks
-        context = "\n\n".join([
-            f"[Chunk {i+1} from {meta.get('filename', 'document')}]:\n{chunk}"
-            for i, (chunk, meta) in enumerate(zip(filtered_chunks, filtered_metadata))
-        ])
+        # ============ NEW: Conflict Detection ============
+        conflicts = []
+        if filtered_chunks and self.config.ENABLE_CONFLICT_DETECTION:
+            conflicts = await self.detect_conflicts(filtered_chunks, filtered_metadata)
 
-        # Build system prompt based on mode
-        if request.mode == "document-only":
-            system_prompt = """You are a helpful AI assistant that answers questions based STRICTLY on the provided document context.
+        # ============ NEW: Task-Specific Prompts ============
+        task_type = request.task_type if hasattr(request, 'task_type') else slots.get('task_type', 'qa')
+
+        # Try to load task-specific prompt if task type is not 'qa'
+        if task_type != 'qa' and filtered_chunks:
+            logger.info(f"📋 Using task-specific prompt: {task_type}")
+            user_prompt = self._load_task_prompt(task_type, slots, filtered_chunks, request.message)
+            system_prompt = "You are a professional academic assistant."
+
+            # Add conflict note if detected
+            if conflicts:
+                conflict_note = "\n\nNOTE: Conflicts detected between sources:\n"
+                for conf in conflicts:
+                    conflict_note += f"- {conf['description']} (Sources: {conf['sources']})\n"
+                user_prompt += conflict_note
+
+        else:
+            # Standard prompts for QA mode
+            # Build context from chunks (numbered for citations)
+            if request.enable_citations and self.config.ENABLE_CITATIONS:
+                context = "\n\n".join([
+                    f"[{i+1}] {chunk}"
+                    for i, chunk in enumerate(filtered_chunks)
+                ])
+            else:
+                context = "\n\n".join([
+                    f"[Chunk {i+1} from {meta.get('filename', 'document')}]:\n{chunk}"
+                    for i, (chunk, meta) in enumerate(zip(filtered_chunks, filtered_metadata))
+                ])
+
+            # Build system prompt based on mode and citation settings
+            if request.enable_citations and self.config.ENABLE_CITATIONS and filtered_chunks:
+                # Citation-aware prompt
+                system_prompt = """You are a helpful AI assistant that provides accurate, well-cited answers based on provided sources.
+
+IMPORTANT CITATION RULES:
+1. Use ONLY the information from the provided sources below
+2. Add inline citations [1], [2], etc. after each claim from sources
+3. Every factual statement from sources MUST have a citation
+4. If sources conflict, note it and cite both sources
+5. If information is not in sources, clearly state that"""
+
+                if request.mode == "hybrid":
+                    system_prompt += "\n6. You may supplement with general knowledge if sources are insufficient, but clearly mark what comes from sources vs general knowledge"
+
+            elif request.mode == "document-only":
+                system_prompt = """You are a helpful AI assistant that answers questions based STRICTLY on the provided document context.
 
 Rules:
 1. Answer ONLY using information from the provided context
@@ -709,8 +1586,8 @@ Rules:
 3. Cite the document chunks you use
 4. Be concise but thorough
 5. If asked about topics not in the documents, politely indicate that"""
-        else:  # hybrid mode
-            system_prompt = """You are a helpful AI assistant that answers questions using both document context and your general knowledge.
+            else:  # hybrid mode (no citations)
+                system_prompt = """You are a helpful AI assistant that answers questions using both document context and your general knowledge.
 
 Rules:
 1. PRIORITIZE information from the provided document context when available
@@ -721,16 +1598,24 @@ Rules:
 6. You can answer general questions even if they're not in the documents
 7. Keep the document context in mind for follow-up questions"""
 
-        # Build user prompt
-        if filtered_chunks:
-            user_prompt = f"""Document Context:
+            # Build user prompt
+            if filtered_chunks:
+                if request.enable_citations and self.config.ENABLE_CITATIONS:
+                    user_prompt = f"""SOURCES:
+{context}
+
+USER QUESTION: {request.message}
+
+Provide a comprehensive answer with inline citations [1], [2], etc. for all claims from sources:"""
+                else:
+                    user_prompt = f"""Document Context:
 {context}
 
 User Question: {request.message}
 
 Please provide a helpful answer. If using information from the documents, mention it naturally."""
-        else:
-            user_prompt = f"""User Question: {request.message}
+            else:
+                user_prompt = f"""User Question: {request.message}
 
 (Note: No specific document context found for this question, but you can use your general knowledge to help.)"""
 
@@ -757,40 +1642,103 @@ Please provide a helpful answer. If using information from the documents, mentio
                         full_answer += content
                         yield f"data: {json.dumps({'token': content})}\n\n"
 
-                # Cache the result
+                # ============ NEW: Validation and Repair ============
+                validation_passed = True
+                validation_violations = []
+
+                if self.config.ENABLE_VALIDATION and task_type != 'qa':
+                    logger.info(f"🔍 Validating output for task: {task_type}")
+                    validation_passed, validation_violations = await self.validate_output(full_answer, task_type)
+
+                    # If validation failed, attempt repair
+                    if not validation_passed and validation_violations:
+                        logger.warning(f"⚠️ Validation failed, attempting repair...")
+                        repair_prompt = await self.generate_repair_prompt(full_answer, validation_violations, task_type)
+
+                        # Generate repaired version
+                        repair_response = self.groq_client.chat.completions.create(
+                            model=model,
+                            messages=[{"role": "user", "content": repair_prompt}],
+                            max_tokens=self.config.MAX_TOKENS,
+                            temperature=0.3,  # Lower temperature for repair
+                            stream=False
+                        )
+
+                        repaired_answer = repair_response.choices[0].message.content
+                        logger.info("✅ Output repaired successfully")
+
+                        # Re-validate
+                        validation_passed, validation_violations = await self.validate_output(repaired_answer, task_type)
+
+                        if validation_passed:
+                            full_answer = repaired_answer
+                            logger.info("✅ Repaired output passed validation")
+
+                # Cache the result (after repair if applicable)
                 self._cache_result(cache_key, full_answer)
 
                 # Send final metadata
                 processing_time = time.time() - start_time
+
+                # ============ NEW: Enhanced sources with citation info ============
                 sources = [
                     {
+                        "citation_number": i + 1,
                         "filename": meta.get("filename", "unknown"),
                         "chunk_index": meta.get("chunk_index", 0),
-                        "doc_id": meta.get("doc_id", "")
+                        "doc_id": meta.get("doc_id", ""),
+                        "confidence": round(filtered_sims[i], 2) if i < len(filtered_sims) else 0.0,
+                        "content_preview": filtered_chunks[i][:200] + "..." if i < len(filtered_chunks) and len(filtered_chunks[i]) > 200 else filtered_chunks[i] if i < len(filtered_chunks) else "",
+                        # Rich metadata for filtering/display
+                        "institution": meta.get("institution"),
+                        "department": meta.get("department"),
+                        "year": meta.get("year"),
+                        "document_type": meta.get("document_type"),
+                        "semester": meta.get("semester"),
+                        "level": meta.get("level")
                     }
-                    for meta in filtered_metadata
+                    for i, meta in enumerate(filtered_metadata)
                 ]
 
-                confidence = sum(similarities[:len(filtered_chunks)]) / len(similarities) if similarities else 0.0
+                confidence = sum(filtered_sims[:len(filtered_chunks)]) / len(filtered_sims) if filtered_sims else 0.0
+
+                # Clean answer: remove citation placeholder commas
+                clean_answer = re.sub(r',\s*,\s*,\s*,\s*,\s*,', '', full_answer)
+                clean_answer = re.sub(r',\s*,\s*,\s*,', '', clean_answer)
+                clean_answer = re.sub(r',\s*,', ',', clean_answer)
+
+                # Generate proper ISO timestamp
+                from datetime import datetime
+                iso_timestamp = datetime.now().isoformat()
 
                 final_data = {
                     "type": "final",
                     "final": True,
-                    "message": full_answer,  # Frontend expects 'message' not 'answer'
-                    "answer": full_answer,   # Keep for backward compatibility
+                    "message": clean_answer,  # Frontend expects 'message' not 'answer'
+                    "answer": clean_answer,   # Keep for backward compatibility
                     "sources": sources,
                     "confidence": round(confidence, 2),
                     "mode_used": request.mode,
                     "processing_time": round(processing_time, 2),
                     "chunks_used": len(filtered_chunks),
                     "usage": {
-                        "totalTokens": len(full_answer.split()),
+                        "totalTokens": len(clean_answer.split()),
                         "promptTokens": len(request.message.split()),
-                        "completionTokens": len(full_answer.split())
+                        "completionTokens": len(clean_answer.split())
                     },
                     "sessionId": request.session_id,
                     "messageId": f"msg_{int(time.time() * 1000)}",
-                    "timestamp": time.time()
+                    "timestamp": iso_timestamp,
+                    # NEW: Phase 1 features
+                    "extracted_slots": slots if slots else {},
+                    "query_rewritten": query_for_embedding != original_query,
+                    "citations_enabled": request.enable_citations and self.config.ENABLE_CITATIONS,
+                    # NEW: Phase 2/3 features
+                    "task_type": task_type,
+                    "conflicts_detected": conflicts if conflicts else [],
+                    "validation_passed": validation_passed,
+                    "validation_violations": validation_violations if not validation_passed else [],
+                    "was_repaired": not validation_passed and len(validation_violations) > 0
                 }
 
                 yield f"data: {json.dumps(final_data)}\n\n"

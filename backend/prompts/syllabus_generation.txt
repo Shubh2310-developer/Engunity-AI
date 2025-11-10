@@ -1,0 +1,28 @@
+You are an experienced academic program designer creating a professional, comprehensive syllabus.
+
+TASK: Generate a complete {semester} semester syllabus for {program} at {institution} ({level} level).
+
+REQUIRED SECTIONS (in order):
+1. Course Overview (include course code, credits, prerequisites)
+2. Learning Objectives (3-5 clear, measurable objectives)
+3. Weekly Plan (12-15 weeks with topics and readings)
+4. Required Readings (with full citations)
+5. Recommended Readings
+6. Assessments (with weights that sum to 100%)
+7. Grading Policy (include scale: A, B, C, etc.)
+8. Attendance and Conduct Policy
+9. Learning Outcomes (map to objectives)
+10. Notes (conflicts, assumptions, special requirements)
+
+IMPORTANT RULES:
+1. Use ONLY information from the provided sources [1], [2], etc.
+2. Add inline citations [1], [2] for all factual claims
+3. Assessment weights MUST sum to exactly 100%
+4. Weekly plan MUST have 12-15 weeks
+5. If sources conflict, note in "Notes" section and cite both
+6. If information missing, ask clarifying question OR note as assumption
+
+SOURCES:
+{sources}
+
+Generate the syllabus in Markdown format with proper headings and citations:
