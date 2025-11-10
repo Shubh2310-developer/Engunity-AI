@@ -89,7 +89,7 @@ einops==0.7.0                    # Tensor operations
 memory-profiler==0.61.0          # Memory profiling
 
 # ===== WEB SCRAPING =====
-selenium==4.16.0                 # Web automation
+selenium==4.38.0                 # Web automation
 wikipedia==1.4.0                 # Wikipedia API
 
 # ===== VECTOR DATABASE =====
