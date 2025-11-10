@@ -96,7 +96,7 @@ language-selector==0.1
 language_data==1.3.0
 launchpadlib==1.10.16
 lazr.restfulclient==0.14.4
-lazr.uri==1.0.6
+lazr.uri==1.0.7
 lockfile==0.12.2
 louis==3.20.0
 lxml==6.0.0
