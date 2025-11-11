@@ -982,9 +982,19 @@ Answer:"""
             f"[{i+1}] {chunk}" for i, chunk in enumerate(sources)
         ])
 
-        prompt = f"""You are a helpful AI assistant that provides accurate, well-cited answers based on provided sources.
+        prompt = f"""You are an expert AI assistant that provides comprehensive, well-structured, and visually appealing answers based on provided sources.
 
-IMPORTANT CITATION RULES:
+FORMATTING REQUIREMENTS - MANDATORY:
+• Structure your response with clear hierarchical formatting using Markdown
+• Use **bold text** for key concepts, important terms, and section headers
+• Create bullet points (•) or numbered lists (1., 2., 3.) for organized information
+• Use `code formatting` for technical terms, formulas, or specific values
+• Add section headers with ## for main topics and ### for subtopics
+• Include line breaks between sections for readability
+• Write in a professional, clear, and grammatically perfect style
+• Use proper punctuation, capitalization, and sentence structure
+
+CITATION RULES:
 1. Use ONLY the information from the provided sources below
 2. Add inline citations [1], [2], etc. after each claim
 3. Every factual statement MUST have a citation
@@ -996,7 +1006,14 @@ SOURCES:
 
 USER QUESTION: {query}
 
-Provide a comprehensive answer with inline citations:"""
+Provide a comprehensive, beautifully formatted answer with:
+• Clear section headers
+• Bold key terms
+• Bullet points or numbered lists
+• Proper citations [1], [2], etc.
+• Professional grammar and punctuation
+
+Response:"""
 
         return prompt
 
@@ -1638,7 +1655,12 @@ JSON only:"""
         if task_type != 'qa' and filtered_chunks:
             logger.info(f"📋 Using task-specific prompt: {task_type}")
             user_prompt = self._load_task_prompt(task_type, slots, filtered_chunks, request.message)
-            system_prompt = "You are a professional academic assistant."
+            system_prompt = """You are a professional academic assistant. Format all responses with:
+• **Bold text** for key concepts
+• Clear section headers (## Main Topic, ### Subtopic)
+• Bullet points or numbered lists
+• Professional grammar and punctuation
+• Proper citations [1], [2], etc."""
 
             # Add conflict note if detected
             if conflicts:
@@ -1650,52 +1672,71 @@ JSON only:"""
         else:
             # Standard prompts for QA mode
             # Build context from chunks (numbered for citations)
+            # Ensure chunks are strings, not objects
+            def ensure_string(val):
+                if isinstance(val, str):
+                    return val
+                elif val is None:
+                    return ""
+                else:
+                    return str(val)
+
             if request.enable_citations and self.config.ENABLE_CITATIONS:
                 context = "\n\n".join([
-                    f"[{i+1}] {chunk}"
+                    f"[{i+1}] {ensure_string(chunk)}"
                     for i, chunk in enumerate(filtered_chunks)
                 ])
             else:
                 context = "\n\n".join([
-                    f"[Chunk {i+1} from {meta.get('filename', 'document')}]:\n{chunk}"
+                    f"[Chunk {i+1} from {ensure_string(meta.get('filename', 'document'))}]:\n{ensure_string(chunk)}"
                     for i, (chunk, meta) in enumerate(zip(filtered_chunks, filtered_metadata))
                 ])
 
             # Build system prompt based on mode and citation settings
+            formatting_instructions = """
+
+FORMATTING REQUIREMENTS (MANDATORY):
+• Use **bold text** for key concepts, important terms, and emphasis
+• Structure responses with ## Headers for main topics and ### Subheaders
+• Create organized bullet points (•) or numbered lists (1., 2., 3.)
+• Use `code formatting` for technical terms, formulas, or specific values
+• Write with professional grammar, proper punctuation, and clear sentence structure
+• Add line breaks between sections for excellent readability"""
+
             if request.enable_citations and self.config.ENABLE_CITATIONS and filtered_chunks:
                 # Citation-aware prompt
-                system_prompt = """You are a helpful AI assistant that provides accurate, well-cited answers based on provided sources.
+                system_prompt = """You are an expert AI assistant that provides accurate, well-cited, and beautifully formatted answers based on provided sources.
 
 IMPORTANT CITATION RULES:
 1. Use ONLY the information from the provided sources below
 2. Add inline citations [1], [2], etc. after each claim from sources
 3. Every factual statement from sources MUST have a citation
 4. If sources conflict, note it and cite both sources
-5. If information is not in sources, clearly state that"""
+5. If information is not in sources, clearly state that""" + formatting_instructions
 
                 if request.mode == "hybrid":
                     system_prompt += "\n6. You may supplement with general knowledge if sources are insufficient, but clearly mark what comes from sources vs general knowledge"
 
             elif request.mode == "document-only":
-                system_prompt = """You are a helpful AI assistant that answers questions based STRICTLY on the provided document context.
+                system_prompt = """You are an expert AI assistant that answers questions based STRICTLY on the provided document context with professional formatting.
 
 Rules:
 1. Answer ONLY using information from the provided context
 2. If the context doesn't contain the answer, say so explicitly
 3. Cite the document chunks you use
 4. Be concise but thorough
-5. If asked about topics not in the documents, politely indicate that"""
+5. If asked about topics not in the documents, politely indicate that""" + formatting_instructions
             else:  # hybrid mode (no citations)
-                system_prompt = """You are a helpful AI assistant that answers questions using both document context and your general knowledge.
+                system_prompt = """You are an expert AI assistant that answers questions using both document context and your general knowledge, with beautiful ChatGPT-style formatting.
 
 Rules:
 1. PRIORITIZE information from the provided document context when available
 2. You can supplement with general knowledge when helpful
 3. Maintain awareness of the document context throughout the conversation
 4. If using document info, mention it naturally
-5. Be conversational like Gemini - helpful, clear, and engaging
+5. Be conversational like ChatGPT/Gemini - helpful, clear, and engaging
 6. You can answer general questions even if they're not in the documents
-7. Keep the document context in mind for follow-up questions"""
+7. Keep the document context in mind for follow-up questions""" + formatting_instructions
 
             # Build user prompt
             if filtered_chunks:

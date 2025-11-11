@@ -1,381 +1,463 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { 
-  FileText, 
-  MessageSquare, 
-  Download, 
-  Share2, 
-  Eye,
+import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import {
   ArrowLeft,
-  Loader2,
-  AlertCircle
+  FileText,
+  Download,
+  Share2,
+  Trash2,
+  Send,
+  Bot,
+  User,
+  Sparkles,
+  Target,
+  Clock,
+  Brain,
+  ChevronLeft,
+  ChevronRight,
+  ZoomIn,
+  ZoomOut,
+  Maximize,
+  Search,
+  BookOpen,
+  MessageCircle,
+  FileCheck,
+  Layers,
+  BarChart3
 } from 'lucide-react';
+import {
+  getDocument,
+  askQuestion,
+  trackView,
+  deleteDocument as deleteDocumentAPI,
+  formatFileSize,
+  formatRelativeDate
+} from '@/lib/api/documents';
 
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/components/ui/use-toast';
-import { Skeleton } from '@/components/ui/skeleton';
-
-import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/auth/supabase';
-import type { SupabaseDocument } from '@/lib/supabase/document-storage-no-auth';
-
-interface QAMessage {
+interface Message {
   id: string;
-  type: 'question' | 'answer';
+  type: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+  confidence?: number;
   sources?: Array<{
-    pageNumber: number;
-    content: string;
-    confidence: number;
+    page?: number;
+    chunk_text?: string;
   }>;
 }
 
-const DocumentViewPage: React.FC = () => {
+interface DocumentMetadata {
+  filename: string;
+  fileType: string;
+  size: number;
+  pages: number;
+  wordCount: number;
+  uploadedAt: Date;
+  category: string;
+}
+
+export default function DocumentViewerPage() {
   const params = useParams();
-  const { user } = useAuth();
-  const { error: showError } = useToast();
-  
-  const documentId = params.id as string;
-  const [document, setDocument] = useState<SupabaseDocument | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  
-  // Q&A state
-  const [messages, setMessages] = useState<QAMessage[]>([]);
-  const [question, setQuestion] = useState('');
-  const [isAsking, setIsAsking] = useState(false);
-  const [sessionId] = useState(`session_${Date.now()}`);
+  const router = useRouter();
+  const docId = params.id as string;
+
+  const [metadata, setMetadata] = useState<DocumentMetadata | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputMessage, setInputMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [zoom, setZoom] = useState(100);
+  const [showMetadata, setShowMetadata] = useState(true);
+
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (documentId) {
-      fetchDocument();
+    fetchDocumentMetadata();
+    initializeChat();
+  }, [docId]);
+
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
     }
-  }, [documentId]);
+  }, [messages]);
 
-  const fetchDocument = async () => {
-    try {
-      setLoading(true);
-
-      // Get authentication token
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-      if (sessionError || !session) {
-        throw new Error('Authentication required');
-      }
-
-      const response = await fetch(`/api/documents/${documentId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch document');
-      }
-
-      const data = await response.json();
-      setDocument(data.document);
-    } catch (error: any) {
-      console.error('Error fetching document:', error);
-      setError(error.message || 'Failed to load document');
-      showError('Failed to load document');
-    } finally {
-      setLoading(false);
-    }
+  const fetchDocumentMetadata = async () => {
+    // Mock data - replace with API call
+    setMetadata({
+      filename: 'Product Requirements Document.pdf',
+      fileType: 'pdf',
+      size: 2457600,
+      pages: 45,
+      wordCount: 12500,
+      uploadedAt: new Date('2024-11-10'),
+      category: 'product'
+    });
   };
 
-  const handleAskQuestion = async () => {
-    if (!question.trim() || isAsking || !document) return;
+  const initializeChat = () => {
+    setMessages([{
+      id: '1',
+      type: 'assistant',
+      content: "Hello! I'm your AI assistant. I've analyzed this document and I'm ready to answer your questions. What would you like to know?",
+      timestamp: new Date(),
+      confidence: 1.0
+    }]);
+  };
 
-    const userMessage: QAMessage = {
-      id: `user_${Date.now()}`,
-      type: 'question',
-      content: question,
+  const handleSendMessage = async () => {
+    if (!inputMessage.trim() || isLoading) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      type: 'user',
+      content: inputMessage,
       timestamp: new Date()
     };
 
     setMessages(prev => [...prev, userMessage]);
-    setIsAsking(true);
-    const currentQuestion = question;
-    setQuestion('');
+    setInputMessage('');
+    setIsLoading(true);
 
     try {
-      const response = await fetch(`/api/documents/${documentId}/qa`, {
+      // Replace with actual API call to document RAG server
+      const response = await fetch('http://localhost:8004/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          question: currentQuestion,
-          sessionId
+          session_id: `doc_${docId}`,
+          message: inputMessage,
+          doc_ids: [docId],
+          mode: 'document-only',
+          top_k: 5
         })
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to get answer');
-      }
-
       const data = await response.json();
-      
-      const aiMessage: QAMessage = {
-        id: data.messageId,
-        type: 'answer',
-        content: data.answer,
+
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        type: 'assistant',
+        content: data.response || 'I apologize, but I encountered an error processing your question.',
         timestamp: new Date(),
+        confidence: data.confidence,
         sources: data.sources
       };
 
-      setMessages(prev => [...prev, aiMessage]);
-    } catch (error: any) {
-      console.error('Q&A error:', error);
-      showError('Failed to get answer');
-      
-      const errorMessage: QAMessage = {
-        id: `error_${Date.now()}`,
-        type: 'answer',
-        content: 'Sorry, I encountered an error while processing your question. Please try again.',
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        type: 'assistant',
+        content: 'I apologize, but I encountered an error. Please try again.',
         timestamp: new Date()
       };
-      
       setMessages(prev => [...prev, errorMessage]);
     } finally {
-      setIsAsking(false);
+      setIsLoading(false);
     }
   };
 
-  const handleDownload = () => {
-    if (document?.storage_url) {
-      window.open(document.storage_url, '_blank');
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
     }
   };
 
-  if (loading) {
-    return (
-      <div className="container-premium py-8">
-        <div className="max-w-6xl mx-auto space-y-6">
-          <Skeleton className="h-8 w-64" />
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 space-y-4">
-              <Skeleton className="h-96 w-full" />
-            </div>
-            <div className="space-y-4">
-              <Skeleton className="h-48 w-full" />
-              <Skeleton className="h-64 w-full" />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const formatFileSize = (bytes: number) => {
+    const kb = bytes / 1024;
+    const mb = kb / 1024;
+    return mb >= 1 ? `${mb.toFixed(1)} MB` : `${kb.toFixed(1)} KB`;
+  };
 
-  if (error || !document) {
+  if (!metadata) {
     return (
-      <div className="container-premium py-8">
-        <div className="max-w-2xl mx-auto text-center">
-          <AlertCircle className="h-16 w-16 text-red-500 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">Document Not Found</h1>
-          <p className="text-slate-600 mb-6">{error || 'The requested document could not be found.'}</p>
-          <Button onClick={() => window.history.back()} variant="outline">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Go Back
-          </Button>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto" />
+          <p className="text-slate-600 text-lg">Loading document...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="container-premium py-8">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="max-w-6xl mx-auto space-y-6"
-      >
-        {/* Header */}
+    <div className="h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="bg-white border-b border-slate-200 px-6 py-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button 
-              variant="ghost" 
-              size="sm"
-              onClick={() => window.history.back()}
+            <Link
+              href="/dashboard/documents"
+              className="p-2 text-slate-500 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors"
             >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900">{document.name}</h1>
-              <div className="flex items-center gap-2 mt-1">
-                <Badge variant="secondary">{document.type}</Badge>
-                <Badge variant="outline">{document.category}</Badge>
-                <span className="text-sm text-slate-500">
-                  {new Date(document.uploaded_at).toLocaleDateString()}
-                </span>
+              <ArrowLeft className="w-5 h-5" />
+            </Link>
+
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl">
+                <FileText className="w-6 h-6 text-blue-600" />
+              </div>
+              <div>
+                <h1 className="text-lg font-bold text-slate-900">{metadata.filename}</h1>
+                <div className="flex items-center gap-3 text-sm text-slate-500">
+                  <span>{formatFileSize(metadata.size)}</span>
+                  <span>•</span>
+                  <span>{metadata.pages} pages</span>
+                  <span>•</span>
+                  <span>{metadata.wordCount.toLocaleString()} words</span>
+                </div>
               </div>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleDownload}>
-              <Download className="h-4 w-4 mr-2" />
-              Download
-            </Button>
-            <Button variant="outline" size="sm">
-              <Share2 className="h-4 w-4 mr-2" />
-              Share
-            </Button>
+            <button className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+              <Download className="w-4 h-4" />
+              <span className="text-sm font-medium">Download</span>
+            </button>
+            <button className="flex items-center gap-2 px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">
+              <Share2 className="w-4 h-4" />
+              <span className="text-sm font-medium">Share</span>
+            </button>
+            <button className="flex items-center gap-2 px-4 py-2 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content - Split View */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Document Viewer */}
+        <div className="flex-1 flex flex-col bg-slate-100 border-r border-slate-200 overflow-hidden">
+          {/* PDF Controls */}
+          <div className="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="p-2 rounded-lg hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm font-medium text-slate-700 min-w-[100px] text-center">
+                Page {currentPage} of {metadata.pages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(Math.min(metadata.pages, currentPage + 1))}
+                disabled={currentPage === metadata.pages}
+                className="p-2 rounded-lg hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setZoom(Math.max(50, zoom - 10))}
+                className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+              <span className="text-sm font-medium text-slate-700 min-w-[60px] text-center">
+                {zoom}%
+              </span>
+              <button
+                onClick={() => setZoom(Math.min(200, zoom + 10))}
+                className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+              <button className="p-2 rounded-lg hover:bg-slate-100 transition-colors ml-2">
+                <Maximize className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* PDF Viewer Placeholder */}
+          <div className="flex-1 overflow-auto p-8">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              style={{ zoom: `${zoom}%` }}
+              className="max-w-4xl mx-auto bg-white rounded-lg shadow-2xl p-12 min-h-[1100px]"
+            >
+              <div className="prose prose-slate max-w-none">
+                <h1 className="text-3xl font-bold text-slate-900 mb-6">
+                  {metadata.filename.replace(/\.[^/.]+$/, '')}
+                </h1>
+                <div className="text-slate-600 leading-relaxed space-y-4">
+                  <p>
+                    This is a placeholder for the PDF viewer. In production, you would integrate a PDF rendering library
+                    like PDF.js or react-pdf to display the actual document content here.
+                  </p>
+                  <p>
+                    The document "{metadata.filename}" contains {metadata.pages} pages and approximately {metadata.wordCount.toLocaleString()} words.
+                  </p>
+                  <p>
+                    Users can navigate between pages using the controls above, zoom in/out, and interact with the document
+                    while asking questions through the AI chat interface on the right side.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Document Viewer */}
-          <div className="lg:col-span-2">
-            <Card className="card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Eye className="h-5 w-5" />
-                  Document Preview
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="bg-slate-50 rounded-lg p-8 min-h-[500px] flex items-center justify-center">
-                  <div className="text-center">
-                    <FileText className="h-16 w-16 text-slate-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-slate-900 mb-2">Document Preview</h3>
-                    <p className="text-slate-600 mb-4">
-                      Preview functionality will be implemented based on document type.
-                    </p>
-                    <Button onClick={handleDownload} variant="outline">
-                      <Download className="h-4 w-4 mr-2" />
-                      Open Document
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+        {/* Chat Interface */}
+        <div className="w-[500px] flex flex-col bg-white overflow-hidden">
+          {/* Chat Header */}
+          <div className="px-6 py-4 border-b border-slate-200 flex-shrink-0">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2 bg-gradient-to-br from-violet-50 to-purple-50 rounded-xl">
+                <Brain className="w-6 h-6 text-violet-600" />
+              </div>
+              <div>
+                <h2 className="font-bold text-slate-900">Document Q&A</h2>
+                <p className="text-sm text-slate-500">Ask anything about this document</p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowMetadata(!showMetadata)}
+              className="w-full text-left px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-100 hover:border-blue-200 transition-colors"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-blue-900">Quick Stats</span>
+                <ChevronRight className={`w-4 h-4 text-blue-600 transition-transform ${showMetadata ? 'rotate-90' : ''}`} />
+              </div>
+
+              <AnimatePresence>
+                {showMetadata && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="grid grid-cols-2 gap-3 mt-3"
+                  >
+                    <div className="text-center p-2 bg-white rounded-lg">
+                      <div className="text-lg font-bold text-slate-900">{metadata.pages}</div>
+                      <div className="text-xs text-slate-500">Pages</div>
+                    </div>
+                    <div className="text-center p-2 bg-white rounded-lg">
+                      <div className="text-lg font-bold text-slate-900">{(metadata.wordCount / 1000).toFixed(1)}K</div>
+                      <div className="text-xs text-slate-500">Words</div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </button>
           </div>
 
-          {/* Q&A Interface */}
-          <div className="space-y-6">
-            {/* Document Info */}
-            <Card className="card">
-              <CardHeader>
-                <CardTitle>Document Info</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-600">Size:</span>
-                  <span className="text-sm font-medium">{document.size}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-600">Status:</span>
-                  <Badge variant={document.status === 'processed' ? 'default' : 'secondary'}>
-                    {document.status}
-                  </Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-600">Category:</span>
-                  <span className="text-sm font-medium">{document.category}</span>
-                </div>
-                {document.tags && document.tags.length > 0 && (
-                  <div>
-                    <span className="text-sm text-slate-600">Tags:</span>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {document.tags.map((tag, index) => (
-                        <Badge key={index} variant="outline" className="text-xs">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
+          {/* Messages */}
+          <div
+            ref={chatScrollRef}
+            className="flex-1 overflow-y-auto p-6 space-y-4"
+          >
+            {messages.map((message, index) => (
+              <motion.div
+                key={message.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+                className={`flex gap-3 ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                {message.type === 'assistant' && (
+                  <div className="w-8 h-8 bg-gradient-to-br from-violet-500 to-purple-600 rounded-full flex items-center justify-center flex-shrink-0">
+                    <Bot className="w-4 h-4 text-white" />
                   </div>
                 )}
-              </CardContent>
-            </Card>
 
-            {/* Q&A Chat */}
-            <Card className="card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5" />
-                  Ask Questions
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Messages */}
-                <div className="max-h-64 overflow-y-auto space-y-3">
-                  {messages.length === 0 ? (
-                    <p className="text-sm text-slate-500 text-center py-4">
-                      Ask questions about this document to get started.
-                    </p>
-                  ) : (
-                    messages.map((message) => (
-                      <div
-                        key={message.id}
-                        className={`p-3 rounded-lg ${
-                          message.type === 'question'
-                            ? 'bg-blue-50 border-l-4 border-blue-500'
-                            : 'bg-slate-50 border-l-4 border-slate-500'
-                        }`}
-                      >
-                        <div className="text-sm font-medium mb-1">
-                          {message.type === 'question' ? 'You' : 'AI Assistant'}
-                        </div>
-                        <div className="text-sm text-slate-700">{message.content}</div>
-                        {message.sources && message.sources.length > 0 && (
-                          <div className="mt-2 text-xs text-slate-500">
-                            Sources: Page {message.sources.map(s => s.pageNumber).join(', ')}
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                  
-                  {isAsking && (
-                    <div className="p-3 rounded-lg bg-slate-50 border-l-4 border-slate-500">
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span className="text-sm">AI is thinking...</span>
-                      </div>
+                <div className={`max-w-[80%] ${message.type === 'user' ? 'order-first' : ''}`}>
+                  <div className={`rounded-2xl px-4 py-3 ${
+                    message.type === 'user'
+                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white'
+                      : 'bg-slate-100 text-slate-900'
+                  }`}>
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                  </div>
+
+                  {message.type === 'assistant' && message.confidence && (
+                    <div className="flex items-center gap-2 mt-2 text-xs text-slate-500">
+                      <Target className="w-3 h-3" />
+                      <span>{(message.confidence * 100).toFixed(0)}% confidence</span>
+                      {message.sources && message.sources.length > 0 && (
+                        <>
+                          <span>•</span>
+                          <span>{message.sources.length} sources</span>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
 
-                {/* Input */}
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={question}
-                    onChange={(e) => setQuestion(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleAskQuestion()}
-                    placeholder="Ask a question about this document..."
-                    disabled={isAsking}
-                    className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <Button 
-                    size="sm" 
-                    onClick={handleAskQuestion}
-                    disabled={!question.trim() || isAsking}
-                  >
-                    {isAsking ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <MessageSquare className="h-4 w-4" />
-                    )}
-                  </Button>
+                {message.type === 'user' && (
+                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center flex-shrink-0">
+                    <User className="w-4 h-4 text-white" />
+                  </div>
+                )}
+              </motion.div>
+            ))}
+
+            {isLoading && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex gap-3"
+              >
+                <div className="w-8 h-8 bg-gradient-to-br from-violet-500 to-purple-600 rounded-full flex items-center justify-center">
+                  <Bot className="w-4 h-4 text-white" />
                 </div>
-              </CardContent>
-            </Card>
+                <div className="bg-slate-100 rounded-2xl px-4 py-3">
+                  <div className="flex gap-1">
+                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" />
+                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+                    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </div>
+
+          {/* Input */}
+          <div className="border-t border-slate-200 p-4 bg-white flex-shrink-0">
+            <div className="bg-slate-50 rounded-xl border border-slate-200 p-3">
+              <textarea
+                ref={inputRef}
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyDown={handleKeyPress}
+                placeholder="Ask a question about this document..."
+                className="w-full bg-transparent resize-none focus:outline-none text-slate-900 placeholder-slate-400 text-sm"
+                rows={2}
+                disabled={isLoading}
+              />
+
+              <div className="flex items-center justify-between mt-2">
+                <div className="text-xs text-slate-500">
+                  <kbd className="px-2 py-0.5 bg-white rounded border border-slate-200">Enter</kbd> to send
+                </div>
+                <button
+                  onClick={handleSendMessage}
+                  disabled={!inputMessage.trim() || isLoading}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Send className="w-4 h-4" />
+                  Send
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
-};
-
-export default DocumentViewPage;
+}

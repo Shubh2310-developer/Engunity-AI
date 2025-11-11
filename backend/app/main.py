@@ -26,6 +26,9 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.analysis import router as analysis_router
 from app.api.rag.analyze import router as rag_router
 
+# Import new document intelligence routes
+from app.routes.document_routes import router as document_intelligence_router
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -115,6 +118,9 @@ app.include_router(documents_router, prefix="/api/v1", tags=["documents"])
 app.include_router(auth_router, prefix="/api/v1", tags=["auth"])
 app.include_router(analysis_router, prefix="/api", tags=["analysis"])
 app.include_router(rag_router, tags=["rag"])
+
+# Include document intelligence router (new MongoDB-based system)
+app.include_router(document_intelligence_router, tags=["document-intelligence"])
 
 # Error handlers
 @app.exception_handler(HTTPException)

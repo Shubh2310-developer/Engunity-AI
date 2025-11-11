@@ -492,18 +492,18 @@ export default function DashboardPage() {
                   }}
                 >
                   {[
-                    { title: "Document Analysis", icon: Upload, color: "from-blue-600 to-cyan-600", description: "Process new files", link: "/dashboard/documents" },
+                    { title: "Document Intelligence", icon: FileText, color: "from-blue-600 to-cyan-600", description: "AI-powered analysis", link: "/dashboard/documents" },
                     { title: "Code Editor", icon: Code, color: "from-indigo-600 to-purple-600", description: "Professional IDE", link: "/dashboard/editor" },
-                    { title: "Code and Chat Assistant", icon: MessageSquare, color: "from-violet-600 to-purple-600", description: "Get instant answers", link: "/dashboard/chatandcode" },
+                    { title: "Chat & Code Assistant", icon: MessageSquare, color: "from-violet-600 to-purple-600", description: "Get instant answers", link: "/dashboard/chatandcode" },
                     { title: "Research Analysis", icon: Brain, color: "from-emerald-600 to-teal-600", description: "Research solution", link: "/dashboard/research" },
                     { title: "Data Analysis", icon: BarChart3, color: "from-amber-600 to-orange-600", description: "Extract insights", link: "/dashboard/analysis" },
                     { title: "Github Repos", icon: Github, color: "from-rose-600 to-pink-600", description: "Repositories", link: "/dashboard/githubrepos" },
                     { title: "Projects", icon: FolderOpen, color: "from-indigo-600 to-blue-600", description: "Project analysis", link: "/dashboard/projects" },
                     { title: "Marketplace", icon: Store, color: "from-purple-600 to-pink-600", description: "Market reviews", link: "/dashboard/marketplace" },
                     { title: "Blockchain", icon: Blocks, color: "from-orange-600 to-red-600", description: "Smart contracts" },
-                    { title: "Notebook", icon: BookOpen, color: "from-teal-600 to-emerald-600", description: "Python notebooks" },
+                    { title: "Notebook", icon: BookOpen, color: "from-teal-600 to-emerald-600", description: "Python notebooks", link: "/dashboard/notebook" },
                     { title: "Job Prep", icon: Briefcase, color: "from-slate-600 to-gray-600", description: "Job preparations" },
-                    { title: "Code Editor", icon: Terminal, color: "from-cyan-600 to-blue-600", description: "Multi-language IDE", link: "/dashboard/editor" }
+                    { title: "Terminal", icon: Terminal, color: "from-cyan-600 to-blue-600", description: "Multi-language IDE", link: "/dashboard/editor" }
                   ].map((action) => (
                   <motion.div
                     key={action.title}

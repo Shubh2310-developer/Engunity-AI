@@ -416,14 +416,28 @@ module.exports = {
         'xs': '475px',
         '3xl': '1600px',
       },
-      
+
       maxWidth: {
         '8xl': '88rem',
         '9xl': '96rem',
+        'screen': '100vw',
       },
-      
+
       minHeight: {
         'screen-safe': 'calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom))',
+        'screen-dvh': '100dvh',
+      },
+
+      // Responsive font sizes using clamp
+      fontSize: {
+        'responsive-xs': 'clamp(0.75rem, 1.5vw, 0.875rem)',
+        'responsive-sm': 'clamp(0.875rem, 1.75vw, 1rem)',
+        'responsive-base': 'clamp(1rem, 2vw, 1.125rem)',
+        'responsive-lg': 'clamp(1.125rem, 2.25vw, 1.25rem)',
+        'responsive-xl': 'clamp(1.25rem, 2.5vw, 1.5rem)',
+        'responsive-2xl': 'clamp(1.5rem, 3vw, 2rem)',
+        'responsive-3xl': 'clamp(1.875rem, 3.75vw, 2.5rem)',
+        'responsive-4xl': 'clamp(2.25rem, 4.5vw, 3rem)',
       },
     },
   },
@@ -475,6 +489,44 @@ module.exports = {
           '-webkit-background-clip': 'text',
           '-webkit-text-fill-color': 'transparent',
           'background-clip': 'text',
+        },
+        // Responsive utilities
+        '.zoom-stable': {
+          position: 'relative',
+          width: '100%',
+          maxWidth: '100%',
+          overflowX: 'hidden',
+          '-webkit-text-size-adjust': '100%',
+          '-moz-text-size-adjust': '100%',
+          '-ms-text-size-adjust': '100%',
+          'text-size-adjust': '100%',
+        },
+        '.responsive-container': {
+          width: '100%',
+          maxWidth: '100vw',
+          paddingLeft: 'clamp(1rem, 3vw, 2rem)',
+          paddingRight: 'clamp(1rem, 3vw, 2rem)',
+          marginLeft: 'auto',
+          marginRight: 'auto',
+        },
+        '.content-max-width': {
+          maxWidth: 'min(100%, 1800px)',
+          marginLeft: 'auto',
+          marginRight: 'auto',
+          paddingLeft: 'clamp(1rem, 3vw, 2rem)',
+          paddingRight: 'clamp(1rem, 3vw, 2rem)',
+        },
+        '.section-fullscreen': {
+          minHeight: '100vh',
+          width: '100%',
+          maxWidth: '100vw',
+          overflowX: 'hidden',
+        },
+        '.no-zoom': {
+          zoom: '1',
+          '-moz-transform': 'scale(1)',
+          '-webkit-transform': 'scale(1)',
+          transform: 'scale(1)',
         },
       });
       

@@ -248,7 +248,7 @@ function ChatCodePageContent() {
         .map((msg: any) => ({
           id: msg.messageId,
           type: msg.role as 'user' | 'assistant',
-          content: msg.content,
+          content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
           timestamp: new Date(msg.timestamp),
           tokens: msg.tokenUsage?.totalTokens || 0,
           sessionId: msg.sessionId,
@@ -601,6 +601,7 @@ function ChatCodePageContent() {
       }
 
       const data = await response.json();
+      console.log('Upload response data:', data);
 
       // Update UI state
       const newDocuments = [...uploadedDocuments, data];
@@ -625,21 +626,22 @@ function ChatCodePageContent() {
         console.error('Failed to persist documents to session:', err);
       }
 
-      // Add system message
+      // Add system message with proper formatting
       const systemMsg: Message = {
         id: `msg_${Date.now()}`,
         type: 'system',
-        content: `📄 **Document Uploaded Successfully**
+        content: `## 📄 Document Uploaded Successfully
 
-**Filename:** ${data.filename || file.name}
+**Filename:** ${data.filename}
 
-**Document Details:**
-- 📄 Pages: ${data.page_count || 'N/A'}
-- 🧩 Chunks: ${data.chunk_count}
-- 📊 File Size: ${(data.size_bytes / 1024).toFixed(2)} KB
-- 🆔 Document ID: \`${data.doc_id}\`
+### Document Details
 
-✅ You can now ask questions about this document!`,
+- 📄 **Pages:** ${data.page_count || 'N/A'}
+- 🧩 **Chunks:** ${data.chunk_count}
+- 📊 **File Size:** ${(data.size_bytes / 1024).toFixed(2)} KB
+- 🆔 **Document ID:** \`${data.doc_id}\`
+
+✅ **You can now ask questions about this document!**`,
         timestamp: new Date(),
         sessionId: currentSessionId
       };
@@ -899,7 +901,7 @@ function ChatCodePageContent() {
                 // Handle different event types from different servers
                 if (event.type === 'token' || event.token) {
                   // Regular chat or document RAG token
-                  const tokenDelta = event.delta || event.token || '';
+                  const tokenDelta = typeof (event.delta || event.token) === 'string' ? (event.delta || event.token) : '';
                   fullText += tokenDelta;
                   tokenCount = event.tokenCount || (fullText.split(' ').length * 1.3);
 
@@ -922,12 +924,15 @@ function ChatCodePageContent() {
                     model: event.model
                   });
 
+                  // Ensure message content is a string
+                  const finalContent = typeof event.message === 'string' ? event.message : JSON.stringify(event.message || '');
+
                   // Update message with final content
                   setMessages(prev => prev.map(msg =>
                     msg.id === assistantMessage.id
                       ? {
                           ...msg,
-                          content: event.message,
+                          content: finalContent,
                           isStreaming: false,
                           tokens: event.usage?.totalTokens || tokenCount,
                           sessionId: event.sessionId,
@@ -948,7 +953,7 @@ function ChatCodePageContent() {
                         documentId: 'general_chat',
                         userId: user.id,
                         role: 'assistant',
-                        content: event.message,
+                        content: finalContent,
                         timestamp: assistantTimestamp, // Use pre-calculated timestamp from line 759
                         messageId: event.messageId,
                         tokenUsage: event.usage,
@@ -1200,8 +1205,10 @@ function ChatCodePageContent() {
   };
 
   // Strip citation numbers [1][2][3] from text
-  const stripCitations = (text: string): string => {
-    return text.replace(/\[\d+\]/g, '');
+  const stripCitations = (text: string | any): string => {
+    // Ensure text is a string
+    const textStr = typeof text === 'string' ? text : (text ? JSON.stringify(text) : '');
+    return textStr.replace(/\[\d+\]/g, '');
   };
 
   // Copy message to clipboard
