@@ -77,13 +77,24 @@ async def get_current_user(
 ) -> Dict[str, Any]:
     """Get current authenticated user from token"""
     
-    # For development/testing - allow requests without auth if Supabase is not configured
-    if not supabase or not SUPABASE_JWT_SECRET:
-        logger.warning("⚠️ Authentication disabled - using mock user")
+    # Check if mock authentication is enabled
+    use_mock_auth = os.getenv("USE_MOCK_AUTH", "false").lower() == "true"
+    
+    # For development/testing - allow requests without auth if configured or Supabase not available
+    if use_mock_auth or not supabase or not SUPABASE_JWT_SECRET:
+        logger.warning("⚠️ Authentication using mock user (development mode)")
+        
+        # Allow different mock users via header for testing
+        mock_user_id = "demo-user-123"
+        if credentials and credentials.credentials.startswith("mock-user:"):
+            mock_user_id = credentials.credentials.replace("mock-user:", "")
+        
         return {
-            "id": "mock-user-id",
-            "email": "test@example.com",
-            "role": "authenticated"
+            "id": mock_user_id,
+            "email": f"{mock_user_id}@engunity.ai",
+            "name": f"Demo User ({mock_user_id})",
+            "role": "authenticated",
+            "is_mock": True
         }
     
     if not credentials:

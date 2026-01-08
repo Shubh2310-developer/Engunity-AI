@@ -1,0 +1,18 @@
+# Document Auto-Processing Dependencies
+# ======================================
+# Install these dependencies for the document auto-processing features
+
+# Core NLP and Entity Extraction
+spacy>=3.7.0
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.0/en_core_web_sm-3.7.0-py3-none-any.whl
+
+# Document Processing (already in main requirements, listed here for reference)
+PyPDF2>=3.0.0
+python-docx>=1.1.0
+Pillow>=10.0.0
+
+# LLM Integration (already in main requirements)
+groq>=0.4.0
+
+# FastAPI Background Tasks (already included in FastAPI)
+# No additional dependencies needed

@@ -3,7 +3,7 @@
  * Frontend API calls to backend document management system
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
 export interface DocumentMetadata {
   word_count?: number;
@@ -32,15 +32,20 @@ export interface Document {
   filename: string;
   original_filename: string;
   file_hash: string;
+  text_content?: string;
   metadata: DocumentMetadata;
   category: string;
   tags?: string[];
   custom_tags?: string[];
   summary?: string;
   key_points?: string[];
+  extracted_entities?: {
+    [key: string]: string[];
+  };
   processing_status: 'pending' | 'processing' | 'ready' | 'failed';
   error_message?: string;
   upload_date?: string;
+  last_modified?: string;
   last_accessed?: string;
   view_count: number;
   question_count: number;
@@ -98,7 +103,7 @@ export async function uploadDocument(
   if (sessionId) formData.append('session_id', sessionId);
   if (category) formData.append('category', category);
 
-  const response = await fetch(`${API_BASE}/api/documents/upload`, {
+  const response = await fetch(`${API_BASE}/documents/upload`, {
     method: 'POST',
     body: formData,
   });
@@ -115,7 +120,7 @@ export async function uploadDocument(
  * Get a document by ID
  */
 export async function getDocument(docId: string): Promise<Document> {
-  const response = await fetch(`${API_BASE}/api/documents/${docId}`);
+  const response = await fetch(`${API_BASE}/documents/${docId}`);
 
   if (!response.ok) {
     const error = await response.json();
@@ -155,7 +160,7 @@ export async function getUserDocuments(
   }
 
   const response = await fetch(
-    `${API_BASE}/api/documents/user/${userId}?${params}`
+    `${API_BASE}/documents/user/${userId}?${params}`
   );
 
   if (!response.ok) {
@@ -184,7 +189,7 @@ export async function updateDocument(
   success: boolean;
   updated_fields: string[];
 }> {
-  const response = await fetch(`${API_BASE}/api/documents/${docId}`, {
+  const response = await fetch(`${API_BASE}/documents/${docId}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -209,7 +214,7 @@ export async function deleteDocument(
   success: boolean;
   message: string;
 }> {
-  const response = await fetch(`${API_BASE}/api/documents/${docId}`, {
+  const response = await fetch(`${API_BASE}/documents/${docId}`, {
     method: 'DELETE',
   });
 
@@ -225,7 +230,7 @@ export async function deleteDocument(
  * Track document view
  */
 export async function trackView(docId: string): Promise<{ success: boolean }> {
-  const response = await fetch(`${API_BASE}/api/documents/${docId}/view`, {
+  const response = await fetch(`${API_BASE}/documents/${docId}/view`, {
     method: 'POST',
   });
 
@@ -245,7 +250,7 @@ export async function getDashboardStats(
   userId: string
 ): Promise<DashboardStats> {
   const response = await fetch(
-    `${API_BASE}/api/documents/stats/dashboard/${userId}`
+    `${API_BASE}/documents/stats/dashboard/${userId}`
   );
 
   if (!response.ok) {
@@ -263,12 +268,46 @@ export async function getDocumentAnalytics(
   docId: string
 ): Promise<DocumentAnalytics> {
   const response = await fetch(
-    `${API_BASE}/api/documents/${docId}/analytics`
+    `${API_BASE}/documents/${docId}/analytics`
   );
 
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || 'Failed to fetch analytics');
+  }
+
+  return response.json();
+}
+
+/**
+ * Get processing status of a document
+ */
+export async function getDocumentStatus(
+  docId: string
+): Promise<{
+  doc_id: string;
+  processing_status: 'pending' | 'processing' | 'ready' | 'failed';
+  progress: number;
+  has_summary: boolean;
+  has_key_points: boolean;
+  has_entities: boolean;
+  has_topics: boolean;
+  error_message?: string;
+  metadata: {
+    word_count: number;
+    page_count: number;
+    reading_time: number;
+    document_type?: string;
+    topics: string[];
+  };
+}> {
+  const response = await fetch(
+    `${API_BASE}/documents/${docId}/status`
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to fetch document status');
   }
 
   return response.json();
@@ -293,7 +332,7 @@ export async function addAnnotation(
   annotation_id: string;
 }> {
   const response = await fetch(
-    `${API_BASE}/api/documents/${docId}/annotations`,
+    `${API_BASE}/documents/${docId}/annotations`,
     {
       method: 'POST',
       headers: {
@@ -329,7 +368,7 @@ export async function getAnnotations(
   }>;
 }> {
   const response = await fetch(
-    `${API_BASE}/api/documents/${docId}/annotations`
+    `${API_BASE}/documents/${docId}/annotations`
   );
 
   if (!response.ok) {
@@ -354,14 +393,17 @@ export async function askQuestion(
   confidence: number;
   sources: Array<{
     page?: number;
-    chunk_text: string;
+    chunk_text?: string;
     relevance_score?: number;
+    type?: string;
+    title?: string;
+    content?: string;
   }>;
-  mode: string;
+  mode?: string;
 }> {
-  const RAG_BASE = process.env.NEXT_PUBLIC_RAG_URL || 'http://localhost:8004';
-
-  const response = await fetch(`${RAG_BASE}/chat`, {
+  // Use the main backend's chat endpoint (non-streaming mode)
+  const BACKEND_BASE = API_BASE.replace('/api', '');
+  const response = await fetch(`${BACKEND_BASE}/api/v1/chat/stream`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -371,20 +413,32 @@ export async function askQuestion(
       message: question,
       doc_ids: docIds,
       mode,
-      top_k: topK,
+      stream: false, // Request non-streaming JSON response
+      model: 'groq',
+      temperature: 0.7,
+      max_tokens: 1000
     }),
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'RAG server error' }));
+    const error = await response.json().catch(() => ({ detail: 'Chat service error' }));
     throw new Error(error.detail || 'Failed to get answer');
   }
 
-  return response.json();
+  const data = await response.json();
+
+  // Transform the response to match expected format
+  return {
+    response: data.response || '',
+    confidence: data.confidence || 0,
+    sources: data.sources || [],
+    mode: mode
+  };
 }
 
 /**
  * Upload document to RAG server for indexing
+ * Now uses the main backend's document upload endpoint
  */
 export async function uploadToRAG(
   file: File,
@@ -393,27 +447,35 @@ export async function uploadToRAG(
 ): Promise<{
   success: boolean;
   doc_id: string;
-  page_count: number;
-  chunk_count: number;
+  page_count?: number;
+  chunk_count?: number;
 }> {
-  const RAG_BASE = process.env.NEXT_PUBLIC_RAG_URL || 'http://localhost:8004';
-
+  // Use main backend's document upload endpoint
   const formData = new FormData();
   formData.append('file', file);
   formData.append('user_id', userId);
   if (sessionId) formData.append('session_id', sessionId);
+  formData.append('category', 'rag');
 
-  const response = await fetch(`${RAG_BASE}/upload`, {
+  const response = await fetch(`${API_BASE}/documents/upload`, {
     method: 'POST',
     body: formData,
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'RAG upload failed' }));
-    throw new Error(error.detail || 'Failed to upload to RAG');
+    const error = await response.json().catch(() => ({ detail: 'Document upload failed' }));
+    throw new Error(error.detail || 'Failed to upload document');
   }
 
-  return response.json();
+  const data = await response.json();
+
+  // Transform response to match expected format
+  return {
+    success: data.success || true,
+    doc_id: data.doc_id,
+    page_count: data.metadata?.page_count,
+    chunk_count: data.chunk_count
+  };
 }
 
 /**
@@ -442,6 +504,91 @@ export function formatFileSize(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+}
+
+/**
+ * Get user analytics data for analytics dashboard
+ */
+export async function getUserAnalytics(userId: string): Promise<{
+  overview: {
+    totalDocuments: number;
+    totalQuestions: number;
+    totalViews: number;
+    avgConfidence: number;
+    timeSaved: number;
+  };
+  topDocuments: Array<{
+    doc_id: string;
+    filename: string;
+    views: number;
+    questions: number;
+    avgConfidence: number;
+  }>;
+  categoryBreakdown: Array<{
+    name: string;
+    count: number;
+    percentage: number;
+  }>;
+}> {
+  // Fetch dashboard stats
+  const statsResponse = await fetch(
+    `${API_BASE}/documents/stats/dashboard/${userId}`
+  );
+
+  if (!statsResponse.ok) {
+    throw new Error('Failed to fetch analytics');
+  }
+
+  const stats = await statsResponse.json();
+
+  // Fetch all user documents for detailed analytics
+  const docsResponse = await fetch(
+    `${API_BASE}/documents/user/${userId}?limit=100`
+  );
+
+  if (!docsResponse.ok) {
+    throw new Error('Failed to fetch documents');
+  }
+
+  const { documents } = await docsResponse.json();
+
+  // Calculate top documents by views
+  const topDocs = documents
+    .sort((a: Document, b: Document) => (b.view_count || 0) - (a.view_count || 0))
+    .slice(0, 5)
+    .map((doc: Document) => ({
+      doc_id: doc.doc_id,
+      filename: doc.filename,
+      views: doc.view_count || 0,
+      questions: doc.question_count || 0,
+      avgConfidence: doc.avg_confidence ? doc.avg_confidence * 100 : 0
+    }));
+
+  // Calculate category breakdown
+  const categoryMap: { [key: string]: number } = {};
+  documents.forEach((doc: Document) => {
+    const category = doc.category || 'uncategorized';
+    categoryMap[category] = (categoryMap[category] || 0) + 1;
+  });
+
+  const total = documents.length;
+  const categoryBreakdown = Object.entries(categoryMap).map(([name, count]) => ({
+    name,
+    count,
+    percentage: total > 0 ? (count / total) * 100 : 0
+  }));
+
+  return {
+    overview: {
+      totalDocuments: stats.totalDocuments || 0,
+      totalQuestions: stats.questionsAsked || 0,
+      totalViews: stats.totalViews || 0,
+      avgConfidence: stats.avgConfidence || 0,
+      timeSaved: stats.timeSaved || 0
+    },
+    topDocuments: topDocs,
+    categoryBreakdown: categoryBreakdown.sort((a, b) => b.count - a.count)
+  };
 }
 
 /**

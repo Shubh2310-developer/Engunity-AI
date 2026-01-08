@@ -5,26 +5,34 @@ Document API Routes
 RESTful API endpoints for document management
 """
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query, BackgroundTasks
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 from typing import List, Optional
 import hashlib
 import uuid
 from datetime import datetime
 import os
+import asyncio
+import logging
+import json
 
-from backend.app.services.document_service import get_document_db
-from backend.app.models.document_models import (
+from app.services.document_service import get_document_db
+from app.services.document_auto_processor import get_document_processor
+from app.models.document_models import (
     Document,
     DocumentMetadata,
     DocumentAnnotation
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 
 @router.post("/upload")
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     user_id: str = Form(...),
     session_id: Optional[str] = Form(None),
@@ -36,24 +44,48 @@ async def upload_document(
     Steps:
     1. Validate file
     2. Generate doc_id and hash
-    3. Save to MongoDB
-    4. Trigger processing (RAG indexing)
+    3. Save to MongoDB with basic metadata
+    4. Trigger background processing:
+       - Extract text content
+       - Generate summary and key points
+       - Extract entities (people, orgs, locations, dates)
+       - Classify document type and topics
+       - Analyze visual elements (charts, tables)
+       - Update MongoDB with enriched data
+    5. Upload to RAG server for vectorization
     """
     try:
         db = get_document_db()
 
+        # Validate file type
+        allowed_extensions = ['pdf', 'docx', 'doc', 'txt', 'md']
+        file_type = file.filename.split('.')[-1].lower()
+
+        if file_type not in allowed_extensions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File type '{file_type}' not supported. Allowed: {', '.join(allowed_extensions)}"
+            )
+
         # Read file content
         content = await file.read()
         file_hash = hashlib.sha256(content).hexdigest()
+
+        # Validate file size (50MB max)
+        max_size = 50 * 1024 * 1024  # 50MB
+        if len(content) > max_size:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large. Maximum size is 50MB."
+            )
 
         # Generate unique doc_id
         doc_id = f"doc_{uuid.uuid4().hex[:12]}"
 
         # Extract basic metadata
         file_size = len(content)
-        file_type = file.filename.split('.')[-1].lower()
 
-        # Create document object
+        # Create document object with minimal metadata
         document = Document(
             doc_id=doc_id,
             user_id=user_id,
@@ -73,16 +105,134 @@ async def upload_document(
         # Save to MongoDB
         doc_id_saved = await db.create_document(document)
 
+        logger.info(f"✅ Document uploaded: {doc_id} ({file.filename})")
+
+        # Trigger background auto-processing
+        # This will extract metadata, generate summary, extract entities, etc.
+        background_tasks.add_task(
+            auto_process_document,
+            doc_id,
+            content,
+            file.filename,
+            file_type
+        )
+
+        logger.info(f"🚀 Background processing started for: {doc_id}")
+
         return {
             "success": True,
             "doc_id": doc_id,
             "filename": file.filename,
-            "message": "Document uploaded successfully. Processing started.",
-            "mongo_id": doc_id_saved
+            "message": "Document uploaded successfully. AI processing started (summary, entities, classification).",
+            "mongo_id": doc_id_saved,
+            "processing_status": "processing"
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"❌ Upload failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
+async def auto_process_document(
+    doc_id: str,
+    file_content: bytes,
+    filename: str,
+    file_type: str
+):
+    """
+    Background task to auto-process uploaded document
+
+    This function runs asynchronously and enriches the document with:
+    - Enhanced metadata (word count, page count, reading time, complexity)
+    - Intelligent summary (executive summary + key points)
+    - Entity extraction (people, organizations, locations, dates, money)
+    - Document classification (type, industry, topics, sentiment)
+    - Visual analysis (charts, tables, images)
+    """
+    try:
+        logger.info(f"🔄 Starting auto-processing for document: {doc_id}")
+
+        processor = get_document_processor()
+        success = await processor.process_document(
+            doc_id=doc_id,
+            file_content=file_content,
+            filename=filename,
+            file_type=file_type
+        )
+
+        if success:
+            logger.info(f"✅ Auto-processing completed for: {doc_id}")
+        else:
+            logger.error(f"❌ Auto-processing failed for: {doc_id}")
+
+    except Exception as e:
+        logger.error(f"❌ Error in auto-processing for {doc_id}: {e}", exc_info=True)
+
+        # Update document status to failed
+        try:
+            db = get_document_db()
+            await db.update_document(doc_id, {
+                "processing_status": "failed",
+                "error_message": f"Auto-processing error: {str(e)}"
+            })
+        except:
+            pass
+
+
+@router.get("/{doc_id}/status")
+async def get_document_status(doc_id: str):
+    """
+    Get processing status of a document
+
+    Returns:
+    - processing_status: pending, processing, ready, failed
+    - has_summary: boolean
+    - has_entities: boolean
+    - has_topics: boolean
+    - processing_progress: percentage (0-100)
+    """
+    try:
+        db = get_document_db()
+        document = await db.get_document(doc_id)
+
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        # Calculate processing progress
+        progress = 0
+        if document.processing_status == "pending":
+            progress = 10
+        elif document.processing_status == "processing":
+            progress = 50
+        elif document.processing_status == "ready":
+            progress = 100
+        elif document.processing_status == "failed":
+            progress = 0
+
+        return {
+            "doc_id": doc_id,
+            "processing_status": document.processing_status,
+            "progress": progress,
+            "has_summary": bool(document.summary),
+            "has_key_points": len(document.key_points) > 0,
+            "has_entities": bool(document.extracted_entities),
+            "has_topics": len(document.tags) > 0,
+            "error_message": document.processing_error,
+            "metadata": {
+                "word_count": document.metadata.word_count,
+                "page_count": document.metadata.page_count,
+                "reading_time": document.metadata.reading_time_minutes,
+                "document_type": document.metadata.document_type,
+                "topics": document.metadata.topics
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving status: {str(e)}")
 
 
 @router.get("/{doc_id}")
@@ -98,11 +248,13 @@ async def get_document(doc_id: str):
         # Track view
         await db.increment_view_count(doc_id)
 
-        return document.dict(by_alias=True)
+        # Convert to JSON-serializable format using FastAPI's encoder
+        return jsonable_encoder(document)
 
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error retrieving document {doc_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error retrieving document: {str(e)}")
 
 
@@ -126,7 +278,7 @@ async def get_user_documents(
         )
 
         return {
-            "documents": [doc.dict(by_alias=True) for doc in documents],
+            "documents": [jsonable_encoder(doc) for doc in documents],
             "total": len(documents),
             "skip": skip,
             "limit": limit

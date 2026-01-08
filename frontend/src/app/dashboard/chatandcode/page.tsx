@@ -588,23 +588,51 @@ function ChatCodePageContent() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('user_id', user?.id || 'anonymous');
+      formData.append('user_id', user?.id || 'user_123');
       formData.append('session_id', currentSessionId);
+      formData.append('category', 'chat');
 
-      const response = await fetch('http://localhost:8004/upload', {
+      // Upload to main backend's document endpoint
+      const response = await fetch('http://localhost:8000/api/documents/upload', {
         method: 'POST',
         body: formData
       });
 
       if (!response.ok) {
-        throw new Error('Upload failed');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Upload failed');
       }
 
       const data = await response.json();
       console.log('Upload response data:', data);
 
+      // Wait a moment for processing to start, then fetch full document details
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      let fullDocument = null;
+      try {
+        const docResponse = await fetch(`http://localhost:8000/api/documents/${data.doc_id}`);
+        if (docResponse.ok) {
+          fullDocument = await docResponse.json();
+        }
+      } catch (err) {
+        console.warn('Could not fetch full document details:', err);
+      }
+
+      // Create document object with available data
+      const documentData = fullDocument || {
+        doc_id: data.doc_id,
+        filename: data.filename,
+        metadata: {
+          file_type: file.name.split('.').pop() || 'unknown',
+          file_size_bytes: file.size,
+          page_count: null,
+          chunk_count: null
+        }
+      };
+
       // Update UI state
-      const newDocuments = [...uploadedDocuments, data];
+      const newDocuments = [...uploadedDocuments, documentData];
       setUploadedDocuments(newDocuments);
       setSelectedDocuments(prev => [...prev, data.doc_id]);
 
@@ -627,18 +655,19 @@ function ChatCodePageContent() {
       }
 
       // Add system message with proper formatting
+      const metadata = documentData.metadata || {};
       const systemMsg: Message = {
         id: `msg_${Date.now()}`,
         type: 'system',
         content: `## 📄 Document Uploaded Successfully
 
-**Filename:** ${data.filename}
+**Filename:** ${documentData.filename}
 
 ### Document Details
 
-- 📄 **Pages:** ${data.page_count || 'N/A'}
-- 🧩 **Chunks:** ${data.chunk_count}
-- 📊 **File Size:** ${(data.size_bytes / 1024).toFixed(2)} KB
+- 📄 **Pages:** ${metadata.page_count || 'Processing...'}
+- 🧩 **Chunks:** ${metadata.chunk_count || 'Processing...'}
+- 📊 **File Size:** ${((metadata.file_size_bytes || file.size) / 1024).toFixed(2)} KB
 - 🆔 **Document ID:** \`${data.doc_id}\`
 
 ✅ **You can now ask questions about this document!**`,
@@ -661,7 +690,9 @@ function ChatCodePageContent() {
 
   const fetchDocuments = async () => {
     try {
-      const response = await fetch(`http://localhost:8004/documents?session_id=${currentSessionId}`);
+      // Fetch documents for the current user from main backend
+      const userId = user?.id || 'user_123';
+      const response = await fetch(`http://localhost:8000/api/documents/user/${userId}?limit=100&category=chat`);
       if (response.ok) {
         const data = await response.json();
         setUploadedDocuments(data.documents || []);
@@ -675,7 +706,7 @@ function ChatCodePageContent() {
     if (!confirm('Are you sure you want to delete this document?')) return;
 
     try {
-      const response = await fetch(`http://localhost:8004/documents/${docId}`, {
+      const response = await fetch(`http://localhost:8000/api/documents/${docId}`, {
         method: 'DELETE'
       });
 
@@ -822,12 +853,22 @@ function ChatCodePageContent() {
           model: model
         };
 
-        response = await fetch('http://localhost:8004/chat', {
+        // Use main backend's chat endpoint with document context
+        response = await fetch('http://localhost:8000/api/v1/chat/stream', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(requestBody)
+          body: JSON.stringify({
+            session_id: currentSessionId,
+            message: message,
+            doc_ids: selectedDocuments,
+            mode: ragMode,
+            stream: true,  // Enable streaming
+            model: 'groq',
+            temperature: temperature,
+            max_tokens: 4096
+          })
         });
       } else {
         // Use regular chat API
@@ -1802,18 +1843,22 @@ function ChatCodePageContent() {
 
                                     <div className="flex-1 min-w-0">
                                       <p className="text-sm font-medium text-slate-900 truncate">
-                                        {doc.filename}
+                                        {doc.filename || 'Untitled'}
                                       </p>
                                       <div className="flex items-center gap-2 mt-1 text-xs text-slate-500">
-                                        <span>{doc.file_type.toUpperCase()}</span>
+                                        <span>{(doc.file_type || doc.metadata?.file_type || 'file').toUpperCase()}</span>
                                         <span>•</span>
-                                        <span>{(doc.size_bytes / 1024).toFixed(1)} KB</span>
-                                        <span>•</span>
-                                        <span>{doc.chunk_count} chunks</span>
+                                        <span>{((doc.size_bytes || doc.metadata?.file_size_bytes || 0) / 1024).toFixed(1)} KB</span>
+                                        {(doc.chunk_count || doc.metadata?.chunk_count) && (
+                                          <>
+                                            <span>•</span>
+                                            <span>{doc.chunk_count || doc.metadata?.chunk_count} chunks</span>
+                                          </>
+                                        )}
                                       </div>
-                                      {doc.page_count && (
+                                      {(doc.page_count || doc.metadata?.page_count) && (
                                         <div className="text-xs text-slate-500 mt-1">
-                                          {doc.page_count} pages
+                                          {doc.page_count || doc.metadata?.page_count} pages
                                         </div>
                                       )}
                                     </div>

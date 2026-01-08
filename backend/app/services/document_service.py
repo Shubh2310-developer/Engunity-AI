@@ -15,7 +15,7 @@ from pymongo.errors import DuplicateKeyError
 from bson import ObjectId
 from dotenv import load_dotenv
 
-from backend.app.models.document_models import (
+from app.models.document_models import (
     Document,
     DocumentMetadata,
     DocumentAnalytics,

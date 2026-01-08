@@ -4,7 +4,7 @@ import { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { uploadDocument as uploadDocumentAPI, uploadToRAG } from '@/lib/api/documents';
+import { uploadDocument as uploadDocumentAPI, uploadToRAG, getDocumentStatus } from '@/lib/api/documents';
 import {
   Upload,
   FileText,
@@ -27,7 +27,7 @@ import {
 interface UploadedFile {
   id: string;
   file: File;
-  status: 'uploading' | 'processing' | 'success' | 'error';
+  status: 'uploading' | 'processing' | 'enriching' | 'success' | 'error';
   progress: number;
   error?: string;
   docId?: string;
@@ -35,7 +35,14 @@ interface UploadedFile {
     pages?: number;
     chunks?: number;
     size: number;
+    wordCount?: number;
+    readingTime?: number;
+    documentType?: string;
+    topics?: string[];
+    hasSummary?: boolean;
+    hasEntities?: boolean;
   };
+  processingStage?: string;
 }
 
 export default function UploadPage() {
@@ -112,44 +119,44 @@ export default function UploadPage() {
     try {
       // Update progress to 20%
       setFiles(prev => prev.map(f =>
-        f.id === fileId ? { ...f, progress: 20, status: 'uploading' as const } : f
+        f.id === fileId ? { ...f, progress: 20, status: 'uploading' as const, processingStage: 'Uploading file...' } : f
       ));
 
       // Step 1: Upload to MongoDB backend for metadata storage
       const backendResult = await uploadDocumentAPI(file, userId, sessionId);
 
-      // Update progress to 50%
+      // Update progress to 40%
       setFiles(prev => prev.map(f =>
-        f.id === fileId ? { ...f, progress: 50, status: 'processing' as const } : f
+        f.id === fileId ? {
+          ...f,
+          progress: 40,
+          status: 'processing' as const,
+          docId: backendResult.doc_id,
+          processingStage: 'Indexing for Q&A...'
+        } : f
       ));
 
       // Step 2: Upload to RAG server for vectorization and Q&A
       const ragResult = await uploadToRAG(file, userId, sessionId);
 
-      // Update progress to 80%
+      // Update progress to 60%
       setFiles(prev => prev.map(f =>
-        f.id === fileId ? { ...f, progress: 80 } : f
+        f.id === fileId ? {
+          ...f,
+          progress: 60,
+          status: 'enriching' as const,
+          processingStage: 'Extracting metadata & entities...',
+          metadata: {
+            size: f.file.size,
+            pages: ragResult.page_count,
+            chunks: ragResult.chunk_count
+          }
+        } : f
       ));
 
-      // Give a small delay to show completion
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Step 3: Poll for AI processing completion (summary, entities, classification)
+      await pollProcessingStatus(fileId, backendResult.doc_id);
 
-      // Mark as complete
-      setFiles(prev => prev.map(f =>
-        f.id === fileId
-          ? {
-              ...f,
-              status: 'success',
-              progress: 100,
-              docId: backendResult.doc_id,
-              metadata: {
-                size: f.file.size,
-                pages: ragResult.page_count,
-                chunks: ragResult.chunk_count
-              }
-            }
-          : f
-      ));
     } catch (error: any) {
       console.error('Upload failed:', error);
       setFiles(prev => prev.map(f =>
@@ -158,11 +165,105 @@ export default function UploadPage() {
               ...f,
               status: 'error',
               error: error.message || 'Upload failed. Please try again.',
-              progress: 0
+              progress: 0,
+              processingStage: undefined
             }
           : f
       ));
     }
+  };
+
+  const pollProcessingStatus = async (fileId: string, docId: string) => {
+    let attempts = 0;
+    const maxAttempts = 30; // 30 seconds max
+
+    const poll = async (): Promise<void> => {
+      try {
+        const status = await getDocumentStatus(docId);
+
+        if (status.processing_status === 'ready') {
+          // Processing complete!
+          setFiles(prev => prev.map(f =>
+            f.id === fileId
+              ? {
+                  ...f,
+                  status: 'success',
+                  progress: 100,
+                  processingStage: 'Complete!',
+                  metadata: {
+                    ...f.metadata,
+                    wordCount: status.metadata.word_count,
+                    readingTime: status.metadata.reading_time,
+                    documentType: status.metadata.document_type,
+                    topics: status.metadata.topics,
+                    hasSummary: status.has_summary,
+                    hasEntities: status.has_entities
+                  }
+                }
+              : f
+          ));
+          return;
+        }
+
+        if (status.processing_status === 'failed') {
+          setFiles(prev => prev.map(f =>
+            f.id === fileId
+              ? {
+                  ...f,
+                  status: 'error',
+                  error: status.error_message || 'Processing failed',
+                  progress: 0,
+                  processingStage: undefined
+                }
+              : f
+          ));
+          return;
+        }
+
+        // Still processing
+        setFiles(prev => prev.map(f =>
+          f.id === fileId
+            ? {
+                ...f,
+                progress: Math.min(60 + (attempts * 2), 95),
+                processingStage: 'Generating summary & extracting entities...'
+              }
+            : f
+        ));
+
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(() => poll(), 1000); // Poll every second
+        } else {
+          // Timeout - mark as success anyway (processing continues in background)
+          setFiles(prev => prev.map(f =>
+            f.id === fileId
+              ? {
+                  ...f,
+                  status: 'success',
+                  progress: 100,
+                  processingStage: 'Processing in background...'
+                }
+              : f
+          ));
+        }
+      } catch (error) {
+        console.error('Error polling status:', error);
+        // Don't fail the upload, just stop polling
+        setFiles(prev => prev.map(f =>
+          f.id === fileId
+            ? {
+                ...f,
+                status: 'success',
+                progress: 100,
+                processingStage: 'Processing in background...'
+              }
+            : f
+        ));
+      }
+    };
+
+    await poll();
   };
 
   const removeFile = (fileId: string) => {
@@ -381,8 +482,17 @@ export default function UploadPage() {
                             <p className="text-sm text-slate-600">
                               {formatFileSize(uploadFile.file.size)}
                               {uploadFile.metadata?.pages && ` • ${uploadFile.metadata.pages} pages`}
-                              {uploadFile.metadata?.chunks && ` • ${uploadFile.metadata.chunks} chunks`}
+                              {uploadFile.metadata?.wordCount && ` • ${uploadFile.metadata.wordCount.toLocaleString()} words`}
+                              {uploadFile.metadata?.readingTime && ` • ${uploadFile.metadata.readingTime} min read`}
                             </p>
+                            {uploadFile.metadata?.documentType && (
+                              <p className="text-xs text-slate-500 mt-1">
+                                Type: {uploadFile.metadata.documentType}
+                                {uploadFile.metadata.topics && uploadFile.metadata.topics.length > 0 &&
+                                  ` • Topics: ${uploadFile.metadata.topics.slice(0, 3).join(', ')}`
+                                }
+                              </p>
+                            )}
                           </div>
 
                           {/* Status Icon */}
@@ -400,11 +510,11 @@ export default function UploadPage() {
                         </div>
 
                         {/* Progress Bar */}
-                        {(uploadFile.status === 'uploading' || uploadFile.status === 'processing') && (
+                        {(uploadFile.status === 'uploading' || uploadFile.status === 'processing' || uploadFile.status === 'enriching') && (
                           <div className="mb-3">
                             <div className="flex items-center justify-between mb-2">
                               <span className="text-xs text-slate-600">
-                                {uploadFile.status === 'uploading' ? 'Uploading...' : 'Processing...'}
+                                {uploadFile.processingStage || 'Processing...'}
                               </span>
                               <span className="text-xs font-medium text-blue-600">
                                 {uploadFile.progress}%
@@ -431,11 +541,32 @@ export default function UploadPage() {
 
                         {/* Success Message */}
                         {uploadFile.status === 'success' && (
-                          <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
-                            <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-                            <p className="text-sm text-green-700">
-                              Document processed successfully! You can now ask questions about this file.
-                            </p>
+                          <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                            <div className="flex items-center gap-2 mb-2">
+                              <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                              <p className="text-sm font-medium text-green-700">
+                                Document processed successfully!
+                              </p>
+                            </div>
+                            {uploadFile.metadata && (
+                              <div className="flex flex-wrap gap-2 text-xs">
+                                {uploadFile.metadata.hasSummary && (
+                                  <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full">
+                                    ✓ Summary generated
+                                  </span>
+                                )}
+                                {uploadFile.metadata.hasEntities && (
+                                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
+                                    ✓ Entities extracted
+                                  </span>
+                                )}
+                                {uploadFile.metadata.topics && uploadFile.metadata.topics.length > 0 && (
+                                  <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-full">
+                                    ✓ {uploadFile.metadata.topics.length} topics identified
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
 

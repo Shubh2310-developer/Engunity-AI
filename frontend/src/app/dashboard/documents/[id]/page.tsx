@@ -66,6 +66,8 @@ export default function DocumentViewerPage() {
   const docId = params.id as string;
 
   const [metadata, setMetadata] = useState<DocumentMetadata | null>(null);
+  const [documentContent, setDocumentContent] = useState<string>('');
+  const [documentData, setDocumentData] = useState<any>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -88,26 +90,59 @@ export default function DocumentViewerPage() {
   }, [messages]);
 
   const fetchDocumentMetadata = async () => {
-    // Mock data - replace with API call
-    setMetadata({
-      filename: 'Product Requirements Document.pdf',
-      fileType: 'pdf',
-      size: 2457600,
-      pages: 45,
-      wordCount: 12500,
-      uploadedAt: new Date('2024-11-10'),
-      category: 'product'
-    });
+    try {
+      const document = await getDocument(docId);
+
+      // Store full document data
+      setDocumentData(document);
+      setDocumentContent(document.text_content || '');
+
+      setMetadata({
+        filename: document.filename,
+        fileType: document.metadata.file_type,
+        size: document.metadata.file_size_bytes,
+        pages: document.metadata.page_count || 1,
+        wordCount: document.metadata.word_count || 0,
+        uploadedAt: document.upload_date ? new Date(document.upload_date) : new Date(),
+        category: document.category
+      });
+
+      // Track that the user viewed this document
+      trackView(docId);
+    } catch (error) {
+      console.error('Failed to fetch document:', error);
+      // Optionally redirect or show error
+    }
   };
 
-  const initializeChat = () => {
-    setMessages([{
-      id: '1',
-      type: 'assistant',
-      content: "Hello! I'm your AI assistant. I've analyzed this document and I'm ready to answer your questions. What would you like to know?",
-      timestamp: new Date(),
-      confidence: 1.0
-    }]);
+  const initializeChat = async () => {
+    try {
+      const document = await getDocument(docId);
+
+      let greeting = "Hello! I'm your AI assistant. I've analyzed this document and I'm ready to answer your questions.";
+
+      if (document.summary) {
+        greeting += "\n\nHere's a quick summary to get you started:\n" + document.summary.substring(0, 200) + "...";
+      }
+
+      greeting += "\n\nWhat would you like to know?";
+
+      setMessages([{
+        id: '1',
+        type: 'assistant',
+        content: greeting,
+        timestamp: new Date(),
+        confidence: 1.0
+      }]);
+    } catch (error) {
+      setMessages([{
+        id: '1',
+        type: 'assistant',
+        content: "Hello! I'm your AI assistant. I'm ready to answer questions about this document. What would you like to know?",
+        timestamp: new Date(),
+        confidence: 1.0
+      }]);
+    }
   };
 
   const handleSendMessage = async () => {
@@ -121,24 +156,19 @@ export default function DocumentViewerPage() {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const questionText = inputMessage;
     setInputMessage('');
     setIsLoading(true);
 
     try {
-      // Replace with actual API call to document RAG server
-      const response = await fetch('http://localhost:8004/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          session_id: `doc_${docId}`,
-          message: inputMessage,
-          doc_ids: [docId],
-          mode: 'document-only',
-          top_k: 5
-        })
-      });
-
-      const data = await response.json();
+      // Use the askQuestion API function
+      const data = await askQuestion(
+        [docId],
+        questionText,
+        `doc_session_${docId}`,
+        'document-only',
+        5
+      );
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -152,10 +182,22 @@ export default function DocumentViewerPage() {
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       console.error('Error sending message:', error);
+
+      // Provide more helpful error message
+      let errorContent = 'I apologize, but I encountered an error.';
+
+      if (error instanceof Error) {
+        if (error.message.includes('RAG server') || error.message.includes('Failed to fetch')) {
+          errorContent = 'The Q&A service is currently unavailable. Please make sure the RAG server is running on port 8004.';
+        } else {
+          errorContent = `Error: ${error.message}`;
+        }
+      }
+
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'assistant',
-        content: 'I apologize, but I encountered an error. Please try again.',
+        content: errorContent,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -282,7 +324,7 @@ export default function DocumentViewerPage() {
             </div>
           </div>
 
-          {/* PDF Viewer Placeholder */}
+          {/* Document Viewer */}
           <div className="flex-1 overflow-auto p-8">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
@@ -290,24 +332,53 @@ export default function DocumentViewerPage() {
               style={{ zoom: `${zoom}%` }}
               className="max-w-4xl mx-auto bg-white rounded-lg shadow-2xl p-12 min-h-[1100px]"
             >
-              <div className="prose prose-slate max-w-none">
-                <h1 className="text-3xl font-bold text-slate-900 mb-6">
-                  {metadata.filename.replace(/\.[^/.]+$/, '')}
-                </h1>
-                <div className="text-slate-600 leading-relaxed space-y-4">
-                  <p>
-                    This is a placeholder for the PDF viewer. In production, you would integrate a PDF rendering library
-                    like PDF.js or react-pdf to display the actual document content here.
-                  </p>
-                  <p>
-                    The document "{metadata.filename}" contains {metadata.pages} pages and approximately {metadata.wordCount.toLocaleString()} words.
-                  </p>
-                  <p>
-                    Users can navigate between pages using the controls above, zoom in/out, and interact with the document
-                    while asking questions through the AI chat interface on the right side.
-                  </p>
+              {documentContent ? (
+                <div className="prose prose-slate max-w-none">
+                  <h1 className="text-3xl font-bold text-slate-900 mb-6">
+                    {metadata.filename.replace(/\.[^/.]+$/, '')}
+                  </h1>
+
+                  {/* Display AI Summary if available */}
+                  {documentData?.summary && (
+                    <div className="mb-8 p-6 bg-blue-50 border border-blue-200 rounded-xl">
+                      <h2 className="text-lg font-semibold text-blue-900 mb-3 flex items-center gap-2">
+                        <Sparkles className="w-5 h-5" />
+                        AI Summary
+                      </h2>
+                      <p className="text-slate-700 leading-relaxed">
+                        {documentData.summary}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Display Key Points if available */}
+                  {documentData?.key_points && documentData.key_points.length > 0 && (
+                    <div className="mb-8 p-6 bg-green-50 border border-green-200 rounded-xl">
+                      <h2 className="text-lg font-semibold text-green-900 mb-3 flex items-center gap-2">
+                        <Target className="w-5 h-5" />
+                        Key Points
+                      </h2>
+                      <ul className="space-y-2">
+                        {documentData.key_points.slice(0, 5).map((point: string, idx: number) => (
+                          <li key={idx} className="text-slate-700">{point}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Display actual document content */}
+                  <div className="text-slate-700 leading-relaxed whitespace-pre-wrap">
+                    {documentContent}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-slate-600">Loading document...</p>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </div>
         </div>

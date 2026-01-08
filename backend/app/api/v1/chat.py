@@ -29,7 +29,9 @@ router = APIRouter()
 class ChatRequest(BaseModel):
     message: str = Field(..., description="User message")
     session_id: Optional[str] = Field(None, description="Chat session ID")
-    model: Optional[str] = Field("local", description="Model to use")
+    doc_ids: Optional[List[str]] = Field(None, description="Document IDs for context")
+    mode: Optional[str] = Field("chat", description="Chat mode")
+    model: Optional[str] = Field("groq", description="Model to use")
     temperature: Optional[float] = Field(0.7, description="Response temperature")
     max_tokens: Optional[int] = Field(2000, description="Maximum tokens")
     stream: Optional[bool] = Field(True, description="Stream response")
@@ -49,23 +51,34 @@ class ChatResponse(BaseModel):
 @router.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
     """
-    Handle chat requests with CS-Enhanced RAG using local models
+    Handle chat requests with CS-Enhanced RAG using local models or Groq
     """
     try:
-        logger.info(f"Received chat request: {request.message[:50]}...")
-        
+        logger.info(f"Received chat request: {request.message[:50]}... with {len(request.doc_ids or [])} documents")
+
         # Generate session ID if not provided
         session_id = request.session_id or f"session_{int(datetime.now().timestamp())}"
         message_id = f"msg_{int(datetime.now().timestamp())}"
-        
-        # Simulate local RAG processing
-        response_text = await process_with_local_rag(
-            message=request.message,
-            session_id=session_id,
-            model=request.model,
-            temperature=request.temperature,
-            max_tokens=request.max_tokens
-        )
+
+        # Process with document context if doc_ids provided
+        if request.doc_ids and len(request.doc_ids) > 0:
+            response_text = await process_with_documents(
+                message=request.message,
+                doc_ids=request.doc_ids,
+                session_id=session_id,
+                model=request.model,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens
+            )
+        else:
+            # Process without documents
+            response_text = await process_with_local_rag(
+                message=request.message,
+                session_id=session_id,
+                model=request.model,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens
+            )
         
         # Prepare response
         chat_response = ChatResponse(
@@ -172,10 +185,90 @@ I'm running with CS-enhanced RAG capabilities using local models. Here's how I c
 Please let me know how I can help with your specific needs!"""
 
         return response
-        
+
     except Exception as e:
         logger.error(f"RAG processing error: {e}")
         return f"I apologize, but I encountered an error processing your request. The local RAG system is available but experienced an issue: {str(e)}"
+
+async def process_with_documents(
+    message: str,
+    doc_ids: List[str],
+    session_id: str,
+    model: Optional[str] = "groq",
+    temperature: Optional[float] = 0.7,
+    max_tokens: Optional[int] = 2000
+) -> str:
+    """
+    Process chat message with document context using Groq
+    """
+    try:
+        logger.info(f"Processing message with {len(doc_ids)} documents using Groq")
+
+        # Import Groq and MongoDB
+        from database.mongodb import get_mongo_db
+        import os
+        from groq import Groq
+
+        # Initialize Groq client
+        groq_api_key = os.getenv("GROQ_API_KEY")
+        if not groq_api_key:
+            raise Exception("GROQ_API_KEY not found in environment")
+
+        groq_client = Groq(api_key=groq_api_key)
+
+        # Get MongoDB connection
+        db = await get_mongo_db()
+        documents_collection = db["documents"]
+
+        # Fetch document contents
+        document_contexts = []
+        for doc_id in doc_ids:
+            # Find document by doc_id (not _id)
+            document = await documents_collection.find_one({"doc_id": doc_id})
+            if document:
+                text_content = document.get('text_content') or document.get('extracted_text') or document.get('content', '')
+                if text_content:
+                    doc_summary = document.get('summary', 'No summary available')
+                    document_contexts.append(f"""
+Document: {document.get('filename', 'Unknown')}
+Summary: {doc_summary}
+
+Content:
+{text_content[:3000]}
+""")
+
+        if not document_contexts:
+            return "I couldn't find the documents you referenced. Please make sure they are uploaded correctly."
+
+        # Build context for Groq
+        context_text = "\n\n---\n\n".join(document_contexts)
+
+        # Create system prompt with document context
+        system_prompt = f"""You are a helpful AI assistant with access to the following documents. Answer the user's question based on these documents.
+
+{context_text}
+
+Please answer questions accurately based on the document content provided above."""
+
+        # Call Groq API
+        chat_completion = groq_client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": message}
+            ],
+            model="llama-3.3-70b-versatile",
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+
+        response_text = chat_completion.choices[0].message.content
+        logger.info(f"Groq response generated successfully")
+
+        return response_text
+
+    except Exception as e:
+        logger.error(f"Document processing error: {e}")
+        return f"I apologize, but I encountered an error processing your request with the documents: {str(e)}"
 
 async def stream_chat_response(response: ChatResponse):
     """

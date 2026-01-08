@@ -1,5 +1,13 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+# Try to import user data router, skip if dependencies are missing
+try:
+    from app.api.v1.user_data import router as user_data_router
+    HAS_USER_DATA_ROUTER = True
+except ImportError as e:
+    print(f"Warning: User data router not available: {e}")
+    user_data_router = None
+    HAS_USER_DATA_ROUTER = False
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from typing import Dict, List, Optional, Any, Union
@@ -38,6 +46,44 @@ except ImportError:
 load_dotenv()
 
 app = FastAPI(title="Engunity AI Data Analysis API", version="1.0.0")
+
+# Include the new user data router if available
+if HAS_USER_DATA_ROUTER and user_data_router:
+    app.include_router(user_data_router)
+
+# Include document routes
+try:
+    from app.routes.document_routes import router as document_router
+    app.include_router(document_router)
+    print("✅ Document routes included")
+except ImportError as e:
+    print(f"Warning: Document routes not available: {e}")
+    # Add basic document endpoints directly
+    from fastapi import Query
+    
+    @app.get("/api/documents/user/{user_id}")
+    async def get_user_documents_fallback(user_id: str, skip: int = Query(0), limit: int = Query(50)):
+        return {
+            "documents": [],
+            "total": 0,
+            "skip": skip,
+            "limit": limit,
+            "message": "Using fallback endpoint - no documents available"
+        }
+    
+    @app.get("/api/documents/stats/dashboard/{user_id}")
+    async def get_dashboard_stats_fallback(user_id: str):
+        return {
+            "total_documents": 0,
+            "processed_documents": 0,
+            "failed_documents": 0,
+            "pending_documents": 0,
+            "total_word_count": 0,
+            "success_rate": 0,
+            "message": "Using fallback endpoint - no data available"
+        }
+    
+    print("✅ Document fallback endpoints added")
 
 # OPTIMIZATION: Add GZip compression middleware (responses >1KB)
 app.add_middleware(GZipMiddleware, minimum_size=1024)

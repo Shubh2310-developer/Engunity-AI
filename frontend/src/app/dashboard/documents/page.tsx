@@ -515,7 +515,7 @@ export default function DocumentsPage() {
                   {/* Actions */}
                   <div className="flex gap-2">
                     <Link
-                      href={`/dashboard/documents/${doc.id}`}
+                      href={`/dashboard/documents/${doc.doc_id}`}
                       className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors group/btn"
                     >
                       <span>Open</span>

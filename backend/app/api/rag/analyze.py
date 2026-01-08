@@ -230,7 +230,7 @@ async def question_answer(request: QuestionAnswerRequest):
             raise HTTPException(status_code=404, detail="Document not found or access denied")
 
         # Get document content (fetch from storage if not extracted)
-        document_text = document.get('extracted_text') or document.get('content')
+        document_text = document.get('extracted_text') or document.get('content') or document.get('text_content')
 
         # If no extracted text, try to fetch from storage URL
         if not document_text:
