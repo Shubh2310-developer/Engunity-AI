@@ -4,7 +4,7 @@
 
 # Core AI/ML Libraries
 torch>=2.1.0,<2.5.0  # CUDA 12.x support
-transformers==4.41.2
+transformers==4.57.1
 sentence-transformers==2.7.0
 accelerate==0.24.0
 safetensors==0.4.2
